@@ -8,24 +8,21 @@ import Dexie from 'dexie';
 export const db = new Dexie('JogloPOSDatabase');
 
 // Define database schema
-// VERSION 4: Added customerName index for pagination search
-db.version(4).stores({
+// VERSION 5: Added expenses table for Financial Suite
+db.version(5).stores({
     // === TRANSACTION DATA ===
-    // Added customerName index for search optimization
     orders: 'id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName',
     employees: 'id, name, role, status',
     attendance: 'id, employeeId, date',
     customers: 'id, name, phone',
     settings: 'key, value',
 
+    // === FINANCIAL DATA ===
+    expenses: 'id, date, category, createdAt',
+
     // === MASTER DATA ===
-    // Categories: AREA, LINEAR, MATRIX, UNIT, UNIT_SHEET, MANUAL
     categories: 'id, name, logic_type, sort_order, is_active',
-
-    // Products: Linked to category
     products: 'id, categoryId, name, price, is_active',
-
-    // Finishings: Linked to category
     finishings: 'id, categoryId, name, price, is_active',
 });
 

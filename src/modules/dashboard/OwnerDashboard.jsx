@@ -1,12 +1,15 @@
 /**
  * OwnerDashboard Component
- * Main dashboard for owner - Money Conscious Version + DARK MODE SUPPORT
+ * READ-ONLY FINANCIAL DASHBOARD - No input forms here
+ * Expense input is on /expenses page
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useOrderStore } from '../../stores/useOrderStore';
 import { useEmployeeStore } from '../../stores/useEmployeeStore';
 import { useAttendanceStore } from '../../stores/useAttendanceStore';
+import { useExpenseStore } from '../../stores/useExpenseStore';
 import { usePermissions } from '../../hooks/usePermissions';
 import { formatRupiah } from '../../core/formatters';
 import { formatDate, formatTime, getDateRange } from '../../utils/dateHelpers';
@@ -16,18 +19,21 @@ import { TodayAttendance } from './TodayAttendance';
 import { TopProducts } from './TopProducts';
 
 export function OwnerDashboard() {
+    const navigate = useNavigate();
     const { isOwner } = usePermissions();
     const [period, setPeriod] = useState('today');
 
     const { orders, loadOrders } = useOrderStore();
     const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
     const { todayAttendances, loadTodayAttendances } = useAttendanceStore();
+    const { expenses, loadExpenses, getTotalExpenses } = useExpenseStore();
 
     useEffect(() => {
         loadOrders();
         loadEmployees();
         loadTodayAttendances();
-    }, [loadOrders, loadEmployees, loadTodayAttendances]);
+        loadExpenses();
+    }, [loadOrders, loadEmployees, loadTodayAttendances, loadExpenses]);
 
     if (!isOwner) {
         return (
@@ -56,6 +62,9 @@ export function OwnerDashboard() {
     const paidOrders = filteredOrders.filter(o => o.paymentStatus === 'PAID');
     const paidTotal = paidOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
+    // Calculate expenses for the period
+    const totalExpenses = getTotalExpenses(dateRange.start, dateRange.end);
+
     const stats = {
         totalSales: filteredOrders.reduce((sum, order) => {
             const orderTotal = order.items?.reduce((itemSum, item) => itemSum + (item.totalPrice || 0), 0) || 0;
@@ -75,12 +84,11 @@ export function OwnerDashboard() {
         totalLostRevenue: cancelledOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0),
         totalEmployees: getActiveEmployees().length,
         presentToday: todayAttendances.filter(a => a.checkInTime).length,
-        averageOrderValue: filteredOrders.length > 0
-            ? filteredOrders.reduce((sum, order) => {
-                const orderTotal = order.items?.reduce((itemSum, item) => itemSum + (item.totalPrice || 0), 0) || 0;
-                return sum + orderTotal;
-            }, 0) / filteredOrders.length
-            : 0,
+        totalExpenses: totalExpenses,
+        netProfit: filteredOrders.reduce((sum, order) => {
+            const orderTotal = order.items?.reduce((itemSum, item) => itemSum + (item.totalPrice || 0), 0) || 0;
+            return sum + orderTotal;
+        }, 0) - totalExpenses,
     };
 
     const recentOrders = [...activeOrders]
@@ -89,19 +97,20 @@ export function OwnerDashboard() {
 
     const hasEmployees = stats.totalEmployees > 0;
 
+    // Navigate to expenses page (READ-ONLY dashboard - no modal)
+    const handleExpenseClick = () => {
+        navigate('/expenses');
+    };
+
     return (
         <div className="owner-dashboard">
             {/* WALL STREET CONTAINER - Animated Gradient Border */}
             <div className="wallstreet-container">
-                {/* Animated gradient border element */}
                 <div className="animated-border" />
-
-                {/* Header */}
                 <div className="dashboard-header">
                     <div>
                         <h1 className="wallstreet-title">📊 Dashboard Owner</h1>
-                        <p className="subtitle">Ringkasan bisnis real-time</p>
-                        {/* Shimmering Line */}
+                        <p className="subtitle">Ringkasan bisnis real-time (Read-Only)</p>
                         <div className="shimmer-line" />
                     </div>
                     <div className="period-filter">
@@ -112,37 +121,71 @@ export function OwnerDashboard() {
                 </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="stats-grid">
-                <StatsCard icon="💰" title="Total Penjualan" value={formatRupiah(stats.totalSales)} subtitle={`${stats.totalOrders} pesanan`} color="#22c55e" />
-                <StatsCard icon="💵" title="Uang Terkumpul" value={formatRupiah(stats.totalCollected)} subtitle={`Piutang: ${formatRupiah(stats.totalOutstanding)}`} color="#3b82f6" />
-                <StatsCard icon="⏳" title="Pesanan Pending" value={stats.pendingOrders} subtitle={`Dikerjakan: ${stats.inProgressOrders}`} color="#f59e0b" />
-                <StatsCard icon="✅" title="Siap Diambil" value={stats.readyOrders} subtitle={`Terkirim: ${stats.deliveredOrders}`} color="#8b5cf6" />
+            {/* FINANCIAL SUITE - 6 Stats Cards */}
+            <div className="stats-grid-6">
+                <StatsCard
+                    icon="💰"
+                    title="Total Penjualan"
+                    value={formatRupiah(stats.totalSales)}
+                    subtitle={`${stats.totalOrders} pesanan`}
+                    color="#22c55e"
+                />
+                <StatsCard
+                    icon="💵"
+                    title="Uang Terkumpul"
+                    value={formatRupiah(stats.totalCollected)}
+                    subtitle={`Piutang: ${formatRupiah(stats.totalOutstanding)}`}
+                    color="#3b82f6"
+                />
+
+                {/* EXPENSE CARD - Redirects to /expenses page */}
+                <StatsCard
+                    icon="💸"
+                    title="Total Pengeluaran"
+                    value={formatRupiah(stats.totalExpenses)}
+                    subtitle="Klik untuk detail →"
+                    color="#f43f5e"
+                    isClickable={true}
+                    onClick={handleExpenseClick}
+                />
+                <StatsCard
+                    icon="🏆"
+                    title="Laba Bersih"
+                    value={formatRupiah(stats.netProfit)}
+                    subtitle={stats.netProfit >= 0 ? '✅ Profit' : '⚠️ Rugi'}
+                    color="#eab308"
+                />
+
+                <StatsCard
+                    icon="⏳"
+                    title="Pesanan Pending"
+                    value={stats.pendingOrders}
+                    subtitle={`Dikerjakan: ${stats.inProgressOrders}`}
+                    color="#f59e0b"
+                />
+                <StatsCard
+                    icon="✅"
+                    title="Siap Diambil"
+                    value={stats.readyOrders}
+                    subtitle={`Terkirim: ${stats.deliveredOrders}`}
+                    color="#8b5cf6"
+                />
             </div>
 
-            {/* MONEY-ORIENTED SECONDARY STATS - DARK MODE AWARE */}
+            {/* MONEY-ORIENTED SECONDARY STATS */}
             <div className="secondary-stats-grid">
-                {/* Rata-rata Order */}
-                <div className="stat-card stat-card-neutral">
-                    <div className="stat-card-label">Rata-rata Order</div>
-                    <div className="stat-card-value">{formatRupiah(stats.averageOrderValue)}</div>
-                </div>
-
-                {/* Belum Bayar */}
                 <div className="stat-card stat-card-danger">
                     <div className="stat-card-label">🔴 Belum Bayar</div>
                     <div className="stat-card-value">{stats.unpaidCount}</div>
                     <div className="stat-card-money">{formatRupiah(unpaidTotal)}</div>
                 </div>
 
-                {/* DP */}
                 <div className="stat-card stat-card-warning">
                     <div className="stat-card-label">🟡 DP (Cicilan)</div>
                     <div className="stat-card-value">{stats.dpCount}</div>
                     <div className="stat-card-money">Sisa: {formatRupiah(dpRemainingTotal)}</div>
                 </div>
 
-                {/* Lunas */}
                 <div className="stat-card stat-card-success">
                     <div className="stat-card-label">🟢 Lunas</div>
                     <div className="stat-card-value">{stats.paidCount}</div>
@@ -165,13 +208,11 @@ export function OwnerDashboard() {
 
             {/* Content Grid */}
             <div className="dashboard-widgets">
-                {/* Recent Orders */}
                 <div className="widget-card">
                     <h2 className="widget-title">📋 Pesanan Terbaru</h2>
                     <RecentOrders orders={recentOrders} />
                 </div>
 
-                {/* Top Products */}
                 <div className="widget-card">
                     <h2 className="widget-title">🏆 Produk Terlaris</h2>
                     <TopProducts orders={activeOrders} />

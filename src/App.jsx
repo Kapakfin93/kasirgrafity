@@ -16,6 +16,7 @@ import { OwnerDashboard } from './modules/dashboard/OwnerDashboard';
 import { ProductManager } from './modules/products/ProductManager';
 import { DataManagement } from './modules/settings/DataManagement';
 import { Workspace } from './modules/pos/Workspace';
+import { ExpensePage } from './modules/expenses/ExpensePage';
 import { MainLayout } from './components/MainLayout';
 
 import './index.css';
@@ -57,6 +58,7 @@ function App() {
 
           {/* Owner Routes */}
           <Route path="/dashboard" element={<OwnerDashboard />} />
+          <Route path="/expenses" element={<ExpensePage />} />
           <Route path="/products" element={<ProductManager />} />
           <Route path="/employees" element={<EmployeeList />} />
           <Route path="/settings/data" element={<DataManagement />} />

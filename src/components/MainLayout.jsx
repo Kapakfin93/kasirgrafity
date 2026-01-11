@@ -48,6 +48,7 @@ export function MainLayout() {
             { path: '/dashboard', icon: '📊', label: 'Dashboard' },
             { path: '/pos', icon: '💰', label: 'Kasir' },
             { path: '/orders', icon: '📋', label: 'Order' },
+            { path: '/expenses', icon: '💸', label: 'Pengeluaran' },
             { path: '/products', icon: '📦', label: 'Produk' },
             { path: '/employees', icon: '👥', label: 'Karyawan' },
             { path: '/attendance', icon: '⏰', label: 'Absensi' },
