@@ -3,17 +3,25 @@
  * Layout with navigation sidebar
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useThemeStore } from '../stores/useThemeStore';
 import { usePermissions } from '../hooks/usePermissions';
 import { LogoutConfirmModal } from './LogoutConfirmModal';
+import { ThemeToggle } from './ThemeToggle';
 
 export function MainLayout() {
     const location = useLocation();
     const { currentUser, logout } = useAuthStore();
+    const { initTheme } = useThemeStore();
     const { isOwner, isCashier } = usePermissions();
     const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+    // Initialize theme on mount
+    useEffect(() => {
+        initTheme();
+    }, [initTheme]);
 
     const handleLogoutClick = () => {
         setShowLogoutModal(true);
@@ -62,10 +70,13 @@ export function MainLayout() {
         <div className="main-layout">
             {/* Navigation Sidebar */}
             <div className="nav-sidebar">
-                {/* Brand */}
-                <div className="nav-brand">
-                    <h2>🏢 JOGLO POS</h2>
-                    <p className="brand-version">v2.4</p>
+                {/* Brand + Theme Toggle */}
+                <div className="nav-brand" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <h2>🏢 JOGLO POS</h2>
+                        <p className="brand-version">v2.5</p>
+                    </div>
+                    <ThemeToggle />
                 </div>
 
                 {/* User Info */}
