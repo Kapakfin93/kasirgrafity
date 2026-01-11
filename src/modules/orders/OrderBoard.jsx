@@ -1,10 +1,10 @@
 /**
  * OrderBoard Component
- * Production tracking board - read from OrderStore
+ * Production tracking board - PAGINATED VERSION
  * Role: PRODUCTION (can view & update status)
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useOrderStore } from '../../stores/useOrderStore';
 import { usePermissions } from '../../hooks/usePermissions';
 import { ORDER_STATUS, PAYMENT_STATUS } from '../../core/constants';
@@ -17,21 +17,51 @@ export function OrderBoard() {
         orders,
         filteredOrders,
         currentFilter,
-        loadOrders,
-        filterByPaymentStatus,
         loading,
-        error
+        error,
+        // Pagination state
+        currentPage,
+        totalPages,
+        totalOrders,
+        searchQuery: storeSearchQuery,
+        // Pagination actions
+        loadOrdersPaginated,
+        searchOrders,
+        setFilterAndReload,
+        nextPage,
+        prevPage,
+        goToPage,
+        // Summary for counts
+        summaryData,
+        loadSummary
     } = useOrderStore();
 
     const permissions = usePermissions();
-    const canViewOrders = permissions.canViewOrders(); // Call the function!
+    const canViewOrders = permissions.canViewOrders();
     const [statusFilter, setStatusFilter] = useState('ALL'); // ALL | PENDING | IN_PROGRESS | READY
-    const [searchQuery, setSearchQuery] = useState('');
+    const [localSearchQuery, setLocalSearchQuery] = useState('');
 
-    // Load orders on mount
+    // Load paginated orders on mount
     useEffect(() => {
-        loadOrders();
-    }, [loadOrders]);
+        loadOrdersPaginated(1, 20, 'ALL');
+        loadSummary(); // For status counts
+    }, [loadOrdersPaginated, loadSummary]);
+
+    // Debounced search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (localSearchQuery !== storeSearchQuery) {
+                searchOrders(localSearchQuery);
+            }
+        }, 300); // 300ms debounce
+
+        return () => clearTimeout(timer);
+    }, [localSearchQuery, storeSearchQuery, searchOrders]);
+
+    // Handle payment filter change
+    const handlePaymentFilter = useCallback((status) => {
+        setFilterAndReload(status);
+    }, [setFilterAndReload]);
 
     // Check permissions
     if (!canViewOrders) {
@@ -43,31 +73,19 @@ export function OrderBoard() {
         );
     }
 
-    // Filter orders by production status and search
+    // Filter by production status (client-side since already paginated)
     const displayOrders = filteredOrders.filter(order => {
-        // Status filter
         if (statusFilter !== 'ALL' && order.productionStatus !== statusFilter) {
             return false;
         }
-
-        // Search filter
-        if (searchQuery) {
-            const query = searchQuery.toLowerCase();
-            return (
-                order.customerName.toLowerCase().includes(query) ||
-                order.id.toString().includes(query) ||
-                order.transactionId?.toLowerCase().includes(query)
-            );
-        }
-
         return true;
     });
 
-    // Count by status for badges
+    // Get counts from summary data
     const counts = {
-        PENDING: orders.filter(o => o.productionStatus === 'PENDING').length,
-        IN_PROGRESS: orders.filter(o => o.productionStatus === 'IN_PROGRESS').length,
-        READY: orders.filter(o => o.productionStatus === 'READY').length,
+        PENDING: summaryData?.countByProductionStatus?.PENDING || 0,
+        IN_PROGRESS: summaryData?.countByProductionStatus?.IN_PROGRESS || 0,
+        READY: summaryData?.countByProductionStatus?.READY || 0,
     };
 
     return (
@@ -76,7 +94,14 @@ export function OrderBoard() {
             <div className="board-header">
                 <div className="board-title">
                     <h1>📋 Order Board - Produksi</h1>
-                    <p className="subtitle">Tracking status pesanan real-time</p>
+                    <p className="subtitle">
+                        Tracking status pesanan real-time
+                        {totalOrders > 0 && (
+                            <span style={{ marginLeft: '8px', color: '#64748b' }}>
+                                ({totalOrders.toLocaleString()} total)
+                            </span>
+                        )}
+                    </p>
                 </div>
 
                 {/* Search */}
@@ -84,8 +109,8 @@ export function OrderBoard() {
                     <input
                         type="text"
                         placeholder="🔍 Cari pesanan... (nama customer, ID)"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        value={localSearchQuery}
+                        onChange={(e) => setLocalSearchQuery(e.target.value)}
                         className="search-input"
                     />
                 </div>
@@ -99,25 +124,25 @@ export function OrderBoard() {
                     <div className="filter-buttons">
                         <button
                             className={`filter-btn ${currentFilter === 'ALL' ? 'active' : ''}`}
-                            onClick={() => filterByPaymentStatus('ALL')}
+                            onClick={() => handlePaymentFilter('ALL')}
                         >
                             Semua
                         </button>
                         <button
                             className={`filter-btn unpaid ${currentFilter === 'UNPAID' ? 'active' : ''}`}
-                            onClick={() => filterByPaymentStatus('UNPAID')}
+                            onClick={() => handlePaymentFilter('UNPAID')}
                         >
                             Belum Bayar
                         </button>
                         <button
                             className={`filter-btn dp ${currentFilter === 'DP' ? 'active' : ''}`}
-                            onClick={() => filterByPaymentStatus('DP')}
+                            onClick={() => handlePaymentFilter('DP')}
                         >
                             DP
                         </button>
                         <button
                             className={`filter-btn paid ${currentFilter === 'PAID' ? 'active' : ''}`}
-                            onClick={() => filterByPaymentStatus('PAID')}
+                            onClick={() => handlePaymentFilter('PAID')}
                         >
                             Lunas
                         </button>
@@ -165,7 +190,7 @@ export function OrderBoard() {
                 {!loading && displayOrders.length === 0 && (
                     <div className="board-empty">
                         <p>📭 Tidak ada pesanan untuk ditampilkan.</p>
-                        {searchQuery && <p>Coba ubah kata kunci pencarian.</p>}
+                        {localSearchQuery && <p>Coba ubah kata kunci pencarian.</p>}
                     </div>
                 )}
 
@@ -173,6 +198,94 @@ export function OrderBoard() {
                     <OrderCard key={order.id} order={order} />
                 ))}
             </div>
+
+            {/* === PAGINATION CONTROLS === */}
+            {totalPages > 1 && !storeSearchQuery && (
+                <div className="pagination-controls" style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '24px',
+                    marginTop: '16px',
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0'
+                }}>
+                    <button
+                        onClick={prevPage}
+                        disabled={currentPage === 1 || loading}
+                        style={{
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: currentPage === 1 ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                            color: currentPage === 1 ? '#94a3b8' : 'white',
+                            fontWeight: 'bold',
+                            cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s',
+                            boxShadow: currentPage === 1 ? 'none' : '0 2px 8px rgba(59, 130, 246, 0.3)'
+                        }}
+                    >
+                        ← Prev
+                    </button>
+
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}>
+                        <span style={{ color: '#64748b' }}>Page</span>
+                        <span style={{
+                            background: 'white',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            fontWeight: 'bold',
+                            color: '#1e293b',
+                            border: '1px solid #e2e8f0'
+                        }}>
+                            {currentPage}
+                        </span>
+                        <span style={{ color: '#64748b' }}>of</span>
+                        <span style={{
+                            fontWeight: 'bold',
+                            color: '#1e293b'
+                        }}>
+                            {totalPages}
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={nextPage}
+                        disabled={currentPage === totalPages || loading}
+                        style={{
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: currentPage === totalPages ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                            color: currentPage === totalPages ? '#94a3b8' : 'white',
+                            fontWeight: 'bold',
+                            cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s',
+                            boxShadow: currentPage === totalPages ? 'none' : '0 2px 8px rgba(59, 130, 246, 0.3)'
+                        }}
+                    >
+                        Next →
+                    </button>
+                </div>
+            )}
+
+            {/* Page info */}
+            {totalOrders > 0 && (
+                <div style={{
+                    textAlign: 'center',
+                    padding: '12px',
+                    color: '#64748b',
+                    fontSize: '14px'
+                }}>
+                    Menampilkan {((currentPage - 1) * 20) + 1}-{Math.min(currentPage * 20, totalOrders)} dari {totalOrders.toLocaleString()} pesanan
+                </div>
+            )}
         </div>
     );
 }

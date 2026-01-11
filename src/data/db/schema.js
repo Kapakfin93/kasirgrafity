@@ -8,16 +8,17 @@ import Dexie from 'dexie';
 export const db = new Dexie('JogloPOSDatabase');
 
 // Define database schema
-// VERSION 3: Master Data Tables Added (Supabase Ready)
-db.version(3).stores({
+// VERSION 4: Added customerName index for pagination search
+db.version(4).stores({
     // === TRANSACTION DATA ===
-    orders: 'id, orderNumber, customerId, paymentStatus, productionStatus, createdAt',
+    // Added customerName index for search optimization
+    orders: 'id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName',
     employees: 'id, name, role, status',
     attendance: 'id, employeeId, date',
     customers: 'id, name, phone',
     settings: 'key, value',
 
-    // === MASTER DATA (NEW) ===
+    // === MASTER DATA ===
     // Categories: AREA, LINEAR, MATRIX, UNIT, UNIT_SHEET, MANUAL
     categories: 'id, name, logic_type, sort_order, is_active',
 
