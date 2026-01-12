@@ -173,27 +173,50 @@ export function DataManagement() {
         setError(null);
 
         try {
-            const backup = await exportAllData();
+            // 1. Get Data from Store
+            const data = await exportAllData();
 
-            // Generate filename with date
-            const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            // 2. Stringify with pretty print
+            const jsonString = JSON.stringify(data, null, 2);
+
+            // 3. Generate Filename with Date
+            const date = new Date().toISOString().split('T')[0];
             const filename = `JogloPOS_Backup_${date}.json`;
 
-            // Create and download file
-            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            // 4. Create Blob with EXPLICIT JSON TYPE
+            const blob = new Blob([jsonString], { type: "application/json" });
+
+            // 5. Use msSaveBlob for IE/Edge Legacy (more reliable)
+            if (window.navigator && window.navigator.msSaveBlob) {
+                window.navigator.msSaveBlob(blob, filename);
+                alert(`Backup Berhasil! File tersimpan sebagai: ${filename}`);
+                return;
+            }
+
+            // 6. Modern browsers: Create proper download link
             const url = URL.createObjectURL(blob);
 
+            // Create anchor element
             const link = document.createElement('a');
             link.href = url;
             link.download = filename;
-            document.body.appendChild(link);
+
+            // Simple click to trigger download
+            // Simple click to trigger download
+            console.log('Triggering download click for:', filename);
             link.click();
-            document.body.removeChild(link);
 
-            URL.revokeObjectURL(url);
+            // Cleanup after delay
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+            }, 1000);
 
-            // Success feedback
-            alert(`✅ Backup berhasil!\n\nFile: ${filename}\nData tersimpan di folder Downloads.`);
+            // Success Feedback
+            // Success Feedback (Delayed to ensure download starts)
+            setTimeout(() => {
+                alert(`✅ Backup Berhasil!\n\nFile: ${filename}\nSilakan cek folder Downloads.`);
+            }, 500);
+
         } catch (err) {
             setError(err.message);
             alert(`❌ Backup gagal: ${err.message}`);
