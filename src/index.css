@@ -464,6 +464,27 @@ td {
     }
 }
 
+/* 5-Card Panoramic Grid (Cockpit View) */
+.stats-grid-5 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (min-width: 768px) {
+    .stats-grid-5 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1280px) {
+    .stats-grid-5 {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 18px;
+    }
+}
+
 /* 6-Card Financial Suite Grid */
 .stats-grid-6 {
     display: grid;

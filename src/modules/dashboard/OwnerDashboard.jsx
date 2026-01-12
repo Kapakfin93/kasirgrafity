@@ -151,8 +151,8 @@ export function OwnerDashboard() {
                 </div>
             </div>
 
-            {/* FINANCIAL SUITE - 6 Stats Cards */}
-            <div className="stats-grid-6">
+            {/* PANORAMIC 5-CARD GRID (Laba Bersih now in Header) */}
+            <div className="stats-grid-5">
                 <StatsCard
                     icon="💰"
                     title="Total Penjualan"
@@ -168,7 +168,7 @@ export function OwnerDashboard() {
                     color="#3b82f6"
                 />
 
-                {/* EXPENSE CARD - Redirects to /expenses page */}
+                {/* EXPENSE CARD - Shortcut to /expenses page */}
                 <StatsCard
                     icon="💸"
                     title="Total Pengeluaran"
@@ -177,13 +177,6 @@ export function OwnerDashboard() {
                     color="#f43f5e"
                     isClickable={true}
                     onClick={handleExpenseClick}
-                />
-                <StatsCard
-                    icon="🏆"
-                    title="Laba Bersih"
-                    value={formatRupiah(stats.netProfit)}
-                    subtitle={stats.netProfit >= 0 ? '✅ Profit' : '⚠️ Rugi'}
-                    color="#eab308"
                 />
 
                 <StatsCard
