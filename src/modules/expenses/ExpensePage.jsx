@@ -3,11 +3,13 @@
  * Dedicated page for expense management with Privacy Tabs
  * - Smart Currency Input (Auto-format Rupiah)
  * - OPERASIONAL vs PAYROLL tabs for data privacy
+ * - ROLE-BASED SECURITY: Payroll tab hidden for non-owners
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useExpenseStore, EXPENSE_CATEGORIES } from '../../stores/useExpenseStore';
 import { useEmployeeStore } from '../../stores/useEmployeeStore';
+import { usePermissions } from '../../hooks/usePermissions';
 import { formatRupiah } from '../../core/formatters';
 import { getDateRange } from '../../utils/dateHelpers';
 
@@ -25,10 +27,18 @@ const parseCurrencyInput = (formattedValue) => {
 export function ExpensePage() {
     const { expenses, loadExpenses, addExpense, deleteExpense, getTotalExpenses } = useExpenseStore();
     const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
+    const { isOwner } = usePermissions();
 
     const [showModal, setShowModal] = useState(false);
     const [period, setPeriod] = useState('month');
     const [activeTab, setActiveTab] = useState('operational'); // 'operational' or 'payroll'
+
+    // Security: Force non-owners back to operational tab
+    useEffect(() => {
+        if (!isOwner && activeTab === 'payroll') {
+            setActiveTab('operational');
+        }
+    }, [isOwner, activeTab]);
     const [formData, setFormData] = useState({
         displayAmount: '', // Formatted display value
         rawAmount: 0,      // Actual integer value
@@ -164,7 +174,7 @@ export function ExpensePage() {
                 </button>
             </div>
 
-            {/* Privacy Tabs */}
+            {/* Privacy Tabs - PAYROLL HIDDEN FOR NON-OWNERS */}
             <div className="privacy-tabs">
                 <button
                     className={`privacy-tab ${activeTab === 'operational' ? 'active' : ''}`}
@@ -173,13 +183,16 @@ export function ExpensePage() {
                     📦 OPERASIONAL
                     <span className="tab-count">{operationalExpenses.length}</span>
                 </button>
-                <button
-                    className={`privacy-tab ${activeTab === 'payroll' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('payroll')}
-                >
-                    🔒 PAYROLL & GAJI
-                    <span className="tab-count">{payrollExpenses.length}</span>
-                </button>
+                {/* 🔒 OWNER-ONLY: Payroll tab */}
+                {isOwner && (
+                    <button
+                        className={`privacy-tab ${activeTab === 'payroll' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('payroll')}
+                    >
+                        🔒 PAYROLL & GAJI
+                        <span className="tab-count">{payrollExpenses.length}</span>
+                    </button>
+                )}
             </div>
 
             {/* Expense History Table */}
