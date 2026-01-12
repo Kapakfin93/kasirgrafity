@@ -1,14 +1,26 @@
 /**
  * ExpensePage Component
- * Dedicated page for expense management (Add/View/Delete)
- * Dashboard remains READ-ONLY
+ * Dedicated page for expense management with Privacy Tabs
+ * - Smart Currency Input (Auto-format Rupiah)
+ * - OPERASIONAL vs PAYROLL tabs for data privacy
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useExpenseStore, EXPENSE_CATEGORIES } from '../../stores/useExpenseStore';
 import { useEmployeeStore } from '../../stores/useEmployeeStore';
 import { formatRupiah } from '../../core/formatters';
 import { getDateRange } from '../../utils/dateHelpers';
+
+// Smart currency formatter
+const formatCurrencyInput = (value) => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    return new Intl.NumberFormat('id-ID').format(parseInt(digits, 10));
+};
+
+const parseCurrencyInput = (formattedValue) => {
+    return parseInt(formattedValue.replace(/\D/g, ''), 10) || 0;
+};
 
 export function ExpensePage() {
     const { expenses, loadExpenses, addExpense, deleteExpense, getTotalExpenses } = useExpenseStore();
@@ -16,8 +28,10 @@ export function ExpensePage() {
 
     const [showModal, setShowModal] = useState(false);
     const [period, setPeriod] = useState('month');
+    const [activeTab, setActiveTab] = useState('operational'); // 'operational' or 'payroll'
     const [formData, setFormData] = useState({
-        amount: '',
+        displayAmount: '', // Formatted display value
+        rawAmount: 0,      // Actual integer value
         category: 'OPERATIONAL',
         description: '',
         employeeName: ''
@@ -30,23 +44,53 @@ export function ExpensePage() {
     }, [loadExpenses, loadEmployees]);
 
     const dateRange = getDateRange(period);
-    const totalExpenses = getTotalExpenses(dateRange.start, dateRange.end);
     const activeEmployees = getActiveEmployees();
 
     // Filter expenses by period
-    const filteredExpenses = expenses.filter(exp => {
-        const expDate = new Date(exp.date);
-        return expDate >= dateRange.start && expDate <= dateRange.end;
-    });
+    const filteredExpenses = useMemo(() => {
+        return expenses.filter(exp => {
+            const expDate = new Date(exp.date);
+            return expDate >= dateRange.start && expDate <= dateRange.end;
+        });
+    }, [expenses, dateRange]);
+
+    // Separate by category type
+    const operationalExpenses = useMemo(() =>
+        filteredExpenses.filter(exp => exp.category !== 'SALARY'),
+        [filteredExpenses]
+    );
+
+    const payrollExpenses = useMemo(() =>
+        filteredExpenses.filter(exp => exp.category === 'SALARY'),
+        [filteredExpenses]
+    );
+
+    // Calculate totals
+    const totalOperational = operationalExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const totalPayroll = payrollExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const grandTotal = totalOperational + totalPayroll;
+
+    // Smart currency input handler
+    const handleAmountChange = (e) => {
+        const inputValue = e.target.value;
+        const formatted = formatCurrencyInput(inputValue);
+        const raw = parseCurrencyInput(formatted);
+
+        setFormData({
+            ...formData,
+            displayAmount: formatted,
+            rawAmount: raw
+        });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.amount || Number(formData.amount) <= 0) return;
+        if (formData.rawAmount <= 0) return;
 
         setIsSubmitting(true);
         try {
             await addExpense({
-                amount: Number(formData.amount),
+                amount: formData.rawAmount,
                 category: formData.category,
                 description: formData.description,
                 employeeName: formData.category === 'SALARY' ? formData.employeeName : null
@@ -54,7 +98,8 @@ export function ExpensePage() {
 
             // Reset form
             setFormData({
-                amount: '',
+                displayAmount: '',
+                rawAmount: 0,
                 category: 'OPERATIONAL',
                 description: '',
                 employeeName: ''
@@ -76,6 +121,9 @@ export function ExpensePage() {
     const getCategoryLabel = (catId) => EXPENSE_CATEGORIES[catId]?.label || catId;
     const getCategoryColor = (catId) => EXPENSE_CATEGORIES[catId]?.color || '#64748b';
 
+    // Get current tab's expenses
+    const currentExpenses = activeTab === 'operational' ? operationalExpenses : payrollExpenses;
+
     return (
         <div className="expense-page">
             {/* Header */}
@@ -95,14 +143,18 @@ export function ExpensePage() {
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* Summary Cards with Breakdown */}
             <div className="expense-summary-row">
                 <div className="expense-summary-card expense-total">
                     <div className="summary-icon">💸</div>
                     <div className="summary-content">
                         <div className="summary-label">Total Pengeluaran</div>
-                        <div className="summary-value">{formatRupiah(totalExpenses)}</div>
-                        <div className="summary-subtitle">{filteredExpenses.length} transaksi</div>
+                        <div className="summary-value">{formatRupiah(grandTotal)}</div>
+                        <div className="summary-breakdown">
+                            <span className="breakdown-item ops">Ops: {formatRupiah(totalOperational)}</span>
+                            <span className="breakdown-divider">|</span>
+                            <span className="breakdown-item payroll">Gaji: {formatRupiah(totalPayroll)}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -112,14 +164,40 @@ export function ExpensePage() {
                 </button>
             </div>
 
+            {/* Privacy Tabs */}
+            <div className="privacy-tabs">
+                <button
+                    className={`privacy-tab ${activeTab === 'operational' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('operational')}
+                >
+                    📦 OPERASIONAL
+                    <span className="tab-count">{operationalExpenses.length}</span>
+                </button>
+                <button
+                    className={`privacy-tab ${activeTab === 'payroll' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('payroll')}
+                >
+                    🔒 PAYROLL & GAJI
+                    <span className="tab-count">{payrollExpenses.length}</span>
+                </button>
+            </div>
+
             {/* Expense History Table */}
             <div className="widget-card">
-                <h2 className="widget-title">📋 Riwayat Pengeluaran</h2>
+                <h2 className="widget-title">
+                    {activeTab === 'operational' ? '📋 Riwayat Operasional' : '🔒 Riwayat Payroll (Rahasia)'}
+                </h2>
 
-                {filteredExpenses.length === 0 ? (
+                {currentExpenses.length === 0 ? (
                     <div className="empty-state">
-                        <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
-                        <p>Belum ada data pengeluaran</p>
+                        <div style={{ fontSize: '48px', marginBottom: '12px' }}>
+                            {activeTab === 'operational' ? '📭' : '🔐'}
+                        </div>
+                        <p>
+                            {activeTab === 'operational'
+                                ? 'Belum ada pengeluaran operasional'
+                                : 'Belum ada data payroll/gaji'}
+                        </p>
                     </div>
                 ) : (
                     <div className="table-container">
@@ -129,13 +207,13 @@ export function ExpensePage() {
                                     <th>Tanggal</th>
                                     <th>Kategori</th>
                                     <th>Keterangan</th>
-                                    <th>Karyawan</th>
+                                    {activeTab === 'payroll' && <th>Karyawan</th>}
                                     <th>Nominal</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredExpenses.map(exp => (
+                                {currentExpenses.map(exp => (
                                     <tr key={exp.id}>
                                         <td className="text-muted">
                                             {new Date(exp.date).toLocaleDateString('id-ID', {
@@ -159,7 +237,7 @@ export function ExpensePage() {
                                             </span>
                                         </td>
                                         <td>{exp.description || '-'}</td>
-                                        <td>{exp.employeeName || '-'}</td>
+                                        {activeTab === 'payroll' && <td>{exp.employeeName || '-'}</td>}
                                         <td className="expense-nominal">{formatRupiah(exp.amount)}</td>
                                         <td>
                                             <button
@@ -187,16 +265,26 @@ export function ExpensePage() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="expense-form">
+                            {/* Smart Currency Input */}
                             <div className="form-field">
-                                <label>Nominal (Rp)</label>
-                                <input
-                                    type="number"
-                                    value={formData.amount}
-                                    onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                                    placeholder="Masukkan nominal..."
-                                    className="amount-input"
-                                    autoFocus
-                                />
+                                <label>Nominal</label>
+                                <div className="currency-input-wrapper">
+                                    <span className="currency-prefix">Rp</span>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={formData.displayAmount}
+                                        onChange={handleAmountChange}
+                                        placeholder="0"
+                                        className="amount-input currency-formatted"
+                                        autoFocus
+                                    />
+                                </div>
+                                {formData.rawAmount > 0 && (
+                                    <div className="amount-preview">
+                                        = {formatRupiah(formData.rawAmount)}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="form-field">
@@ -242,7 +330,7 @@ export function ExpensePage() {
                             <button
                                 type="submit"
                                 className="submit-btn"
-                                disabled={isSubmitting || !formData.amount}
+                                disabled={isSubmitting || formData.rawAmount <= 0}
                             >
                                 {isSubmitting ? '⏳ Menyimpan...' : '💾 Simpan Pengeluaran'}
                             </button>

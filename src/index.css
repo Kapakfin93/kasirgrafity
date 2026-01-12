@@ -700,6 +700,125 @@ td {
     cursor: not-allowed;
 }
 
+/* ============ PRIVACY TABS ============ */
+.privacy-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.privacy-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(30, 41, 59, 0.7);
+    color: #94a3b8;
+}
+
+.privacy-tab:hover {
+    background: rgba(51, 65, 85, 0.8);
+    color: #f1f5f9;
+}
+
+.privacy-tab.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: #ffffff;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+.tab-count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+}
+
+/* ============ SMART CURRENCY INPUT ============ */
+.currency-input-wrapper {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid var(--theme-border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.2s;
+}
+
+.currency-input-wrapper:focus-within {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+}
+
+.currency-prefix {
+    padding: 14px 16px;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    font-weight: 800;
+    font-size: 18px;
+    border-right: 1px solid var(--theme-border);
+}
+
+.amount-input.currency-formatted {
+    flex: 1;
+    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    color: var(--theme-text-primary);
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.amount-input.currency-formatted:focus {
+    outline: none;
+}
+
+.amount-input.currency-formatted::placeholder {
+    color: #475569;
+    font-weight: 400;
+}
+
+.amount-preview {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #22c55e;
+    font-weight: 600;
+}
+
+/* ============ BREAKDOWN TEXT ============ */
+.summary-breakdown {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    font-size: 11px;
+}
+
+.breakdown-item {
+    font-weight: 600;
+}
+
+.breakdown-item.ops {
+    color: #38bdf8;
+}
+
+.breakdown-item.payroll {
+    color: #f472b6;
+}
+
+.breakdown-divider {
+    color: #475569;
+}
+
 .recent-expenses {
     padding: 20px 24px;
     border-top: 1px solid var(--theme-border);
