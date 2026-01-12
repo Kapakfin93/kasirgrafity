@@ -104,20 +104,50 @@ export function OwnerDashboard() {
 
     return (
         <div className="owner-dashboard">
-            {/* WALL STREET CONTAINER - Animated Gradient Border */}
-            <div className="wallstreet-container">
+            {/* BURNING CORE HEADER - Command Center Style */}
+            <div className="command-center-header">
+                {/* Animated gradient border */}
                 <div className="animated-border" />
-                <div className="dashboard-header">
+
+                {/* LEFT: Identity */}
+                <div className="header-identity">
+                    <span className="header-icon">📈</span>
                     <div>
-                        <h1 className="wallstreet-title">📊 Dashboard Owner</h1>
-                        <p className="subtitle">Ringkasan bisnis real-time (Read-Only)</p>
-                        <div className="shimmer-line" />
+                        <h1 className="header-title">Dashboard Owner</h1>
                     </div>
-                    <div className="period-filter">
-                        <button className={`period-btn ${period === 'today' ? 'active' : ''}`} onClick={() => setPeriod('today')}>Hari Ini</button>
-                        <button className={`period-btn ${period === 'week' ? 'active' : ''}`} onClick={() => setPeriod('week')}>7 Hari</button>
-                        <button className={`period-btn ${period === 'month' ? 'active' : ''}`} onClick={() => setPeriod('month')}>Bulan Ini</button>
+                </div>
+
+                {/* CENTER: Burning Net Profit (THE CORE) */}
+                <div className="burning-core">
+                    <div className="core-label">NET PROFIT LIVE</div>
+                    <div className={`core-value ${stats.netProfit >= 0 ? 'profit' : 'loss'}`}>
+                        {formatRupiah(stats.netProfit)}
                     </div>
+                    <div className="core-status">
+                        {stats.netProfit >= 0 ? '🔥 Profit' : '❄️ Rugi'}
+                    </div>
+                </div>
+
+                {/* RIGHT: Capsule Filter */}
+                <div className="capsule-filter">
+                    <button
+                        className={`capsule-btn ${period === 'today' ? 'active' : ''}`}
+                        onClick={() => setPeriod('today')}
+                    >
+                        Hari Ini
+                    </button>
+                    <button
+                        className={`capsule-btn ${period === 'week' ? 'active' : ''}`}
+                        onClick={() => setPeriod('week')}
+                    >
+                        7 Hari
+                    </button>
+                    <button
+                        className={`capsule-btn ${period === 'month' ? 'active' : ''}`}
+                        onClick={() => setPeriod('month')}
+                    >
+                        Bulan Ini
+                    </button>
                 </div>
             </div>
 

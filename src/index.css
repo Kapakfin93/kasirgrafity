@@ -174,7 +174,7 @@ td {
     padding: 40px 20px;
 }
 
-/* ============ WALL STREET CONTAINER (ANIMATED BORDER) ============ */
+/* ============ COMMAND CENTER HEADER (BURNING CORE) ============ */
 
 @keyframes gradientMove {
     0% {
@@ -187,6 +187,20 @@ td {
 
     100% {
         background-position: 0% 50%;
+    }
+}
+
+@keyframes burningPulse {
+
+    0%,
+    100% {
+        filter: drop-shadow(0 0 15px rgba(251, 191, 36, 0.6));
+        transform: scale(1);
+    }
+
+    50% {
+        filter: drop-shadow(0 0 25px rgba(251, 191, 36, 0.9));
+        transform: scale(1.02);
     }
 }
 
@@ -206,6 +220,144 @@ td {
     }
 }
 
+.command-center-header {
+    position: relative;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+    border-radius: 20px;
+    padding: 20px 28px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    overflow: hidden;
+    min-height: 100px;
+}
+
+.command-center-header .animated-border {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    padding: 2px;
+    background: linear-gradient(90deg, #06b6d4, #8b5cf6, #22c55e, #f59e0b, #ef4444, #06b6d4);
+    background-size: 400% 400%;
+    animation: gradientMove 8s ease infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.command-center-header:hover .animated-border {
+    opacity: 0.9;
+    animation-duration: 3s;
+}
+
+/* LEFT: Identity */
+.header-identity {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    z-index: 1;
+}
+
+.header-icon {
+    font-size: 36px;
+    filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+}
+
+.header-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: 1px;
+    margin: 0;
+    background: linear-gradient(90deg, #c4b5fd 0%, #67e8f9 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* CENTER: Burning Net Profit (THE CORE) */
+.burning-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 2;
+}
+
+.core-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.core-value {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: clamp(24px, 4vw, 36px);
+    font-weight: 900;
+    letter-spacing: -1px;
+    animation: burningPulse 2s ease-in-out infinite;
+}
+
+.core-value.profit {
+    color: #fbbf24;
+    text-shadow: 0 0 30px rgba(251, 191, 36, 0.7), 0 0 60px rgba(251, 191, 36, 0.4);
+}
+
+.core-value.loss {
+    color: #f87171;
+    text-shadow: 0 0 30px rgba(248, 113, 113, 0.7), 0 0 60px rgba(248, 113, 113, 0.4);
+}
+
+.core-status {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+
+/* RIGHT: Capsule Filter */
+.capsule-filter {
+    display: flex;
+    gap: 4px;
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(71, 85, 105, 0.5);
+    border-radius: 100px;
+    padding: 4px;
+    z-index: 1;
+}
+
+.capsule-btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.capsule-btn:hover {
+    color: #f8fafc;
+}
+
+.capsule-btn.active {
+    background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+    color: #ffffff;
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+}
+
+/* Legacy wallstreet-container (keep for ExpensePage) */
 .wallstreet-container {
     position: relative;
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
