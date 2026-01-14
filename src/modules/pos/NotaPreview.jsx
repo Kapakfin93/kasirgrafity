@@ -337,6 +337,42 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                                         ({item.description})
                                     </div>
                                 )}
+
+                                {/* ADVANCED PRODUCT NOTES - Finishing Summary */}
+                                {item.notes && (
+                                    <div className="nota-item-spec" style={{
+                                        fontSize: '10px',
+                                        paddingLeft: '10px',
+                                        color: '#555',
+                                        fontStyle: 'italic',
+                                        marginTop: '2px'
+                                    }}>
+                                        {item.notes}
+                                    </div>
+                                )}
+
+                                {/* ADVANCED PRODUCT - Custom Inputs (FOR PRODUCTION) - ONLY IN SPK MODE */}
+                                {printMode === 'SPK' && item.meta?.detail_options?.custom_inputs && (
+                                    <div className="nota-item-spec" style={{
+                                        marginTop: '6px',
+                                        paddingLeft: '12px',
+                                        borderLeft: '3px solid #999',
+                                        fontSize: '9px',
+                                        lineHeight: '1.4',
+                                        fontFamily: 'monospace',
+                                        backgroundColor: '#f5f5f5',
+                                        padding: '6px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        <strong style={{ display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>DETAIL PRODUKSI:</strong>
+                                        {Object.entries(item.meta.detail_options.custom_inputs).map(([key, value]) => (
+                                            <div key={key} style={{ marginBottom: '3px' }}>
+                                                <strong>{key}:</strong> {value}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
                                 {showPrices && (
                                     <div className="nota-item-price">
                                         <span>@ {formatRupiah(item.unitPrice)}</span>

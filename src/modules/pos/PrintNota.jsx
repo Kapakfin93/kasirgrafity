@@ -123,6 +123,34 @@ export function PrintNota({ items, totalAmount, paymentState, order }) {
                                 </div>
                             )}
 
+                            {/* ADVANCED PRODUCT NOTES - Finishing Summary */}
+                            {item.notes && (
+                                <div className="nota-item-spec" style={{
+                                    marginTop: '2px',
+                                    color: '#333',
+                                    fontStyle: 'italic'
+                                }}>
+                                    {item.notes}
+                                </div>
+                            )}
+
+                            {/* ADVANCED PRODUCT - Custom Inputs (FOR PRODUCTION) */}
+                            {item.meta?.detail_options?.custom_inputs && (
+                                <div className="nota-item-spec" style={{
+                                    marginTop: '4px',
+                                    paddingLeft: '8px',
+                                    borderLeft: '2px solid #ddd',
+                                    fontSize: '10px',
+                                    whiteSpace: 'pre-wrap'
+                                }}>
+                                    {Object.entries(item.meta.detail_options.custom_inputs).map(([key, value]) => (
+                                        <div key={key} style={{ marginBottom: '2px' }}>
+                                            <strong>{key}:</strong> {value}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             {/* Finishings (opsional, jika ada) */}
                             {Array.isArray(item.finishings) && item.finishings.length > 0 && (
                                 <div className="nota-item-spec">
