@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { usePermissions } from '../../hooks/usePermissions';
 import db from '../../data/db/schema';
 import { formatRupiah } from '../../core/formatters';
+import { generateSeedData } from '../../utils/stressSeeder';
 
 // ============================================
 // BACKUP & RESTORE UTILITY FUNCTIONS
@@ -154,6 +155,7 @@ export function DataManagement() {
     const [showConfirmRestore, setShowConfirmRestore] = useState(false);
     const [pendingFile, setPendingFile] = useState(null);
     const [error, setError] = useState(null);
+    const [isStressTesting, setIsStressTesting] = useState(false);
 
     // Load stats on mount
     React.useEffect(() => {
@@ -293,6 +295,45 @@ export function DataManagement() {
         setPendingFile(null);
     };
 
+    // ============================================
+    // STRESS TEST SEEDER
+    // ============================================
+    const handleStressTest = async () => {
+        const confirmed = window.confirm(
+            '⚠️ PERINGATAN STRESS TEST\n\n' +
+            'Ini akan menambahkan 2000 dummy orders ke database untuk testing:\n' +
+            '- 30% Heavy Orders (Jersey dengan 20-50 nama pemain)\n' +
+            '- 70% Light Orders (Banner/Poster sederhana)\n\n' +
+            'Lanjutkan?'
+        );
+
+        if (!confirmed) return;
+
+        setIsStressTesting(true);
+        setError(null);
+
+        try {
+            console.log('🚀 Starting stress test...');
+            const result = await generateSeedData(2000);
+
+            alert(
+                `✅ STRESS TEST SELESAI!\n\n` +
+                `Total: ${result.total} orders\n` +
+                `Heavy: ${result.heavy} orders (${Math.round(result.heavy / result.total * 100)}%)\n` +
+                `Light: ${result.light} orders (${Math.round(result.light / result.total * 100)}%)\n\n` +
+                `Halaman akan di-refresh.`
+            );
+
+            // Reload to update stats and Zustand stores
+            window.location.reload();
+        } catch (err) {
+            setError('Stress test gagal: ' + err.message);
+            alert(`❌ Stress test gagal: ${err.message}`);
+        } finally {
+            setIsStressTesting(false);
+        }
+    };
+
     // Permission check
     if (!isOwner) {
         return (
@@ -405,6 +446,36 @@ export function DataManagement() {
                         )}
                     </label>
                 </div>
+            </div>
+
+            {/* Stress Test Section */}
+            <div className="dm-section dm-stress-test" style={{
+                borderLeft: '4px solid #ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)'
+            }}>
+                <h3>⚠️ Stress Test (Development Only)</h3>
+                <p className="section-desc">
+                    Generate 2000 dummy transactions untuk testing pagination, rendering performance, dan financial calculations.
+                    <br />
+                    <strong style={{ color: '#f59e0b' }}>⚡ Mix: 30% Heavy (Jersey 20-50 players), 70% Light (Simple products)</strong>
+                </p>
+                <button
+                    className="dm-btn"
+                    style={{
+                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        color: 'white',
+                        fontWeight: '700',
+                        border: '2px solid #b91c1c'
+                    }}
+                    onClick={handleStressTest}
+                    disabled={isStressTesting}
+                >
+                    {isStressTesting ? (
+                        <>⏳ Generating 2000 orders...</>
+                    ) : (
+                        <>⚠️ GENERATE STRESS TEST (2000 Data)</>
+                    )}
+                </button>
             </div>
 
             {/* Instructions */}

@@ -419,7 +419,7 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                     ) : (
                         <div className="nota-status" style={{ textAlign: 'center', padding: '10px 0' }}>
                             <p style={{ fontWeight: 'bold', fontSize: '14px' }}>MOHON SEGERA DIKERJAKAN</p>
-                            <p style={{ marginTop: '5px' }}>Total Item: {items.length} Pcs</p>
+                            <p style={{ marginTop: '5px' }}>Total Item: {items.reduce((sum, item) => sum + (parseInt(item.qty) || 0), 0)} Pcs</p>
                         </div>
                     )}
 
