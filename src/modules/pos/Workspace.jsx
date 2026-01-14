@@ -31,6 +31,12 @@ export function Workspace() {
         setTransactionStage,
         resetTransaction,
         calculateItemPrice, // Stateless calculator for modal
+        // Priority System
+        targetDate,
+        setTargetDate,
+        setPriorityStandard,
+        setPriorityExpress,
+        setPriorityUrgent,
     } = useTransaction();
 
     const { createOrder } = useOrderStore();
@@ -372,6 +378,11 @@ export function Workspace() {
                 isTempo={isTempo}
                 setIsTempo={setIsTempo}
                 customerSnapshot={customerSnapshot}
+                targetDate={targetDate}
+                setTargetDate={setTargetDate}
+                setPriorityStandard={setPriorityStandard}
+                setPriorityExpress={setPriorityExpress}
+                setPriorityUrgent={setPriorityUrgent}
             />
 
             {/* Product Config Modal */}

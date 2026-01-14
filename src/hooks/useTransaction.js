@@ -41,6 +41,18 @@ const INITIAL_PAYMENT_STATE = {
     showNotaPreview: false
 };
 
+// ============================================
+// PRIORITY SYSTEM CONFIGURATION
+// ============================================
+export const PRIORITY_CONFIG = {
+    FEE_EXPRESS: 15000,     // Express Priority Fee (Rp)
+    FEE_URGENT: 30000,      // Urgent Priority Fee (Rp)
+    HOURS_STANDARD: 24,     // Standard: +24 hours
+    HOURS_EXPRESS: 5,       // Express: +5 hours (or Today 17:00)
+    HOURS_URGENT: 2,        // Urgent: +2 hours
+    EXPRESS_CUTOFF_HOUR: 17 // Express aims for Today 17:00
+};
+
 // Transaction Stage Enum
 export const TRANSACTION_STAGES = {
     CART: 'CART',
@@ -66,6 +78,13 @@ export function useTransaction() {
     const [customerSnapshot, setCustomerSnapshot] = useState({
         name: '',
         whatsapp: ''
+    });
+
+    // Target Date State (for Priority System)
+    const [targetDate, setTargetDate] = useState(() => {
+        const now = new Date();
+        now.setHours(now.getHours() + 24); // Default: +24h
+        return now.toISOString().slice(0, 16); // Format for datetime-local input
     });
 
     // Initialize store on mount
@@ -563,6 +582,81 @@ export function useTransaction() {
         setConfiguratorInput(INITIAL_INPUT_STATE);
     };
 
+    // === PRIORITY SYSTEM (ANTI-STACKING FEE LOGIC) ===
+    const setPriorityStandard = () => {
+        // Standard: +24h, no fee
+        const now = new Date();
+        now.setHours(now.getHours() + PRIORITY_CONFIG.HOURS_STANDARD);
+        setTargetDate(now.toISOString().slice(0, 16));
+
+        // Remove any existing priority fees
+        setTempItems(prev => prev.filter(item =>
+            item.id !== 'fee-express' && item.id !== 'fee-urgent'
+        ));
+    };
+
+    const setPriorityExpress = () => {
+        // Express: Today 17:00 or +5h (whichever is later), +15k fee
+        const now = new Date();
+        const today17 = new Date();
+        today17.setHours(PRIORITY_CONFIG.EXPRESS_CUTOFF_HOUR, 0, 0, 0);
+        const plus5h = new Date(now.getTime() + PRIORITY_CONFIG.HOURS_EXPRESS * 60 * 60 * 1000);
+
+        const targetTime = today17 > now ? today17 : plus5h;
+        setTargetDate(targetTime.toISOString().slice(0, 16));
+
+        // ANTI-STACKING: Remove ALL existing priority fees first
+        setTempItems(prev => {
+            const cleaned = prev.filter(item =>
+                item.id !== 'fee-express' && item.id !== 'fee-urgent'
+            );
+
+            // Add Express fee
+            return [...cleaned, {
+                id: 'fee-express',
+                productId: 'SERVICE_EXPRESS',
+                name: 'Layanan Prioritas (Express)',
+                productName: 'Layanan Prioritas (Express)',
+                description: 'Percepatan produksi (selesai hari ini)',
+                pricingType: 'SERVICE',
+                qty: 1,
+                dimensions: {},
+                finishings: [],
+                unitPrice: PRIORITY_CONFIG.FEE_EXPRESS,
+                totalPrice: PRIORITY_CONFIG.FEE_EXPRESS
+            }];
+        });
+    };
+
+    const setPriorityUrgent = () => {
+        // Urgent: +2h, +30k fee
+        const now = new Date();
+        now.setHours(now.getHours() + PRIORITY_CONFIG.HOURS_URGENT);
+        setTargetDate(now.toISOString().slice(0, 16));
+
+        // ANTI-STACKING: Remove ALL existing priority fees first
+        setTempItems(prev => {
+            const cleaned = prev.filter(item =>
+                item.id !== 'fee-express' && item.id !== 'fee-urgent'
+            );
+
+            // Add Urgent fee
+            return [...cleaned, {
+                id: 'fee-urgent',
+                productId: 'SERVICE_URGENT',
+                name: 'Layanan RUSH (Urgent)',
+                productName: 'Layanan RUSH (Urgent)',
+                description: 'Prioritas tertinggi (selesai 2 jam)',
+                pricingType: 'SERVICE',
+                qty: 1,
+                dimensions: {},
+                finishings: [],
+                unitPrice: PRIORITY_CONFIG.FEE_URGENT,
+                totalPrice: PRIORITY_CONFIG.FEE_URGENT
+            }];
+        });
+    };
+
     // === CALCULATION ===
     const calculateTotal = () => {
         // Standardized: Total uses 'totalPrice' field
@@ -707,6 +801,9 @@ export function useTransaction() {
             // [SOP V2.0] TEMPO/VIP Flag - Bypass payment gate
             isTempo: isTempo,
 
+            // [PRIORITY SYSTEM] Deadline
+            targetDate: targetDate,
+
             // Customer Snapshot (immutable after creation)
             customerSnapshot: {
                 name: customerSnapshot.name.trim(),
@@ -847,6 +944,13 @@ export function useTransaction() {
         customerSnapshot,
         updateCustomerSnapshot,
         clearCustomerSnapshot,
+
+        // Priority System
+        targetDate,
+        setTargetDate,
+        setPriorityStandard,
+        setPriorityExpress,
+        setPriorityUrgent,
 
         // Transaction Stage
         transactionStage,

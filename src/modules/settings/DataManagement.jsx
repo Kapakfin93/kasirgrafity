@@ -334,6 +334,67 @@ export function DataManagement() {
         }
     };
 
+    // ============================================
+    // FACTORY RESET - TRANSACTION WIPER
+    // ============================================
+    const handleFactoryReset = async () => {
+        // First confirmation
+        const confirmed1 = window.confirm(
+            '⚠️ PERINGATAN FACTORY RESET\n\n' +
+            'Ini akan MENGHAPUS SEMUA TRANSAKSI dari database!\n\n' +
+            'Data yang AKAN DIHAPUS:\n' +
+            '- Semua Orders/Transaksi\n\n' +
+            'Data yang TETAP ADA:\n' +
+            '- Produk\n' +
+            '- Kategori\n' +
+            '- Customer\n' +
+            '- Finishing\n\n' +
+            'Lanjutkan?'
+        );
+
+        if (!confirmed1) return;
+
+        // Second confirmation (safety)
+        const confirmed2 = window.confirm(
+            '🚨 KONFIRMASI TERAKHIR 🚨\n\n' +
+            'Apakah Anda YAKIN akan menghapus SEMUA transaksi?\n\n' +
+            'Tindakan ini TIDAK BISA DIBATALKAN!\n\n' +
+            'Klik OK untuk melanjutkan penghapusan.'
+        );
+
+        if (!confirmed2) return;
+
+        setIsImporting(true); // Reuse loading state
+        setError(null);
+
+        try {
+            console.log('🗑️ Starting factory reset...');
+
+            // Get order count before deletion
+            const orderCount = await db.orders.count();
+
+            // Delete all orders
+            await db.orders.clear();
+
+            console.log(`✅ Deleted ${orderCount} orders`);
+
+            alert(
+                `✅ FACTORY RESET SELESAI!\n\n` +
+                `${orderCount} transaksi berhasil dihapus.\n\n` +
+                `Halaman akan di-refresh.`
+            );
+
+            // Reload to update stats and Zustand stores
+            window.location.reload();
+        } catch (err) {
+            setError('Factory reset gagal: ' + err.message);
+            alert(`❌ Factory reset gagal: ${err.message}`);
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+
     // Permission check
     if (!isOwner) {
         return (
@@ -474,6 +535,36 @@ export function DataManagement() {
                         <>⏳ Generating 2000 orders...</>
                     ) : (
                         <>⚠️ GENERATE STRESS TEST (2000 Data)</>
+                    )}
+                </button>
+            </div>
+
+            {/* Factory Reset Section */}
+            <div className="dm-section dm-factory-reset" style={{
+                borderLeft: '4px solid #dc2626',
+                backgroundColor: 'rgba(220, 38, 38, 0.1)'
+            }}>
+                <h3>🗑️ Factory Reset (Production Ready)</h3>
+                <p className="section-desc">
+                    Hapus SEMUA transaksi untuk memulai fresh di production.
+                    <br />
+                    <strong style={{ color: '#dc2626' }}>⚠️ Data Produk, Kategori, Customer TETAP ADA</strong>
+                </p>
+                <button
+                    className="dm-btn"
+                    style={{
+                        background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+                        color: 'white',
+                        fontWeight: '700',
+                        border: '2px solid #7f1d1d'
+                    }}
+                    onClick={handleFactoryReset}
+                    disabled={isImporting}
+                >
+                    {isImporting ? (
+                        <>⏳ Menghapus transaksi...</>
+                    ) : (
+                        <>🗑️ RESET / HAPUS TRANSAKSI</>
                     )}
                 </button>
             </div>

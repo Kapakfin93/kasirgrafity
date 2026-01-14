@@ -1,7 +1,12 @@
 import React from 'react';
 import { formatRupiah } from '../../core/formatters';
+import { PRIORITY_CONFIG } from '../../hooks/useTransaction';
 
-export function ReceiptSection({ items, removeItem, totalAmount, paymentState, updatePayment, onConfirmPayment, isLocked: isLockedProp, onPrint, onReset, isTempo, setIsTempo, customerSnapshot }) {
+export function ReceiptSection({
+    items, removeItem, totalAmount, paymentState, updatePayment, onConfirmPayment,
+    isLocked: isLockedProp, onPrint, onReset, isTempo, setIsTempo, customerSnapshot,
+    targetDate, setTargetDate, setPriorityStandard, setPriorityExpress, setPriorityUrgent
+}) {
     const { mode, amountPaid } = paymentState || {};
     const isLocked = isLockedProp || paymentState?.isLocked;
 
@@ -248,6 +253,159 @@ export function ReceiptSection({ items, removeItem, totalAmount, paymentState, u
             <div className="receipt-footer">
                 {!isLocked ? (
                     <>
+                        {/* PRIORITY SYSTEM - Deadline & Fees */}
+                        {targetDate && setTargetDate && (
+                            <div style={{
+                                padding: '14px 16px',
+                                marginBottom: '14px',
+                                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                                borderRadius: '12px',
+                                border: '2px solid #e2e8f0'
+                            }}>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    color: '#475569',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    marginBottom: '10px'
+                                }}>
+                                    ⏰ Estimasi Selesai / Deadline
+                                </label>
+
+                                {/* Priority Chips */}
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '6px',
+                                    marginBottom: '10px'
+                                }}>
+                                    <button
+                                        onClick={setPriorityStandard}
+                                        style={{
+                                            flex: 1,
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            border: '2px solid #10b981',
+                                            background: 'white',
+                                            color: '#10b981',
+                                            fontSize: '11px',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = '#10b981';
+                                            e.currentTarget.style.color = 'white';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'white';
+                                            e.currentTarget.style.color = '#10b981';
+                                        }}
+                                    >
+                                        🟢 STANDAR
+                                    </button>
+                                    <button
+                                        onClick={setPriorityExpress}
+                                        style={{
+                                            flex: 1,
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            border: '2px solid #f59e0b',
+                                            background: 'white',
+                                            color: '#f59e0b',
+                                            fontSize: '11px',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = '#f59e0b';
+                                            e.currentTarget.style.color = 'white';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'white';
+                                            e.currentTarget.style.color = '#f59e0b';
+                                        }}
+                                    >
+                                        ⚡ EXPRESS +{formatRupiah(PRIORITY_CONFIG.FEE_EXPRESS).replace('Rp ', '')}
+                                    </button>
+                                    <button
+                                        onClick={setPriorityUrgent}
+                                        style={{
+                                            flex: 1,
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            border: '2px solid #ef4444',
+                                            background: 'white',
+                                            color: '#ef4444',
+                                            fontSize: '11px',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = '#ef4444';
+                                            e.currentTarget.style.color = 'white';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'white';
+                                            e.currentTarget.style.color = '#ef4444';
+                                        }}
+                                    >
+                                        🔥 URGENT +{formatRupiah(PRIORITY_CONFIG.FEE_URGENT).replace('Rp ', '')}
+                                    </button>
+                                </div>
+
+                                {/* Datetime Picker */}
+                                <input
+                                    type="datetime-local"
+                                    value={targetDate}
+                                    onChange={(e) => setTargetDate(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 12px',
+                                        borderRadius: '8px',
+                                        border: '2px solid #cbd5e1',
+                                        fontSize: '13px',
+                                        fontWeight: '600',
+                                        color: '#1e293b',
+                                        background: 'white'
+                                    }}
+                                />
+
+                                {/* 24-Hour Helper Text (Indonesian Format) */}
+                                {targetDate && (
+                                    <div style={{
+                                        marginTop: '8px',
+                                        padding: '8px 10px',
+                                        background: '#fefce8',
+                                        borderRadius: '6px',
+                                        border: '1px solid #fde047',
+                                        fontSize: '11px',
+                                        color: '#713f12',
+                                        lineHeight: '1.4'
+                                    }}>
+                                        <strong>📅 Target:</strong>{' '}
+                                        {new Date(targetDate).toLocaleDateString('id-ID', {
+                                            weekday: 'long',
+                                            day: 'numeric',
+                                            month: 'short'
+                                        })}
+                                        {' '}- Pukul{' '}
+                                        <strong style={{ color: '#a16207' }}>
+                                            {new Date(targetDate).toLocaleTimeString('id-ID', {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                hour12: false
+                                            })}
+                                        </strong>
+                                        {' '}WIB
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="payment-controls">
                             <div className="payment-mode-switch">
                                 <button
