@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatRupiah } from '../../core/formatters';
 
-export function ReceiptSection({ items, removeItem, totalAmount, paymentState, updatePayment, onConfirmPayment, isLocked: isLockedProp, onPrint, onReset, isTempo, setIsTempo }) {
+export function ReceiptSection({ items, removeItem, totalAmount, paymentState, updatePayment, onConfirmPayment, isLocked: isLockedProp, onPrint, onReset, isTempo, setIsTempo, customerSnapshot }) {
     const { mode, amountPaid } = paymentState || {};
     const isLocked = isLockedProp || paymentState?.isLocked;
 
@@ -22,8 +22,9 @@ export function ReceiptSection({ items, removeItem, totalAmount, paymentState, u
         updatePayment({ amountPaid: rawValue });
     };
 
-    // Validation: Allow checkout if Tempo mode is active OR payment is valid
-    const canCheckout = items.length > 0 && (isTempo || !isTunai || paid > 0);
+    // Validation: CRITICAL - Must have customer name AND (Tempo mode OR valid payment)
+    const hasCustomerName = customerSnapshot?.name && customerSnapshot.name.trim() !== '';
+    const canCheckout = items.length > 0 && hasCustomerName && (isTempo || !isTunai || paid > 0);
 
     const renderSummary = () => {
         const sisaBayar = totalAmount - paid;

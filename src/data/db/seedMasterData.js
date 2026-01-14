@@ -65,15 +65,40 @@ export async function seedMasterData() {
                 // Create Products for this category
                 if (catData.products?.length > 0) {
                     for (const prodData of catData.products) {
-                        const product = new Product({
+                        // BYPASS PRODUCT MODEL - Save Raw Object Directly to prevent data stripping
+                        const rawProductData = {
+                            id: prodData.id || uuidv4(), // Generate ID if not present
                             categoryId: category.id,
                             name: prodData.name,
-                            price: prodData.price || 0,
-                            prices: prodData.prices || null,
                             is_active: true,
-                        });
 
-                        await db.products.put(product.toJSON());
+                            // Legacy pricing fields
+                            price: prodData.price || prodData.base_price || 0,
+                            prices: prodData.prices || null,
+
+                            // ADVANCED PRICING FIELDS (CRITICAL - FORCE INJECTION)
+                            pricing_model: catData.logic_type === 'ADVANCED' ? 'ADVANCED' : catData.logic_type,
+                            base_price: prodData.base_price || prodData.price || 0,
+                            // Deep clone to prevent reference issues
+                            advanced_features: prodData.advanced_features ? JSON.parse(JSON.stringify(prodData.advanced_features)) : null,
+
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                        };
+
+                        // Save raw object directly to IndexedDB (bypasses model class filtering)
+                        await db.products.put(rawProductData);
+
+                        // Debug log for ADVANCED products
+                        if (rawProductData.pricing_model === 'ADVANCED') {
+                            console.log(`   📦 ADVANCED Product: ${rawProductData.name}`, {
+                                pricing_model: rawProductData.pricing_model,
+                                base_price: rawProductData.base_price,
+                                has_advanced_features: !!rawProductData.advanced_features,
+                                wholesale_rules: rawProductData.advanced_features?.wholesale_rules?.length || 0,
+                                finishing_groups: rawProductData.advanced_features?.finishing_groups?.length || 0
+                            });
+                        }
                     }
                     console.log(`   └── ${catData.products.length} products`);
                 }
@@ -141,7 +166,7 @@ export async function forceResetMasterData() {
  * Check and auto-cleanup duplicates
  * Returns true if cleanup was performed
  */
-export async function checkAndCleanupDuplicates(expectedCategoryCount = 7) {
+export async function checkAndCleanupDuplicates(expectedCategoryCount = 13) {
     const count = await db.categories.count();
 
     if (count > expectedCategoryCount) {

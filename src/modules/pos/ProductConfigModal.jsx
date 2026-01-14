@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatRupiah } from '../../core/formatters';
+import AdvancedProductForm from '../../components/forms/AdvancedProductForm';
 
 export function ProductConfigModal({
     isOpen,
@@ -380,6 +381,67 @@ export function ProductConfigModal({
         }
     };
 
+    // ========== ADVANCED PRICING MODEL INTEGRATION ==========
+    // If product has ADVANCED pricing, use the specialized form
+    if (product.pricing_model === 'ADVANCED') {
+        const advancedModalContent = (
+            <div style={styles.overlay} onClick={onClose}>
+                <div style={{ ...styles.modal, maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+                    <AdvancedProductForm
+                        product={product}
+                        onSubmit={(formPayload) => {
+                            // CRITICAL: Calculate fallback unit price if undefined
+                            const safeQty = formPayload.qty || 1;
+                            const safeTotalPrice = formPayload.total_price || 0;
+
+                            // Use provided unit price OR calculate from total/qty
+                            const finalUnitPrice = formPayload.unit_price_final !== undefined
+                                ? formPayload.unit_price_final
+                                : Math.floor(safeTotalPrice / safeQty);
+
+                            console.log('🔍 ADVANCED Payload Debug:', {
+                                from_form: formPayload.unit_price_final,
+                                calculated: finalUnitPrice,
+                                total: safeTotalPrice,
+                                qty: safeQty
+                            });
+
+                            // CRITICAL: Merge product metadata with transaction data
+                            // useTransaction.js requires full product object with id, name, etc.
+                            const fullCartItem = {
+                                // Include full product object for validation
+                                product: product,
+
+                                // Transaction data from AdvancedProductForm
+                                qty: safeQty,
+                                total_price: safeTotalPrice,
+                                unit_price_final: finalUnitPrice,  // GUARANTEED not undefined
+
+                                // Production notes and financial breakdown
+                                notes: formPayload.notes || '',
+                                revenue_print: formPayload.revenue_print || 0,
+                                revenue_finish: formPayload.revenue_finish || 0,
+                                detail_options: formPayload.detail_options || null,
+
+                                // Empty arrays for compatibility with legacy structure
+                                dimensions: {},
+                                finishings: []
+                            };
+
+                            console.log('🎯 ADVANCED Cart Item:', fullCartItem);
+
+                            // Send merged payload to cart
+                            onAddToCart(fullCartItem);
+                            onClose();
+                        }}
+                    />
+                </div>
+            </div>
+        );
+        return createPortal(advancedModalContent, document.body);
+    }
+
+    // ========== LEGACY PRICING MODELS ==========
     const modalContent = (
         <div style={styles.overlay} onClick={onClose}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>

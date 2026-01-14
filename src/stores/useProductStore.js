@@ -13,7 +13,7 @@ import { Finishing } from '../data/models/Finishing';
 import { seedMasterData, checkAndCleanupDuplicates } from '../data/db/seedMasterData';
 
 // Expected category count (for duplicate detection)
-const EXPECTED_CATEGORY_COUNT = 7;
+const EXPECTED_CATEGORY_COUNT = 13; // Updated for ADVANCED pricing categories
 
 export const useProductStore = create((set, get) => ({
     // State
@@ -82,6 +82,10 @@ export const useProductStore = create((set, get) => ({
                         name: p.name,
                         price: p.price,
                         prices: p.prices, // For MATRIX type
+                        // CRITICAL: Include ADVANCED pricing fields
+                        pricing_model: p.pricing_model,
+                        base_price: p.base_price,
+                        advanced_features: p.advanced_features,
                     })),
                 finishings: finishingsRaw
                     .filter(f => f.categoryId === cat.id)

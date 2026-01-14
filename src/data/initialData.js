@@ -133,6 +133,370 @@ export const MASTER_DATA = {
                 { id: "cust_3", name: "Ongkos Kirim", price: 0 }
             ],
             finishings: []
+        },
+
+        // --- NEW CATEGORIES: ADVANCED PRICING MODEL ---
+
+        // 8. DIGITAL A3+ ADVANCED (Logic: ADVANCED)
+        {
+            id: "DIGITAL_A3",
+            name: "Digital A3+ Advanced (Sticker & Label)",
+            logic_type: "ADVANCED",
+            products: [
+                {
+                    id: "STIKER_A3_VINYL",
+                    name: "Stiker Vinyl White A3+ (Print & Cut)",
+                    base_price: 15000,
+                    advanced_features: {
+                        min_order: 5,
+                        wholesale_rules: [
+                            { min: 5, max: 49, price: 15000 },
+                            { min: 50, max: 9999, price: 12000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Tipe Potong (Cutting)",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Tanpa Potong", price: 0 },
+                                    { label: "Kiss Cut (+Jasa)", price: 3000, min_qty: 5 },
+                                    { label: "Die Cut (+Jasa Mahal)", price: 5000, min_qty: 10 }
+                                ]
+                            },
+                            {
+                                title: "Laminasi (Pelapis)",
+                                type: "radio",
+                                required: false,
+                                options: [
+                                    { label: "Tanpa Laminasi", price: 0 },
+                                    { label: "Glossy (Kilap)", price: 3000 },
+                                    { label: "Doff (Matte)", price: 3000 }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    id: "STIKER_A3_CHROMO",
+                    name: "Stiker Chromo A3+ (Label Makanan)",
+                    base_price: 10000,
+                    advanced_features: {
+                        min_order: 5,
+                        wholesale_rules: [
+                            { min: 5, max: 99, price: 10000 },
+                            { min: 100, max: 9999, price: 7500 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Tipe Potong",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Tanpa Potong", price: 0 },
+                                    { label: "Kiss Cut", price: 2000, min_qty: 5 },
+                                    { label: "Die Cut", price: 4000, min_qty: 10 }
+                                ]
+                            },
+                            {
+                                title: "Laminasi",
+                                type: "radio",
+                                required: false,
+                                options: [
+                                    { label: "Tanpa Laminasi", price: 0 },
+                                    { label: "Glossy/Doff", price: 2500 }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            finishings: []
+        },
+
+        // 9. PRINT DOKUMEN & PROMOSI (Logic: ADVANCED)
+        {
+            id: "DOC_PROMO",
+            name: "Print Dokumen & Promosi",
+            logic_type: "ADVANCED",
+            products: [
+                {
+                    id: "ART_CARTON_260",
+                    name: "Art Carton 260gr A3+ (Kartu Nama/Cover)",
+                    base_price: 7500,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: [
+                            { min: 1, max: 50, price: 7500 },
+                            { min: 51, max: 9999, price: 5000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Finishing",
+                                type: "radio",
+                                required: false,
+                                options: [
+                                    { label: "Tanpa Finishing", price: 0 },
+                                    { label: "Potong Kotak", price: 2000 },
+                                    { label: "Lipat/Creasing", price: 1000 }
+                                ]
+                            },
+                            {
+                                title: "Laminasi",
+                                type: "radio",
+                                required: false,
+                                options: [
+                                    { label: "Glossy/Doff 1 Sisi", price: 3000 },
+                                    { label: "Glossy/Doff 2 Sisi", price: 5000 }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            finishings: []
+        },
+
+        // 10. APPAREL & TEXTILE (Logic: ADVANCED)
+        {
+            id: "APPAREL",
+            name: "Apparel & Textile (Jersey & Kaos)",
+            logic_type: "ADVANCED",
+            products: [
+                {
+                    id: "JERSEY_FUTSAL_SET",
+                    name: "Jersey Futsal Full Printing (Setelan)",
+                    base_price: 150000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: [
+                            { min: 1, max: 5, price: 150000 },
+                            { min: 6, max: 11, price: 120000 },
+                            { min: 12, max: 9999, price: 100000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Jenis Bahan",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Drifit Milano (Zigzag/Premium)", price: 0 },
+                                    { label: "Drifit Benzema (Pori/Standard)", price: 0 }
+                                ]
+                            },
+                            {
+                                title: "Data Pemain",
+                                type: "text_input",
+                                label: "List Nama Punggung & Nomor",
+                                placeholder: "Contoh: ANDI (10), BUDI (7)...",
+                                price_add: 15000,
+                                required: false,
+                                note: "Biaya sablon nama Rp 15.000 per setel"
+                            }
+                        ]
+                    }
+                },
+                {
+                    id: "KAOS_CUSTOM_DTF",
+                    name: "Kaos Cotton Combed 30s + Sablon DTF",
+                    base_price: 85000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: [
+                            { min: 1, max: 11, price: 85000 },
+                            { min: 12, max: 9999, price: 75000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Ukuran Sablon",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Logo Kecil (10cm)", price: -10000 },
+                                    { label: "A4 (Standard)", price: 0 },
+                                    { label: "A3 (Block Besar)", price: 15000 }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            finishings: []
+        },
+
+        // 11. DISPLAY SYSTEM (Logic: ADVANCED)
+        {
+            id: "DISPLAY_SYSTEM",
+            name: "Display System (Banner Terpisah)",
+            logic_type: "ADVANCED",
+            products: [
+                {
+                    id: "X_BANNER_STD",
+                    name: "X-Banner 60x160 (Rangka Fiber + Flexi)",
+                    base_price: 75000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: null,
+                        finishing_groups: []
+                    }
+                },
+                {
+                    id: "Y_BANNER_PRO",
+                    name: "Y-Banner 60x160 (Rangka Besi + Albatros)",
+                    base_price: 125000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: null,
+                        finishing_groups: []
+                    }
+                },
+                {
+                    id: "ROLL_UP_BANNER",
+                    name: "Roll Up Banner 60x160 (Alumunium + Luster)",
+                    base_price: 250000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: null,
+                        finishing_groups: []
+                    }
+                }
+            ],
+            finishings: []
+        },
+
+        // 12. OFFICE & CALENDAR ADVANCED (Logic: ADVANCED)
+        {
+            id: "OFFICE_ADV",
+            name: "Office & Calendar Advanced",
+            logic_type: "ADVANCED",
+            products: [
+                {
+                    id: "NOTA_NCR_2PLY",
+                    name: "Nota NCR 2 Rangkap (Min. 10 Buku)",
+                    base_price: 25000,
+                    advanced_features: {
+                        min_order: 10,
+                        wholesale_rules: [
+                            { min: 10, max: 20, price: 25000 },
+                            { min: 21, max: 40, price: 22000 },
+                            { min: 41, max: 9999, price: 20000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Opsi Tambahan",
+                                type: "checkbox",
+                                options: [
+                                    { label: "Nominator (Nomor Urut)", price: 2000 },
+                                    { label: "Porporasi (Garis Sobek)", price: 1000 }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    id: "KALENDER_DINDING_STD",
+                    name: "Kalender Dinding 32x48 cm (A3+)",
+                    base_price: 15000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: [
+                            { min: 1, max: 49, price: 15000 },
+                            { min: 50, max: 9999, price: 5000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Jilid",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Klem Seng (Kaleng)", price: 2000 },
+                                    { label: "Spiral Hanger", price: 5000 }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    id: "KALENDER_DINDING_JUMBO",
+                    name: "Kalender Dinding 44x64 cm (Jumbo)",
+                    base_price: 25000,
+                    advanced_features: {
+                        min_order: 50,
+                        wholesale_rules: [
+                            { min: 50, max: 9999, price: 15000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Jilid",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Klem Seng", price: 3000 },
+                                    { label: "Spiral Hanger", price: 7000 }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            finishings: []
+        },
+
+        // 13. MERCHANDISE ADVANCED (Logic: ADVANCED)
+        {
+            id: "MERCHANDISE",
+            name: "Merchandise Advanced",
+            logic_type: "ADVANCED",
+            products: [
+                {
+                    id: "LANYARD_2SISI",
+                    name: "Tali Lanyard Tissue (Print 2 Sisi)",
+                    base_price: 25000,
+                    advanced_features: {
+                        min_order: 1,
+                        wholesale_rules: [
+                            { min: 1, max: 9, price: 25000 },
+                            { min: 10, max: 49, price: 15000 },
+                            { min: 50, max: 9999, price: 12000 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Aksesoris",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Kait Standar", price: 0 },
+                                    { label: "Kait + Stopper", price: 3000 }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    id: "PIN_PENITI_58",
+                    name: "Pin Peniti 58mm",
+                    base_price: 5000,
+                    advanced_features: {
+                        min_order: 10,
+                        wholesale_rules: [
+                            { min: 10, max: 50, price: 5000 },
+                            { min: 51, max: 9999, price: 3500 }
+                        ],
+                        finishing_groups: [
+                            {
+                                title: "Laminasi",
+                                type: "radio",
+                                required: true,
+                                options: [
+                                    { label: "Glossy (Kilap)", price: 0 },
+                                    { label: "Doff (Matte)", price: 0 }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            finishings: []
         }
     ]
 };

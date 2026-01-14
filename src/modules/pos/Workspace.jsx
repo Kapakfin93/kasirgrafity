@@ -371,6 +371,7 @@ export function Workspace() {
                 onReset={handleNewTransaction}
                 isTempo={isTempo}
                 setIsTempo={setIsTempo}
+                customerSnapshot={customerSnapshot}
             />
 
             {/* Product Config Modal */}

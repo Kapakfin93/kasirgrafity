@@ -286,6 +286,34 @@ export function useTransaction() {
                     unitPrice = inputManualPrice;
                     break;
 
+                case 'ADVANCED':
+                    // ADVANCED pricing model - Trust pre-calculated payload from AdvancedProductForm
+                    // The form already calculated wholesale tiers + finishing costs
+
+                    // Extract values from rawInput (these come from AdvancedProductForm's onSubmit)
+                    const advancedTotal = rawInput.total_price || dimensions.total_price;
+                    const advancedUnitPrice = rawInput.unit_price_final || dimensions.unit_price_final;
+
+                    // Validate we have the required data
+                    if (!advancedTotal || advancedTotal <= 0) {
+                        throw new Error('CART ITEM REJECTED: Total price dari ADVANCED form tidak valid');
+                    }
+
+                    if (!advancedUnitPrice || advancedUnitPrice <= 0) {
+                        throw new Error('CART ITEM REJECTED: Unit price dari ADVANCED form tidak valid');
+                    }
+
+                    // Trust the pre-calculated values
+                    calculatedPrice = advancedTotal;
+                    unitPrice = advancedUnitPrice;
+
+                    console.log('✅ ADVANCED pricing: Using pre-calculated values', {
+                        total: calculatedPrice,
+                        unitPrice,
+                        qty: safeQty
+                    });
+                    break;
+
                 default:
                     throw new Error(`CART ITEM REJECTED: Pricing type tidak dikenali (${pricingType})`);
             }
@@ -349,6 +377,24 @@ export function useTransaction() {
             unitPrice: unitPrice,
             totalPrice: calculatedPrice
         };
+
+        // ===== ADVANCED PRICING: Store additional metadata =====
+        if (pricingType === 'ADVANCED') {
+            // Store production notes (from AdvancedProductForm)
+            cartItem.notes = rawInput.notes || dimensions.notes || '';
+
+            // Store financial breakdown for owner dashboard
+            cartItem.meta = {
+                revenue_print: rawInput.revenue_print || dimensions.revenue_print || 0,
+                revenue_finish: rawInput.revenue_finish || dimensions.revenue_finish || 0,
+                detail_options: rawInput.detail_options || dimensions.detail_options || null
+            };
+
+            console.log('📊 ADVANCED metadata stored:', {
+                notes: cartItem.notes,
+                revenue_breakdown: cartItem.meta
+            });
+        }
 
         console.log("✅ Cart item built successfully:", cartItem);
         return cartItem;
@@ -453,7 +499,14 @@ export function useTransaction() {
                         qty: preConfiguredItem.qty || 1,
                         dimensions: preConfiguredItem.dimensions || {},
                         finishings: preConfiguredItem.finishings || [],
-                        manualPrice: preConfiguredItem.manualPrice
+                        manualPrice: preConfiguredItem.manualPrice,
+                        // ADVANCED model properties (from AdvancedProductForm)
+                        total_price: preConfiguredItem.total_price,
+                        unit_price_final: preConfiguredItem.unit_price_final,
+                        revenue_print: preConfiguredItem.revenue_print,
+                        revenue_finish: preConfiguredItem.revenue_finish,
+                        notes: preConfiguredItem.notes,
+                        detail_options: preConfiguredItem.detail_options
                     };
                 } else {
                     // OLD: productId/productName structure from un-refactored configurators
