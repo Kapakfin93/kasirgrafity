@@ -253,71 +253,122 @@ export function OrderCard({ order }) {
     // Check if order can be cancelled
     const canCancel = order.productionStatus !== 'CANCELLED' && order.productionStatus !== 'DELIVERED';
 
+    // Payment Status Check for Badge
+    const isLunas = order.paymentStatus === 'PAID';
+    const hasPayment = order.paymentStatus === 'DP' || order.paymentStatus === 'PAID';
+
     return (
-        <div className={`order-card status-${order.productionStatus.toLowerCase()}`}>
-            {/* === HEADER === */}
-            <div className="order-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="order-id">
-                    <span className="order-number" style={{ fontWeight: 'bold', fontSize: '14px' }}>
-                        {/* Source Indicator: 🏪 Offline / 🌐 Online */}
+        <div style={{
+            background: '#1f2937', // bg-gray-800
+            borderRadius: '12px',
+            padding: '16px',
+            marginBottom: '16px',
+            border: '1px solid #374151',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+        }}>
+            {/* === HEADER: STATUS & IDENTITY === */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+                paddingBottom: '12px',
+                borderBottom: '2px solid #374151'
+            }}>
+                {/* LEFT: Order ID + Customer */}
+                <div>
+                    <div style={{
+                        fontSize: '18px',
+                        fontWeight: '900',
+                        color: 'white',
+                        marginBottom: '4px'
+                    }}>
+                        {/* Source Indicator */}
                         <span title={order.source === 'ONLINE' ? 'Order Online' : 'Order Kasir'}>
                             {order.source === 'ONLINE' ? '🌐' : '🏪'}
                         </span>
                         {' '}{order.orderNumber || `#${String(order.id).slice(0, 8)}`}
-                    </span>
+                    </div>
+                    <div style={{
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: '#9ca3af'
+                    }}>
+                        👤 {order.customerName}
+                        {order.customerPhone && (
+                            <span style={{ marginLeft: '10px', fontSize: '12px' }}>
+                                📞 {order.customerPhone}
+                            </span>
+                        )}
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+
+                {/* RIGHT: Payment Badge + Status */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {/* Mini Print Button */}
                     <button
                         onClick={handleReprint}
                         style={{
                             background: 'none',
-                            border: '1px solid #cbd5e1',
-                            borderRadius: '4px',
-                            padding: '4px 8px',
+                            border: '1px solid #4b5563',
+                            borderRadius: '6px',
+                            padding: '6px 10px',
                             cursor: 'pointer',
-                            fontSize: '14px'
+                            fontSize: '14px',
+                            color: '#9ca3af',
+                            transition: 'all 0.2s'
                         }}
                         title="Cetak Ulang Nota"
+                        onMouseEnter={(e) => e.currentTarget.style.color = 'white'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
                     >
                         🖨️
                     </button>
-                    {/* Status Badges */}
-                    <span
-                        style={{
-                            backgroundColor: order.productionStatus === 'CANCELLED' ? '#ef4444' : (statusConfig?.color || '#94a3b8'),
-                            color: 'white',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 'bold'
-                        }}
-                    >
-                        {order.productionStatus === 'CANCELLED' ? '🚫 DIBATALKAN' : (statusConfig?.label || order.productionStatus)}
+
+                    {/* Payment Badge - HIGH CONTRAST */}
+                    <span style={{
+                        backgroundColor: isLunas ? '#16a34a' : '#dc2626',
+                        color: 'white',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: '900',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        boxShadow: isLunas
+                            ? '0 0 10px rgba(22, 163, 74, 0.4)'
+                            : '0 0 10px rgba(220, 38, 38, 0.4)'
+                    }}>
+                        {isLunas ? '✅ LUNAS' : order.paymentStatus === 'DP' ? '⏳ DP' : '🔴 BELUM BAYAR'}
                     </span>
-                    <span
-                        style={{
-                            backgroundColor: paymentConfig?.color || '#94a3b8',
-                            color: 'white',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 'bold'
-                        }}
-                    >
-                        {paymentConfig?.label || order.paymentStatus}
+
+                    {/* Production Status Badge */}
+                    <span style={{
+                        backgroundColor: order.productionStatus === 'CANCELLED'
+                            ? '#ef4444'
+                            : (statusConfig?.color || '#94a3b8'),
+                        color: 'white',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: '900',
+                        textTransform: 'uppercase'
+                    }}>
+                        {order.productionStatus === 'CANCELLED'
+                            ? '🚫 DIBATALKAN'
+                            : (statusConfig?.label || order.productionStatus)}
                     </span>
                 </div>
             </div>
 
-            {/* === CANCELLED REASON DISPLAY === */}
+            {/* === CANCELLED REASON === */}
             {order.productionStatus === 'CANCELLED' && order.cancelReason && (
                 <div style={{
-                    marginTop: '8px',
+                    marginBottom: '12px',
                     background: '#fef2f2',
                     color: '#b91c1c',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
                     fontSize: '12px',
                     border: '1px solid #fecaca'
                 }}>
@@ -330,124 +381,180 @@ export function OrderCard({ order }) {
                 </div>
             )}
 
-            {/* === CUSTOMER === */}
-            <div className="order-customer" style={{ margin: '8px 0', fontSize: '14px' }}>
-                <strong>👤 {order.customerName}</strong>
-                {order.customerPhone && <span style={{ marginLeft: '10px', color: '#64748b' }}>📞 {order.customerPhone}</span>}
-            </div>
-
-            {/* === ITEMS SUMMARY === */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>{order.items?.length || 0} item(s)</span>
-                <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#3b82f6',
-                        cursor: 'pointer',
-                        fontSize: '12px'
-                    }}
-                >
-                    {isExpanded ? '▲ Tutup' : '▼ Detail'}
-                </button>
-            </div>
-
-            {/* === EXPANDED ITEMS === */}
-            {isExpanded && (
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '8px' }}>
-                    {(order.items || []).map((item, idx) => (
-                        <div key={idx} style={{
-                            padding: '6px 0',
-                            borderBottom: idx < order.items.length - 1 ? '1px dashed #e2e8f0' : 'none',
-                            fontSize: '13px'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ fontWeight: '600' }}>{item.productName}</span>
-                                <span>x{item.qty}</span>
-                            </div>
-                            {item.description && (
-                                <div style={{ color: '#64748b', fontSize: '11px' }}>{item.description}</div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* === PAYMENT INFO === */}
+            {/* === BODY: PRODUCTION SPECS (ALWAYS VISIBLE) === */}
             <div style={{
-                background: order.paymentStatus === 'PAID' ? '#f0fdf4' : '#fef2f2',
-                padding: '8px',
-                borderRadius: '6px',
-                marginBottom: '10px'
+                background: '#111827', // Darker background for content
+                padding: '14px',
+                borderRadius: '8px',
+                marginBottom: '12px'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                    <span>Total</span>
-                    <span>{formatRupiah(order.totalAmount)}</span>
-                </div>
-                {order.paymentStatus === 'DP' && (
-                    <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
-                            <span>Dibayar</span>
-                            <span>{formatRupiah(order.paidAmount)}</span>
+                {(order.items || []).map((item, idx) => (
+                    <div key={idx} style={{
+                        paddingBottom: '12px',
+                        marginBottom: '12px',
+                        borderBottom: idx < order.items.length - 1 ? '1px dashed #374151' : 'none'
+                    }}>
+                        {/* Product Name - Large, Bold, White */}
+                        <div style={{
+                            fontSize: '16px',
+                            fontWeight: '700',
+                            color: 'white',
+                            marginBottom: '6px'
+                        }}>
+                            x{item.qty} {item.productName}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ef4444', fontWeight: 'bold' }}>
-                            <span>Sisa</span>
-                            <span>{formatRupiah(order.remainingAmount)}</span>
-                        </div>
-                    </>
-                )}
+
+                        {/* Description (if exists) */}
+                        {item.description && (
+                            <div style={{
+                                fontSize: '12px',
+                                color: '#9ca3af',
+                                marginBottom: '4px'
+                            }}>
+                                ({item.description})
+                            </div>
+                        )}
+
+                        {/* ADVANCED NOTES - HIGH CONTRAST YELLOW/AMBER */}
+                        {item.notes && (
+                            <div style={{
+                                fontSize: '13px',
+                                fontWeight: '700',
+                                color: '#fbbf24', // text-yellow-400
+                                marginTop: '6px',
+                                padding: '6px 8px',
+                                background: 'rgba(251, 191, 36, 0.1)',
+                                borderLeft: '3px solid #fbbf24',
+                                borderRadius: '4px'
+                            }}>
+                                📋 {item.notes}
+                            </div>
+                        )}
+
+                        {/* ADVANCED CUSTOM INPUTS - Bordered Monospace Box */}
+                        {item.meta?.detail_options?.custom_inputs && (
+                            <div style={{
+                                marginTop: '10px',
+                                padding: '10px',
+                                background: '#0f172a',
+                                border: '1px solid #4b5563',
+                                borderRadius: '6px',
+                                maxHeight: '150px',
+                                overflowY: 'auto',
+                                fontFamily: 'monospace',
+                                fontSize: '11px',
+                                lineHeight: '1.6'
+                            }}>
+                                <div style={{
+                                    color: '#fbbf24',
+                                    fontWeight: '700',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    fontSize: '10px',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    🔧 DETAIL PRODUKSI:
+                                </div>
+                                {Object.entries(item.meta.detail_options.custom_inputs).map(([key, value]) => (
+                                    <div key={key} style={{
+                                        color: '#e5e7eb',
+                                        marginBottom: '3px'
+                                    }}>
+                                        <span style={{ color: '#60a5fa', fontWeight: '600' }}>{key}:</span> {value}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
 
-            {/* === TIMELINE (Compact) === */}
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>
+            {/* === PAYMENT INFO (Compact) === */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: order.paymentStatus === 'PAID' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                borderRadius: '6px',
+                marginBottom: '12px',
+                border: `1px solid ${order.paymentStatus === 'PAID' ? '#16a34a' : '#dc2626'}`
+            }}>
+                <span style={{
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    color: '#9ca3af'
+                }}>
+                    Total
+                </span>
+                <span style={{
+                    fontSize: '15px',
+                    fontWeight: '900',
+                    color: 'white'
+                }}>
+                    {formatRupiah(order.totalAmount)}
+                </span>
+            </div>
+
+            {/* === TIMELINE === */}
+            <div style={{
+                fontSize: '11px',
+                color: '#6b7280',
+                marginBottom: '12px'
+            }}>
                 📅 {formatDateTime(order.createdAt)}
             </div>
 
             {/* === ACTION BUTTONS === */}
             {order.productionStatus !== 'CANCELLED' && (
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {/* LEFT: Settlement Button (if not PAID) */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    {/* LEFT: Settlement Button */}
                     {order.paymentStatus !== 'PAID' && (
                         <button
                             onClick={handleSettlement}
                             disabled={updating}
                             style={{
                                 flex: 1,
-                                padding: '10px',
+                                padding: '12px',
                                 backgroundColor: '#8b5cf6',
                                 color: 'white',
                                 border: 'none',
-                                borderRadius: '6px',
-                                fontWeight: 'bold',
+                                borderRadius: '8px',
+                                fontWeight: '800',
                                 cursor: updating ? 'not-allowed' : 'pointer',
                                 fontSize: '13px',
                                 opacity: updating ? 0.7 : 1,
-                                minWidth: '100px'
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                transition: 'all 0.2s'
                             }}
+                            onMouseEnter={(e) => !updating && (e.currentTarget.style.backgroundColor = '#7c3aed')}
+                            onMouseLeave={(e) => !updating && (e.currentTarget.style.backgroundColor = '#8b5cf6')}
                         >
                             {updating ? '⏳...' : '💸 LUNASI'}
                         </button>
                     )}
 
-                    {/* CENTER: Main Action Button (SMART SAKLAR) */}
+                    {/* CENTER: Main Action Button */}
                     {mainAction && canUpdateOrderStatus && (
                         <button
                             onClick={handleMainAction}
                             disabled={updating || mainAction.disabled}
                             title={mainAction.disabled ? 'Belum bisa diproses - Bayar dulu atau set Tempo' : ''}
                             style={{
-                                flex: 1,
-                                padding: '10px',
+                                flex: 2,
+                                padding: '14px',
                                 backgroundColor: mainAction.color,
                                 color: 'white',
                                 border: 'none',
-                                borderRadius: '6px',
-                                fontWeight: 'bold',
+                                borderRadius: '8px',
+                                fontWeight: '900',
                                 cursor: (updating || mainAction.disabled) ? 'not-allowed' : 'pointer',
-                                fontSize: '13px',
-                                opacity: (updating || mainAction.disabled) ? 0.6 : 1,
-                                minWidth: '100px'
+                                fontSize: '14px',
+                                opacity: (updating || mainAction.disabled) ? 0.5 : 1,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                boxShadow: !mainAction.disabled ? '0 4px 12px rgba(0,0,0,0.3)' : 'none',
+                                transition: 'all 0.2s'
                             }}
                         >
                             {updating ? '⏳...' : mainAction.label}
@@ -455,32 +562,35 @@ export function OrderCard({ order }) {
                         </button>
                     )}
 
-                    {/* TOMBOL EDIT DIHAPUS - Karyawan produksi tidak boleh edit order */}
-
                     {/* RIGHT: Cancel Button */}
                     {canCancel && canUpdateOrderStatus && (
                         <button
                             onClick={handleCancelOrder}
                             disabled={updating}
                             style={{
-                                padding: '10px 12px',
+                                padding: '12px 14px',
                                 backgroundColor: 'transparent',
                                 color: '#ef4444',
-                                border: '2px solid #fecaca',
-                                borderRadius: '6px',
-                                fontWeight: 'bold',
+                                border: '2px solid #ef4444',
+                                borderRadius: '8px',
+                                fontWeight: '800',
                                 cursor: updating ? 'not-allowed' : 'pointer',
                                 fontSize: '12px',
                                 opacity: updating ? 0.7 : 1,
-                                transition: 'all 0.2s ease'
+                                transition: 'all 0.2s',
+                                textTransform: 'uppercase'
                             }}
                             onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = '#fef2f2';
-                                e.target.style.borderColor = '#ef4444';
+                                if (!updating) {
+                                    e.currentTarget.style.backgroundColor = '#dc2626';
+                                    e.currentTarget.style.color = 'white';
+                                }
                             }}
                             onMouseLeave={(e) => {
-                                e.target.style.backgroundColor = 'transparent';
-                                e.target.style.borderColor = '#fecaca';
+                                if (!updating) {
+                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                    e.currentTarget.style.color = '#ef4444';
+                                }
                             }}
                             title="Batalkan Order"
                         >
