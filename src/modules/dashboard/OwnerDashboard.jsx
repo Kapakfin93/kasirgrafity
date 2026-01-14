@@ -65,11 +65,32 @@ export function OwnerDashboard() {
     // Calculate expenses for the period
     const totalExpenses = getTotalExpenses(dateRange.start, dateRange.end);
 
+    // ADVANCED REVENUE SPLIT CALCULATION
+    const revenueBreakdown = filteredOrders.reduce((acc, order) => {
+        if (!order.items || !Array.isArray(order.items)) return acc;
+
+        order.items.forEach(item => {
+            // Check if item has ADVANCED metadata
+            if (item.meta?.revenue_print !== undefined || item.meta?.revenue_finish !== undefined) {
+                // ADVANCED product - use split revenue
+                acc.revenuePrint += item.meta.revenue_print || 0;
+                acc.revenueFinish += item.meta.revenue_finish || 0;
+            } else {
+                // Legacy product - assume 100% is print revenue
+                acc.revenuePrint += item.totalPrice || 0;
+            }
+        });
+
+        return acc;
+    }, { revenuePrint: 0, revenueFinish: 0 });
+
     const stats = {
         totalSales: filteredOrders.reduce((sum, order) => {
             const orderTotal = order.items?.reduce((itemSum, item) => itemSum + (item.totalPrice || 0), 0) || 0;
             return sum + orderTotal;
         }, 0),
+        totalRevenuePrint: revenueBreakdown.revenuePrint,
+        totalRevenueFinish: revenueBreakdown.revenueFinish,
         totalOrders: filteredOrders.length,
         unpaidCount: unpaidOrders.length,
         dpCount: dpOrders.length,
@@ -151,7 +172,7 @@ export function OwnerDashboard() {
                 </div>
             </div>
 
-            {/* PANORAMIC 5-CARD GRID (Laba Bersih now in Header) */}
+            {/* === TIER 1: FINANCIAL MACRO (3 CARDS) === */}
             <div className="stats-grid-5">
                 <StatsCard
                     icon="💰"
@@ -178,7 +199,112 @@ export function OwnerDashboard() {
                     isClickable={true}
                     onClick={handleExpenseClick}
                 />
+            </div>
 
+            {/* === TIER 2: REVENUE BREAKDOWN (2 WIDE CARDS - NEON ACCENTS) === */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '16px',
+                marginTop: '16px'
+            }}>
+                {/* Print Revenue Card - Cyan Neon */}
+                <div style={{
+                    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    border: '1px solid rgba(6, 182, 212, 0.3)',
+                    borderLeft: '4px solid #06b6d4',
+                    boxShadow: '0 0 20px rgba(6, 182, 212, 0.15)',
+                    transition: 'all 0.3s ease'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '32px' }}>🖨️</span>
+                        <div>
+                            <div style={{
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                color: '#64748b',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+                            }}>
+                                Omset Bahan (Print)
+                            </div>
+                            <div style={{
+                                fontSize: '24px',
+                                fontWeight: '900',
+                                color: '#06b6d4',
+                                marginTop: '4px'
+                            }}>
+                                {formatRupiah(stats.totalRevenuePrint)}
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{
+                        fontSize: '11px',
+                        color: '#94a3b8',
+                        paddingTop: '8px',
+                        borderTop: '1px solid rgba(100, 116, 139, 0.2)'
+                    }}>
+                        {stats.totalSales > 0
+                            ? `${Math.round((stats.totalRevenuePrint / stats.totalSales) * 100)}% dari total omset`
+                            : 'Belum ada data'}
+                    </div>
+                </div>
+
+                {/* Finishing Revenue Card - Purple Neon */}
+                <div style={{
+                    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderLeft: '4px solid #8b5cf6',
+                    boxShadow: '0 0 20px rgba(139, 92, 246, 0.15)',
+                    transition: 'all 0.3s ease'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '32px' }}>✨</span>
+                        <div>
+                            <div style={{
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                color: '#64748b',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+
+                            }}>
+                                Omset Jasa (Finishing)
+                            </div>
+                            <div style={{
+                                fontSize: '24px',
+                                fontWeight: '900',
+                                color: '#8b5cf6',
+                                marginTop: '4px'
+                            }}>
+                                {formatRupiah(stats.totalRevenueFinish)}
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{
+                        fontSize: '11px',
+                        color: '#94a3b8',
+                        paddingTop: '8px',
+                        borderTop: '1px solid rgba(100, 116, 139, 0.2)'
+                    }}>
+                        {stats.totalSales > 0
+                            ? `${Math.round((stats.totalRevenueFinish / stats.totalSales) * 100)}% dari total omset`
+                            : 'Belum ada data'}
+                    </div>
+                </div>
+            </div>
+
+            {/* === TIER 3: OPERATIONAL STATS (2 CARDS) === */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '16px',
+                marginTop: '16px'
+            }}>
                 <StatsCard
                     icon="⏳"
                     title="Pesanan Pending"
