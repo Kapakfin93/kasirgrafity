@@ -7963,3 +7963,212 @@ body {
 .wa-btn-wa:disabled {
     background: #94a3b8;
 }
+
+/* =========================================
+   THERMAL PRINTER STYLES (Nota Struk)
+   ========================================= */
+
+/* 1. Definisi Tampilan Struk (Agar tidak bergantung pada inheritance body) */
+.thermal-receipt {
+    font-family: 'Courier New', Courier, monospace;
+    /* Font mesin kasir */
+    width: 100%;
+    max-width: 80mm;
+    /* Standar kertas 80mm */
+    padding: 2mm;
+    /* TAMBAHAN BARU: Memberi jarak aman 1-2cm di bawah agar tidak kepotong */
+    padding-bottom: 20mm !important;
+    background-color: white !important;
+    color: black !important;
+    line-height: 1.2;
+}
+
+.th-header {
+    text-align: center;
+    font-weight: 800;
+    /* Extra Bold */
+    font-size: 16px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    color: black !important;
+}
+
+.th-subheader {
+    text-align: center;
+    font-size: 11px;
+    margin-bottom: 10px;
+    color: black !important;
+    border-bottom: 1px dashed black;
+    /* Garis pemisah header */
+    padding-bottom: 5px;
+}
+
+.th-line {
+    text-align: center;
+    font-size: 10px;
+    color: black !important;
+    margin: 5px 0;
+}
+
+.th-info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: black !important;
+    margin-bottom: 2px;
+}
+
+.th-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: black !important;
+    margin-bottom: 3px;
+}
+
+.th-footer {
+    text-align: center;
+    font-size: 10px;
+    color: black !important;
+    margin-top: 5px;
+}
+
+.nota-item {
+    margin-bottom: 10px;
+    color: black !important;
+}
+
+.nota-item-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: black !important;
+    margin-top: 5px;
+}
+
+.nota-item-spec {
+    font-size: 10px;
+    color: black !important;
+    /* Paksa hitam, jangan #333 agar tajam di thermal */
+    font-style: italic;
+    margin-left: 0;
+    /* Reset margin */
+}
+
+.nota-item-price {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: black !important;
+    margin-top: 3px;
+}
+
+.nota-total {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: bold;
+    color: black !important;
+    margin-bottom: 5px;
+}
+
+.nota-remaining {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: bold;
+    color: black !important;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed black;
+}
+
+/* Receipt Divider (Pengganti Garis Manual) */
+.receipt-divider {
+    border-bottom: 1px dashed black !important;
+    /* Garis putus-putus rapi */
+    margin: 10px 0;
+    /* Jarak atas bawah */
+    width: 100%;
+    height: 1px;
+    display: block;
+}
+
+/* =========================================
+   PRINT MODE OVERRIDE (Jantung Perbaikan)
+   ========================================= */
+@media print {
+
+    /* A. Reset Halaman Global */
+    @page {
+        margin: 0;
+        /* Hilangkan margin default browser */
+        size: auto;
+    }
+
+    /* B. Sembunyikan elemen UI (bukan semua elemen) */
+    body {
+        visibility: hidden;
+        background-color: white !important;
+    }
+
+    /* Sembunyikan navigasi dan UI lainnya */
+    .nav-sidebar,
+    .command-center-header,
+    .wallstreet-container,
+    button:not(.print-keep),
+    .modal-overlay,
+    nav,
+    header,
+    footer:not(.th-footer) {
+        display: none !important;
+    }
+
+    /* C. Tampilkan HANYA area print yang kita mau */
+    #print-80mm,
+    #print-80mm * {
+        visibility: visible !important;
+    }
+
+    /* D. Posisikan area print ke pojok kiri atas kertas */
+    #print-80mm {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80mm;
+        /* Paksa lebar 80mm */
+        margin: 0;
+        padding: 0;
+        background-color: white !important;
+        color: black !important;
+        z-index: 9999;
+    }
+
+    /* E. Style khusus untuk thermal receipt */
+    .thermal-receipt {
+        background-color: white !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Pastikan semua teks hitam pekat */
+    .thermal-receipt * {
+        color: black !important;
+        background-color: transparent !important;
+        text-shadow: none !important;
+    }
+
+    /* Divider tetap terlihat */
+    .receipt-divider {
+        border-bottom: 1px dashed black !important;
+        height: 0 !important;
+        margin: 8px 0 !important;
+    }
+
+    /* Footer tetap terlihat */
+    .th-footer {
+        display: block !important;
+        visibility: visible !important;
+        color: black !important;
+    }
+}

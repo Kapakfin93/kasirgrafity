@@ -311,7 +311,7 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                         )}
                     </div>
 
-                    <div className="nota-divider">================================</div>
+                    <div className="receipt-divider"></div>
 
                     <div className="nota-datetime">
                         <span>{new Date().toLocaleDateString('id-ID')}</span>
@@ -325,7 +325,7 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                         </div>
                     )}
 
-                    <div className="nota-divider">================================</div>
+                    <div className="receipt-divider"></div>
 
                     {/* Items */}
                     <div className="nota-items">
@@ -383,7 +383,7 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                         ))}
                     </div>
 
-                    <div className="nota-divider">================================</div>
+                    <div className="receipt-divider"></div>
 
                     {showPrices ? (
                         <div className="nota-summary">
@@ -423,19 +423,24 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                         </div>
                     )}
 
-                    <div className="nota-divider">================================</div>
+                    <div className="receipt-divider"></div>
 
                     {/* Footer */}
                     <div className="nota-footer" style={{ textAlign: 'center', fontSize: '11px', marginTop: '8px' }}>
                         {printMode === 'NOTA' ? (
                             <>
-                                <p style={{ fontWeight: 'bold' }}>Terima Kasih</p>
-                                <p>Silakan Datang Kembali</p>
+                                <p style={{ fontWeight: 'bold' }}>Terima Kasih - BUKA 24 JAM</p>
+                                <p>Pembayaran via Transfer:</p>
+                                <p>BCA 1234567890 / BRI 0987654321</p>
                             </>
                         ) : (
                             <p>Dokumen Internal - JOGLO PRINTING</p>
                         )}
                     </div>
+
+                    {/* Spacer agar cutter printer tidak memotong teks terakhir */}
+                    <div style={{ height: '40mm', display: 'block', width: '100%' }}></div>
+
                 </div>
                 {/* === END AREA PRINT === */}
 

@@ -72,7 +72,7 @@ export function PrintNota({ items, totalAmount, paymentState, order }) {
                 <div className="th-subheader">Jl. Diponegoro, Rw. 4, Jogoloyo</div>
                 <div className="th-subheader">Demak, Jawa Tengah</div>
                 <div className="th-subheader">Telp: 0813-9028-6826</div>
-                <div className="th-line">================================</div>
+                <div className="receipt-divider"></div>
 
                 {/* ========== INFO TRANSAKSI (LEFT ALIGN) ========== */}
                 <div className="th-info-row">
@@ -103,7 +103,7 @@ export function PrintNota({ items, totalAmount, paymentState, order }) {
                         <span>: {currentUser.name}</span>
                     </div>
                 )}
-                <div className="th-line">================================</div>
+                <div className="receipt-divider"></div>
 
                 {/* ========== ITEMS (3 BARIS PER ITEM) ========== */}
                 {items.map((item, index) => {
@@ -169,7 +169,7 @@ export function PrintNota({ items, totalAmount, paymentState, order }) {
                     );
                 })}
 
-                <div className="th-line">================================</div>
+                <div className="receipt-divider"></div>
 
                 {/* ========== TOTAL & FOOTER ========== */}
                 <div className="nota-total">
@@ -194,13 +194,18 @@ export function PrintNota({ items, totalAmount, paymentState, order }) {
                     </div>
                 )}
 
-                <div className="th-line">================================</div>
+                <div className="receipt-divider"></div>
 
                 {/* ========== STATIC FOOTER ========== */}
                 <div className="th-footer">Terima Kasih - BUKA 24 JAM</div>
                 <div className="th-footer">Pembayaran via Transfer:</div>
                 <div className="th-footer">BCA 1234567890 / BRI 0987654321</div>
-            </div>
-        </div>
+
+                {/* --- SPACER WAJIB --- */}
+                {/* Spacer agar cutter printer tidak memotong teks terakhir */}
+                <div style={{ height: '40mm', display: 'block', width: '100%' }}></div>
+
+            </div> {/* End of thermal-receipt */}
+        </div> /* End of print-80mm */
     );
 }
