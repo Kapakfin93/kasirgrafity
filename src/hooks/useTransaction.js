@@ -873,65 +873,187 @@ export function useTransaction() {
         updateConfiguratorInput,
         getCurrentPreview: _calculateCurrentPrice,
 
-        // Stateless calculator for Modal (uses current category context)
+
+        // Stateless calculator for Modal (GEN 2 UPGRADED)
         calculateItemPrice: (inputData) => {
-            // Use buildCartItem logic but just return price preview
             try {
                 const { product, qty = 1, dimensions = {}, manualPrice, finishings = [] } = inputData;
-                const pricingType = currentCategory?.logic_type || 'MANUAL';
                 const safeQty = parseInt(qty) || 1;
 
-                const calculateFinishingCost = (fins) => {
+                // GEN 2: Mode Detection Hierarchy
+                // 1. Use product.input_mode (Gen 2)
+                // 2. Fallback to category logic_type
+                // 3. Special handling: HYBRID → default to AREA for legacy products
+                let mode = product?.input_mode;
+
+                if (!mode) {
+                    const categoryType = currentCategory?.logic_type;
+                    if (categoryType === 'HYBRID') {
+                        mode = 'AREA'; // Default for legacy Flexi in HYBRID category
+                    } else {
+                        mode = categoryType || 'MANUAL';
+                    }
+                }
+
+                console.log('💰 calculateItemPrice:', {
+                    product: product?.name,
+                    mode,
+                    categoryType: currentCategory?.logic_type,
+                    hasVariants: !!product?.variants,
+                    calcEngine: product?.calc_engine
+                });
+
+                // Helper: Calculate finishing cost
+                const calculateFinishingCost = (fins, multiplier = 1) => {
                     if (!fins || fins.length === 0) return 0;
-                    return fins.reduce((total, f) => total + (f.price || 0), 0);
+                    return fins.reduce((total, f) => total + ((f.price || 0) * multiplier), 0);
+                };
+
+                // Helper: Lookup tiered price from wholesale rules
+                const getTieredPrice = (quantity, product) => {
+                    if (!product?.calc_engine || product.calc_engine !== 'TIERED') return null;
+                    if (!product?.advanced_features?.wholesale_rules) return null;
+
+                    const tier = product.advanced_features.wholesale_rules.find(
+                        rule => quantity >= rule.min && quantity <= rule.max
+                    );
+
+                    return tier?.price || product.base_price || product.price || 0;
                 };
 
                 let subtotal = 0;
 
-                switch (pricingType) {
+                switch (mode) {
+                    case 'LINEAR':
+                        // GEN 2: LINEAR with Variants (Stiker Meteran)
+                        if (product?.calc_engine === 'ROLLS' && dimensions.selectedVariant) {
+                            const lengthVal = parseFloat(dimensions.length) || 0;
+                            const variantPrice = dimensions.selectedVariant.price_per_meter || 0;
+
+                            if (lengthVal > 0) {
+                                let basePrice = lengthVal * variantPrice;
+
+                                // Add finishing groups (per meter for LINEAR)
+                                const finishingCost = calculateFinishingCost(finishings, lengthVal);
+
+                                subtotal = (basePrice + finishingCost) * safeQty;
+
+                                console.log('  📏 LINEAR Gen 2:', {
+                                    length: lengthVal,
+                                    variantPrice,
+                                    basePrice,
+                                    finishingCost,
+                                    qty: safeQty,
+                                    subtotal
+                                });
+                            }
+                        }
+                        // Legacy LINEAR (Textile)
+                        else {
+                            const linPrice = parseFloat(product?.price) || 0;
+                            const linLen = parseFloat(dimensions.length) || 0;
+
+                            if (linLen > 0) {
+                                const linResult = calculateLinearPrice(linLen, linPrice, safeQty);
+                                subtotal = (linResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+
+                                console.log('  📏 LINEAR Legacy:', { linLen, linPrice, subtotal });
+                            }
+                        }
+                        break;
+
                     case 'AREA':
+                        // Legacy AREA (Flexi, Banner)
                         const areaPrice = parseFloat(product?.price) || 0;
                         const areaLen = parseFloat(dimensions.length) || 0;
                         const areaWid = parseFloat(dimensions.width) || 0;
+
                         if (areaLen > 0 && areaWid > 0) {
                             const areaResult = calculateAreaPrice(areaLen, areaWid, areaPrice, safeQty);
                             subtotal = (areaResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+
+                            console.log('  📐 AREA:', { areaLen, areaWid, areaPrice, subtotal });
                         }
                         break;
-                    case 'LINEAR':
-                        const linPrice = parseFloat(product?.price) || 0;
-                        const linLen = parseFloat(dimensions.length) || 0;
-                        if (linLen > 0) {
-                            const linResult = calculateLinearPrice(linLen, linPrice, safeQty);
-                            subtotal = (linResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
-                        }
-                        break;
+
                     case 'MATRIX':
+                        // MATRIX (Poster sizes)
                         const sizeKey = dimensions.sizeKey;
+
                         if (sizeKey && product?.prices?.[sizeKey]) {
                             const matResult = calculateMatrixPrice(product.prices, sizeKey, safeQty);
                             subtotal = (matResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+
+                            console.log('  📊 MATRIX:', { sizeKey, subtotal });
                         }
                         break;
-                    case 'UNIT':
-                        const unitPrice = parseFloat(product?.price) || 0;
-                        const unitResult = calculateUnitPrice(unitPrice, safeQty);
-                        subtotal = (unitResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
-                        break;
+
+                    case 'SHEET':
+                    case 'TIERED':
                     case 'UNIT_SHEET':
-                        const sheetPrice = parseFloat(product?.price) || 0;
-                        const sheetResult = calculateUnitSheetPrice(sheetPrice, safeQty);
-                        subtotal = (sheetResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+                    case 'UNIT':
+                        // GEN 2: TIERED Pricing (NCR Advanced, Kalender)
+                        if (product?.calc_engine === 'TIERED') {
+                            const tierPrice = getTieredPrice(safeQty, product);
+
+                            if (tierPrice) {
+                                subtotal = (tierPrice * safeQty) + (calculateFinishingCost(finishings) * safeQty);
+
+                                console.log('  💎 TIERED:', {
+                                    qty: safeQty,
+                                    tierPrice,
+                                    subtotal,
+                                    rulesCount: product.advanced_features?.wholesale_rules?.length
+                                });
+                            }
+                        }
+                        // Legacy UNIT/SHEET (Simple pricing)
+                        else {
+                            const unitPrice = parseFloat(product?.price) || 0;
+
+                            // Use appropriate calculator based on mode
+                            if (mode === 'UNIT_SHEET') {
+                                const sheetResult = calculateUnitSheetPrice(unitPrice, safeQty);
+                                subtotal = (sheetResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+                            } else {
+                                const unitResult = calculateUnitPrice(unitPrice, safeQty);
+                                subtotal = (unitResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+                            }
+
+                            console.log(`  🔢 ${mode}:`, { unitPrice, qty: safeQty, subtotal });
+                        }
                         break;
+
                     case 'MANUAL':
+                        // Manual pricing (Custom items)
                         const manPrice = parseFloat(manualPrice) || 0;
                         subtotal = manPrice * safeQty + (calculateFinishingCost(finishings) * safeQty);
+
+                        console.log('  ✏️  MANUAL:', { manPrice, subtotal });
                         break;
+
+                    case 'HYBRID':
+                        // HYBRID should have been resolved to AREA/LINEAR in mode detection
+                        // Fallback to AREA for safety
+                        console.warn('⚠️  HYBRID not resolved - falling back to AREA');
+                        const hybLen = parseFloat(dimensions.length) || 0;
+                        const hybWid = parseFloat(dimensions.width) || 0;
+                        const hybPrice = parseFloat(product?.price) || 0;
+
+                        if (hybLen > 0 && hybWid > 0) {
+                            const hybResult = calculateAreaPrice(hybLen, hybWid, hybPrice, safeQty);
+                            subtotal = (hybResult?.subtotal || 0) + (calculateFinishingCost(finishings) * safeQty);
+                        }
+                        break;
+
+                    default:
+                        console.warn('⚠️  Unknown mode:', mode);
+                        subtotal = 0;
                 }
 
                 return { subtotal };
             } catch (err) {
-                console.error('calculateItemPrice error:', err);
+                console.error('❌ calculateItemPrice error:', err);
                 return { subtotal: 0 };
             }
         },

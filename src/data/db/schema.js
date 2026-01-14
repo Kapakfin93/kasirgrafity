@@ -22,7 +22,7 @@ db.version(5).stores({
 
     // === MASTER DATA ===
     categories: 'id, name, logic_type, sort_order, is_active',
-    products: 'id, categoryId, name, price, is_active',
+    products: 'id, categoryId, name, price, is_active, input_mode, calc_engine, is_archived',
     finishings: 'id, categoryId, name, price, is_active',
 });
 

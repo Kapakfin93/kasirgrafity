@@ -13,7 +13,7 @@ import { Finishing } from '../data/models/Finishing';
 import { seedMasterData, checkAndCleanupDuplicates } from '../data/db/seedMasterData';
 
 // Expected category count (for duplicate detection)
-const EXPECTED_CATEGORY_COUNT = 13; // Updated for ADVANCED pricing categories
+const EXPECTED_CATEGORY_COUNT = 4; // Updated after Phase 2 migration (4 pillars)
 
 export const useProductStore = create((set, get) => ({
     // State
@@ -24,7 +24,7 @@ export const useProductStore = create((set, get) => ({
 
     /**
      * Initialize: Load master data from DB (or seed if empty)
-     * Includes passive cleanup for race condition duplicates
+     * GEN 2 UPDATE: Migration handles seeding now, not this store
      */
     initialize: async () => {
         if (get().isInitialized) return get().categories;
@@ -32,16 +32,12 @@ export const useProductStore = create((set, get) => ({
         set({ loading: true, error: null });
 
         try {
-            // 1. Check and cleanup duplicates (passive fix for race condition)
-            const wasCleanedUp = await checkAndCleanupDuplicates(EXPECTED_CATEGORY_COUNT);
-            if (wasCleanedUp) {
-                console.log('🧹 PASSIVE CLEANUP: Duplicates removed and re-seeded');
-            }
+            // GEN 2: Migration creates categories, skip old seeder
+            // The migration in main.jsx creates the 4 new pillar categories
+            // await checkAndCleanupDuplicates(EXPECTED_CATEGORY_COUNT); // DISABLED
+            // await seedMasterData(); // DISABLED - Migration handles this
 
-            // 2. Seed if needed (idempotent, safe to call multiple times)
-            await seedMasterData();
-
-            // 3. Fetch and reconstruct
+            // Fetch categories from DB (created by migration)
             const categories = await get().fetchMasterData();
 
             set({ isInitialized: true, loading: false });
@@ -62,10 +58,15 @@ export const useProductStore = create((set, get) => ({
         try {
             // Fetch all data (filter is_active in JS for reliable boolean handling)
             const allCategories = await db.categories.orderBy('sort_order').toArray();
-            const categoriesRaw = allCategories.filter(c => c.is_active !== false);
+            // STRICT FILTER: Only categories with is_active === 1 (not 0, not undefined, not false)
+            const categoriesRaw = allCategories.filter(c => c.is_active === 1);
+
+            console.log(`🔍 ProductStore: Fetched ${allCategories.length} total categories, ${categoriesRaw.length} active`);
 
             const allProducts = await db.products.toArray();
-            const productsRaw = allProducts.filter(p => p.is_active !== false);
+            const productsRaw = allProducts.filter(p =>
+                p.is_active !== false && p.is_archived !== 1 // Exclude archived products
+            );
 
             const allFinishings = await db.finishings.toArray();
             const finishingsRaw = allFinishings.filter(f => f.is_active !== false);
@@ -86,6 +87,13 @@ export const useProductStore = create((set, get) => ({
                         pricing_model: p.pricing_model,
                         base_price: p.base_price,
                         advanced_features: p.advanced_features,
+                        // GEN 2 FIELDS
+                        input_mode: p.input_mode,
+                        calc_engine: p.calc_engine,
+                        variants: p.variants,
+                        finishing_groups: p.finishing_groups,
+                        min_qty: p.min_qty,
+                        step_qty: p.step_qty,
                     })),
                 finishings: finishingsRaw
                     .filter(f => f.categoryId === cat.id)
