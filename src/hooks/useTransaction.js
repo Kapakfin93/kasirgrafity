@@ -44,14 +44,23 @@ const INITIAL_PAYMENT_STATE = {
 // ============================================
 // PRIORITY SYSTEM CONFIGURATION
 // ============================================
+// ⚠️ KONFIGURASI BIAYA PRIORITAS (EDIT DI SINI) ⚠️
+// Ubah nilai di bawah ini untuk mengatur harga dan durasi layanan prioritas
 export const PRIORITY_CONFIG = {
-    FEE_EXPRESS: 15000,     // Express Priority Fee (Rp)
-    FEE_URGENT: 30000,      // Urgent Priority Fee (Rp)
-    HOURS_STANDARD: 24,     // Standard: +24 hours
-    HOURS_EXPRESS: 5,       // Express: +5 hours (or Today 17:00)
-    HOURS_URGENT: 2,        // Urgent: +2 hours
-    EXPRESS_CUTOFF_HOUR: 17 // Express aims for Today 17:00
+    // --- Harga Layanan ---
+    FEE_EXPRESS: 15000,           // Biaya Layanan Express (Rp)
+    FEE_URGENT: 30000,            // Biaya Layanan Urgent (Rp)
+
+    // --- Durasi Target Selesai ---
+    HOURS_STANDARD: 24,           // Standard: +24 jam
+    HOURS_EXPRESS: 5,             // Express: +5 jam (atau hari ini jam 17:00)
+    HOURS_URGENT: 2,              // Urgent: +2 jam
+
+    // --- Pengaturan Lainnya ---
+    EXPRESS_CUTOFF_HOUR: 17       // Express target jam berapa (24-hour format)
 };
+// ============================================
+
 
 // Transaction Stage Enum
 export const TRANSACTION_STAGES = {

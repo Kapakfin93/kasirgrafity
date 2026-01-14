@@ -255,6 +255,29 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
     const showPrices = printMode === 'NOTA';
     const headerTitle = printMode === 'SPK' ? 'SURAT PERINTAH KERJA' : 'JOGLO PRINTING';
 
+    // === URGENCY DETECTION ===
+    // Check if this is an urgent/rush order for SPK visual indicator
+    const isUrgentOrder = () => {
+        // Method 1: Check if order has priority fee items
+        const hasPriorityFee = items.some(item =>
+            item.id === 'fee-express' || item.id === 'fee-urgent'
+        );
+
+        // Method 2: Check if targetDate is within 3 hours
+        if (order?.targetDate) {
+            const targetTime = new Date(order.targetDate);
+            const now = new Date();
+            const hoursUntil = (targetTime - now) / (1000 * 60 * 60);
+            if (hoursUntil < 3 && hoursUntil > 0) {
+                return true;
+            }
+        }
+
+        return hasPriorityFee;
+    };
+
+    const showUrgencyHeader = printMode === 'SPK' && isUrgentOrder();
+
     // --- RENDER CONTENT ---
     const modalContent = (
         <div className="nota-preview-overlay" onClick={onClose}>
@@ -284,6 +307,36 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                             whiteSpace: 'nowrap'
                         }}>
                             JOGLO PRINT
+                        </div>
+                    )}
+
+                    {/* URGENCY HEADER - RUSH ORDER (SPK Only) - INK SAVER MODE */}
+                    {showUrgencyHeader && (
+                        <div style={{
+                            background: 'white',
+                            color: '#000',
+                            padding: '16px 20px',
+                            marginBottom: '12px',
+                            borderRadius: '8px',
+                            border: '4px dashed #000',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{
+                                fontSize: '24px',
+                                fontWeight: '900',
+                                letterSpacing: '2px',
+                                textTransform: 'uppercase',
+                                marginBottom: '4px'
+                            }}>
+                                ⚠️ RUSH ORDER / PRIORITAS ⚠️
+                            </div>
+                            <div style={{
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                letterSpacing: '1px'
+                            }}>
+                                SEGERA KERJAKAN - DEADLINE PRIORITAS
+                            </div>
                         </div>
                     )}
 
@@ -419,7 +472,13 @@ export function NotaPreview({ items, totalAmount, paymentState, order, onClose, 
                     ) : (
                         <div className="nota-status" style={{ textAlign: 'center', padding: '10px 0' }}>
                             <p style={{ fontWeight: 'bold', fontSize: '14px' }}>MOHON SEGERA DIKERJAKAN</p>
-                            <p style={{ marginTop: '5px' }}>Total Item: {items.reduce((sum, item) => sum + (parseInt(item.qty) || 0), 0)} Pcs</p>
+                            <p style={{ marginTop: '5px' }}>Total Item: {items.reduce((sum, item) => {
+                                // EXCLUDE service/fee items from physical count
+                                if (item.id === 'fee-express' || item.id === 'fee-urgent' || item.pricingType === 'SERVICE') {
+                                    return sum;
+                                }
+                                return sum + (parseInt(item.qty) || 0);
+                            }, 0)} Pcs</p>
                         </div>
                     )}
 
