@@ -1,7 +1,6 @@
 /**
- * ProductConfigModal - Dynamic Specification Modal
- * Adaptive form based on pricing type (AREA/LINEAR/MATRIX/UNIT/MANUAL)
- * Universal "Spesifikasi Produk" interface
+ * ProductConfigModal - Dynamic Specification Modal (GEN 3.2 FINAL)
+ * Supports: AREA, LINEAR (Flat/Nested), MATRIX, UNIT (With Variants)
  */
 
 import React, { useState, useEffect } from 'react';
@@ -25,9 +24,9 @@ export function ProductConfigModal({
     const [manualPrice, setManualPrice] = useState('');
     const [selectedFinishings, setSelectedFinishings] = useState([]);
 
-    // GEN 2 State
+    // GEN 2/3 State
     const [selectedVariant, setSelectedVariant] = useState(null);
-    const [selectedMaterial, setSelectedMaterial] = useState(null); // For 2-step selection (Sticker)
+    const [selectedMaterial, setSelectedMaterial] = useState(null);
     const [finishingGroupSelections, setFinishingGroupSelections] = useState({});
 
     // Reset form when product changes
@@ -49,24 +48,23 @@ export function ProductConfigModal({
                 setSizeKey(firstKey);
             }
 
-            // Auto-select first variant for GEN 2 LINEAR (FLAT ONLY)
-            // If Nested (Sticker), we DO NOT auto-select to force user choice
+            // Auto-select logic
             const isNested = product.variants && product.variants.length > 0 && product.variants[0].options;
-            if (product.input_mode === 'LINEAR' && product.variants && product.variants.length > 0 && !isNested) {
+
+            // For UNIT & FLAT LINEAR: Auto-select first variant
+            if ((product.input_mode === 'UNIT' || product.input_mode === 'LINEAR') &&
+                product.variants && product.variants.length > 0 && !isNested) {
                 setSelectedVariant(product.variants[0]);
             }
 
-            // Set min qty for GEN 2 products
-            if (product.min_qty) {
-                setQty(product.min_qty);
-            }
+            if (product.min_qty) setQty(product.min_qty);
         }
     }, [product, category]);
 
     if (!isOpen || !product) return null;
 
     const logicType = category?.logic_type || 'UNIT';
-    const inputMode = product.input_mode || logicType; // Gen 2 input_mode takes precedence
+    const inputMode = product.input_mode || logicType;
 
     // GEN 2: Wholesale Price Tier Lookup
     const getTieredPrice = (quantity) => {
@@ -76,85 +74,81 @@ export function ProductConfigModal({
         const tier = product.advanced_features.wholesale_rules.find(
             rule => quantity >= rule.min && quantity <= rule.max
         );
-
         return tier?.price || product.base_price || 0;
     };
 
     // Calculate preview price
     const getPreview = () => {
-        // GEN 2: AREA with Variants (Spanduk)
+        let baseTotal = 0;
+        let unitPrice = 0;
+
+        // 1. AREA (Spanduk)
         if (inputMode === 'AREA' && product.variants && selectedVariant) {
-            const lengthVal = parseFloat(length) || 0;
-            const widthVal = parseFloat(width) || 0;
-            const area = lengthVal * widthVal;
-            let basePrice = area * selectedVariant.price;
+            const area = (parseFloat(length) || 0) * (parseFloat(width) || 0);
+            let pricePerM2 = selectedVariant.price;
 
-            // Add finishing groups (per m² for AREA)
-            Object.values(finishingGroupSelections).forEach(selection => {
-                if (selection && selection.price) {
-                    basePrice += selection.price * area;
-                }
+            // Add finishing (per m2)
+            Object.values(finishingGroupSelections).forEach(sel => {
+                if (sel?.price) pricePerM2 += sel.price;
             });
 
-            return { subtotal: basePrice * qty };
+            baseTotal = pricePerM2 * area * qty;
+            return { subtotal: baseTotal };
         }
 
-        // GEN 2: MATRIX with nested price_list (Poster)
+        // 2. MATRIX (Poster)
         if (inputMode === 'MATRIX' && selectedVariant && selectedVariant.price_list && sizeKey) {
-            const unitPrice = selectedVariant.price_list[sizeKey] || 0;
-            let total = unitPrice * qty;
+            unitPrice = selectedVariant.price_list[sizeKey] || 0;
+            baseTotal = unitPrice * qty;
 
-            // Add finishing groups (per unit for MATRIX)
-            Object.values(finishingGroupSelections).forEach(selection => {
-                if (selection && selection.price) {
-                    total += selection.price * qty;
-                }
+            // Add finishing (per unit)
+            Object.values(finishingGroupSelections).forEach(sel => {
+                if (sel?.price) baseTotal += sel.price * qty;
             });
-
-            return { subtotal: total, unitPrice };
+            return { subtotal: baseTotal, unitPrice };
         }
 
-        // GEN 2: LINEAR with Variants (Kain & Stiker)
+        // 3. LINEAR (Stiker/Kain)
         if (inputMode === 'LINEAR' && product.variants && selectedVariant) {
-            const lengthVal = parseFloat(length) || 0;
-            // Support both flat variants (price_per_meter) and nested (child option)
-            const price = selectedVariant.price_per_meter || selectedVariant.price || 0;
-            let basePrice = lengthVal * price;
+            const len = parseFloat(length) || 0;
+            const pricePerM = selectedVariant.price_per_meter || selectedVariant.price || 0;
+            let totalPerM = pricePerM;
 
-            // Add finishing groups (per meter for LINEAR)
-            Object.values(finishingGroupSelections).forEach(selection => {
-                if (selection && selection.price) {
-                    basePrice += selection.price * lengthVal; // Per meter
-                }
+            // Add finishing (per meter)
+            Object.values(finishingGroupSelections).forEach(sel => {
+                if (sel?.price) totalPerM += sel.price;
             });
 
-            return { subtotal: basePrice * qty };
+            baseTotal = totalPerM * len * qty;
+            return { subtotal: baseTotal };
         }
 
-        // GEN 2: TIERED Pricing (Wholesale Rules)
-        if (product.calc_engine === 'TIERED') {
-            const unitPrice = getTieredPrice(qty);
-            let total = unitPrice * qty;
+        // 4. UNIT / TIERED (Office Products)
+        if (inputMode === 'UNIT' || product.calc_engine === 'TIERED') {
+            // Priority: Selected Variant Price > Tiered Price > Base Price
+            let baseUnit = 0;
 
-            // Add finishing groups (per unit for TIERED)
-            Object.values(finishingGroupSelections).forEach(selection => {
-                if (selection && selection.price) {
-                    total += selection.price * qty;
-                }
+            if (selectedVariant) {
+                baseUnit = selectedVariant.price;
+            } else {
+                baseUnit = getTieredPrice(qty) || product.base_price || 0;
+            }
+
+            baseTotal = baseUnit * qty;
+
+            // Add finishing (per unit)
+            Object.values(finishingGroupSelections).forEach(sel => {
+                if (sel?.price) baseTotal += sel.price * qty;
             });
 
-            return { subtotal: total, unitPrice };
+            return { subtotal: baseTotal, unitPrice: baseUnit };
         }
 
-        // Fallback to legacy calculation
+        // Legacy Fallback
         if (calculatePreview) {
             return calculatePreview({
-                product,
-                qty,
-                dimensions: { length: parseFloat(length) || 0, width: parseFloat(width) || 0 },
-                sizeKey,
-                manualPrice: parseFloat(manualPrice) || 0,
-                finishings: selectedFinishings
+                product, qty, dimensions: { length: parseFloat(length) || 0, width: parseFloat(width) || 0, sizeKey },
+                manualPrice: parseFloat(manualPrice) || 0, finishings: selectedFinishings
             });
         }
         return { subtotal: 0 };
@@ -164,353 +158,227 @@ export function ProductConfigModal({
 
     // Validation
     const canSubmit = () => {
-        // GEN 2: AREA with Variants
-        if (inputMode === 'AREA' && product.variants) {
-            const hasVariant = selectedVariant !== null;
-            const hasLength = parseFloat(length) > 0;
-            const hasWidth = parseFloat(width) > 0;
-            return product && hasVariant && hasLength && hasWidth && qty > 0;
-        }
-
-        // GEN 2: MATRIX with nested price_list
-        if (inputMode === 'MATRIX' && product.variants && product.variants[0]?.price_list) {
-            const hasVariant = selectedVariant !== null;
-            const hasSize = sizeKey !== null;
-            return product && hasVariant && hasSize && qty > 0;
-        }
-
-        // GEN 2: LINEAR with Variants
-        if (inputMode === 'LINEAR' && product.variants) {
-            const hasVariant = selectedVariant !== null;
-            const hasLength = parseFloat(length) > 0;
-            const hasQty = qty > 0;
-            return product && hasVariant && hasLength && hasQty;
-        }
-
-        // GEN 2: TIERED
-        if (product.calc_engine === 'TIERED') {
-            const meetsMinOrder = product.min_qty ? qty >= product.min_qty : true;
-            return product && qty > 0 && meetsMinOrder;
-        }
-
-        // Legacy validation
-        switch (logicType) {
-            case 'AREA': return product && parseFloat(length) > 0 && parseFloat(width) > 0;
-            case 'LINEAR': return product && parseFloat(length) > 0;
-            case 'MATRIX': return product && sizeKey;
-            case 'MANUAL': return product && parseFloat(manualPrice) > 0;
-            default: return product && qty > 0;
-        }
+        if (inputMode === 'AREA' && product.variants) return selectedVariant && parseFloat(length) > 0 && parseFloat(width) > 0;
+        if (inputMode === 'MATRIX' && product.variants) return selectedVariant && sizeKey;
+        if (inputMode === 'LINEAR' && product.variants) return selectedVariant && parseFloat(length) > 0;
+        if (inputMode === 'UNIT') return qty > 0 && (product.variants ? selectedVariant : true);
+        return qty > 0;
     };
 
-    // Handle submit
     const handleSubmit = () => {
         if (!canSubmit()) return;
-
         onAddToCart({
-            product,
-            qty,
-            dimensions: {
-                length: parseFloat(length) || 0,
-                width: parseFloat(width) || 0,
-                sizeKey
-            },
+            product, qty,
+            dimensions: { length: parseFloat(length) || 0, width: parseFloat(width) || 0, sizeKey },
             manualPrice: parseFloat(manualPrice) || 0,
             finishings: selectedFinishings,
-            // Gen 2 Metadata
-            selectedVariant: selectedVariant, // Important for receipt
-            selectedMaterial: selectedMaterial // Important for receipt (Sticker Parent)
+            selectedVariant, selectedMaterial,
+            finishingGroupSelections // Pass this for receipt details
         });
-
         onClose();
     };
 
-    // Toggle finishing selection
-    const toggleFinishing = (finishing) => {
-        setSelectedFinishings(prev => {
-            const exists = prev.find(f => f.id === finishing.id);
-            if (exists) return prev.filter(f => f.id !== finishing.id);
-            return [...prev, finishing];
-        });
-    };
-
-    // STYLES
-    const styles = {
-        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-        modal: { background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', borderRadius: '20px', padding: '24px', width: '90%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto', border: '1px solid rgba(6, 182, 212, 0.2)', boxShadow: '0 0 40px rgba(6, 182, 212, 0.2)' },
-        header: { marginBottom: '20px' },
-        productName: { fontSize: '20px', fontWeight: '800', color: 'white', marginBottom: '4px' },
-        subtitle: { fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px' },
-        section: { background: 'rgba(15, 23, 42, 0.8)', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' },
-        sectionLabel: { fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '1px', marginBottom: '12px' },
-        inputRow: { display: 'flex', gap: '12px', marginBottom: '12px' },
-        inputGroup: { flex: 1 },
-        label: { display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: '600' },
-        input: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(100, 116, 139, 0.3)', background: 'rgba(30, 41, 59, 0.8)', color: 'white', fontSize: '16px', fontWeight: '600', textAlign: 'center' },
-        sizeGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' },
-        sizeBtn: (isActive) => ({ padding: '12px', borderRadius: '10px', border: isActive ? 'none' : '1px solid rgba(100, 116, 139, 0.3)', background: isActive ? 'linear-gradient(135deg, #06b6d4, #3b82f6)' : 'rgba(30, 41, 59, 0.8)', color: 'white', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s', boxShadow: isActive ? '0 0 15px rgba(6, 182, 212, 0.4)' : 'none' }),
-        qtyControl: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' },
-        qtyBtn: { width: '40px', height: '40px', borderRadius: '10px', border: '1px solid rgba(100, 116, 139, 0.3)', background: 'rgba(30, 41, 59, 0.8)', color: 'white', fontSize: '20px', cursor: 'pointer' },
-        qtyValue: { fontSize: '24px', fontWeight: '800', color: 'white', minWidth: '60px', textAlign: 'center' },
-        finishingGrid: { display: 'flex', flexWrap: 'wrap', gap: '8px' },
-        finishingBtn: (isActive) => ({ padding: '8px 12px', borderRadius: '8px', border: isActive ? 'none' : '1px solid rgba(100, 116, 139, 0.3)', background: isActive ? '#10b981' : 'rgba(30, 41, 59, 0.8)', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }),
-        footer: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' },
-        totalSection: { textAlign: 'left' },
-        totalLabel: { fontSize: '11px', color: '#64748b', textTransform: 'uppercase' },
-        totalValue: { fontSize: '24px', fontWeight: '800', color: '#22c55e' },
-        actions: { display: 'flex', gap: '10px' },
-        btnCancel: { padding: '12px 20px', borderRadius: '10px', border: '1px solid rgba(100, 116, 139, 0.3)', background: 'transparent', color: '#94a3b8', fontWeight: '600', cursor: 'pointer' },
-        btnConfirm: { padding: '12px 24px', borderRadius: '10px', border: 'none', background: canSubmit() ? 'linear-gradient(135deg, #059669, #10b981)' : '#475569', color: 'white', fontWeight: '700', cursor: canSubmit() ? 'pointer' : 'not-allowed', boxShadow: canSubmit() ? '0 0 15px rgba(16, 185, 129, 0.4)' : 'none' }
-    };
-
-    // Render specific inputs based on logic type
+    // Render Specific Inputs
     const renderSpecificInputs = () => {
         switch (inputMode) {
-            case 'AREA':
-                // GEN 2: AREA (Spanduk)
-                if (product.variants && product.variants.length > 0) {
-                    return (
-                        <>
+            case 'AREA': // Spanduk
+                return (
+                    <>
+                        {product.variants && (
                             <div>
                                 <label style={styles.label}>Pilih Material</label>
                                 <div style={styles.sizeGrid}>
-                                    {product.variants.map(variant => (
-                                        <button
-                                            key={variant.label}
-                                            onClick={() => setSelectedVariant(variant)}
-                                            style={styles.sizeBtn(selectedVariant?.label === variant.label)}
-                                        >
-                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{variant.label}</div>
-                                            <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '4px' }}>
-                                                {formatRupiah(variant.price)}/m²
-                                            </div>
+                                    {product.variants.map(v => (
+                                        <button key={v.label} onClick={() => setSelectedVariant(v)} style={styles.sizeBtn(selectedVariant?.label === v.label)}>
+                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{v.label}</div>
+                                            {v.specs && (
+                                                <div style={{
+                                                    fontSize: '10px',
+                                                    color: selectedVariant?.label === v.label ? 'rgba(255,255,255,0.85)' : '#94a3b8',
+                                                    marginTop: '4px',
+                                                    marginBottom: '4px',
+                                                    fontStyle: 'italic',
+                                                    lineHeight: '1.3'
+                                                }}>
+                                                    {v.specs}
+                                                </div>
+                                            )}
+                                            <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>{formatRupiah(v.price)}/m²</div>
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            <div style={{ ...styles.inputRow, marginTop: '12px' }}>
-                                <div style={styles.inputGroup}>
-                                    <label style={styles.label}>Panjang (meter)</label>
-                                    <input type="number" step="0.01" value={length} onChange={(e) => setLength(e.target.value)} style={styles.input} placeholder="0.00" autoFocus />
-                                </div>
-                                <div style={styles.inputGroup}>
-                                    <label style={styles.label}>Lebar (meter)</label>
-                                    <input type="number" step="0.01" value={width} onChange={(e) => setWidth(e.target.value)} style={styles.input} placeholder="0.00" />
-                                </div>
-                            </div>
-                        </>
-                    );
-                }
-                // Legacy AREA
-                return (
-                    <div style={styles.inputRow}>
-                        <div style={styles.inputGroup}><label style={styles.label}>Panjang</label><input type="number" step="0.01" value={length} onChange={(e) => setLength(e.target.value)} style={styles.input} /></div>
-                        <div style={styles.inputGroup}><label style={styles.label}>Lebar</label><input type="number" step="0.01" value={width} onChange={(e) => setWidth(e.target.value)} style={styles.input} /></div>
-                    </div>
+                        )}
+                        <div style={{ ...styles.inputRow, marginTop: '12px' }}>
+                            <div style={styles.inputGroup}><label style={styles.label}>Panjang (m)</label><input type="number" value={length} onChange={e => setLength(e.target.value)} style={styles.input} autoFocus /></div>
+                            <div style={styles.inputGroup}><label style={styles.label}>Lebar (m)</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} style={styles.input} /></div>
+                        </div>
+                    </>
                 );
 
-            case 'LINEAR':
-                // Check if this is a NESTED Gen 2 product (Sticker: Material -> Width)
-                const isNested = product.variants && product.variants.length > 0 && product.variants[0].options;
-
+            case 'LINEAR': // Stiker/Kain
+                const isNested = product.variants?.[0]?.options;
                 if (isNested) {
                     return (
                         <>
-                            {/* Step 1: Material Selector */}
-                            <div>
-                                <label style={styles.label}>1. Pilih Bahan</label>
-                                <div style={styles.sizeGrid}>
-                                    {product.variants.map(material => (
-                                        <button
-                                            key={material.label}
-                                            onClick={() => {
-                                                setSelectedMaterial(material);
-                                                setSelectedVariant(null); // Reset child selection
-                                            }}
-                                            style={styles.sizeBtn(selectedMaterial?.label === material.label)}
-                                        >
-                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{material.label}</div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Step 2: Width Selector (Shown only after material selected) */}
-                            {selectedMaterial && (
-                                <div style={{ marginTop: '12px' }}>
-                                    <label style={styles.label}>2. Pilih Lebar</label>
-                                    <div style={styles.sizeGrid}>
-                                        {selectedMaterial.options.map(opt => (
-                                            <button
-                                                key={opt.label}
-                                                onClick={() => setSelectedVariant(opt)}
-                                                style={styles.sizeBtn(selectedVariant?.label === opt.label)}
-                                            >
-                                                <div style={{ fontSize: '14px' }}>{opt.label}</div>
-                                                <div style={{ fontSize: '10px', opacity: 0.7 }}>
-                                                    {formatRupiah(opt.price_per_meter)}/m
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 3: Length Input (Shown only after width selected) */}
-                            {selectedVariant && (
-                                <div style={{ marginTop: '12px' }}>
-                                    <label style={styles.label}>3. Panjang Cetak (meter)</label>
-                                    <input
-                                        type="number"
-                                        step={product.step_qty || 0.5}
-                                        value={length}
-                                        onChange={(e) => setLength(e.target.value)}
-                                        style={styles.input}
-                                        placeholder="0.00"
-                                        autoFocus
-                                    />
-                                </div>
-                            )}
+                            <div><label style={styles.label}>1. Pilih Bahan</label><div style={styles.sizeGrid}>{product.variants.map(m => (
+                                <button key={m.label} onClick={() => { setSelectedMaterial(m); setSelectedVariant(null) }} style={styles.sizeBtn(selectedMaterial?.label === m.label)}>
+                                    <div style={{ fontSize: '13px', fontWeight: '700' }}>{m.label}</div>
+                                    {m.specs && (
+                                        <div style={{
+                                            fontSize: '10px',
+                                            color: selectedMaterial?.label === m.label ? 'rgba(255,255,255,0.85)' : '#94a3b8',
+                                            marginTop: '4px',
+                                            fontStyle: 'italic'
+                                        }}>
+                                            {m.specs}
+                                        </div>
+                                    )}
+                                </button>
+                            ))}</div></div>
+                            {selectedMaterial && <div style={{ marginTop: '12px' }}><label style={styles.label}>2. Pilih Lebar</label><div style={styles.sizeGrid}>{selectedMaterial.options.map(o => (<button key={o.label} onClick={() => setSelectedVariant(o)} style={styles.sizeBtn(selectedVariant?.label === o.label)}><div style={{ fontSize: '14px' }}>{o.label}</div><div style={{ fontSize: '10px' }}>{formatRupiah(o.price_per_meter)}/m</div></button>))}</div></div>}
+                            {selectedVariant && <div style={{ marginTop: '12px' }}><label style={styles.label}>3. Panjang (m)</label><input type="number" value={length} onChange={e => setLength(e.target.value)} style={styles.input} autoFocus /></div>}
                         </>
                     );
                 }
+                return (
+                    <>
+                        {product.variants && <div><label style={styles.label}>Pilih Varian</label><div style={styles.sizeGrid}>{product.variants.map(v => (<button key={v.label} onClick={() => setSelectedVariant(v)} style={styles.sizeBtn(selectedVariant?.label === v.label)}><div style={{ fontSize: '13px', fontWeight: '700' }}>{v.label}</div><div style={{ fontSize: '10px' }}>{formatRupiah(v.price_per_meter)}/m</div></button>))}</div></div>}
+                        <div style={{ marginTop: '12px' }}><label style={styles.label}>Panjang (m)</label><input type="number" value={length} onChange={e => setLength(e.target.value)} style={styles.input} autoFocus /></div>
+                    </>
+                );
 
-                // GEN 2: FLAT LINEAR (Kain)
-                if (product.variants && product.variants.length > 0) {
-                    return (
-                        <>
+            case 'MATRIX': // Poster / Nota NCR
+                return (
+                    <>
+                        {product.variants?.[0]?.price_list && (
+                            <>
+                                <div><label style={styles.label}>Pilih Material / Tipe</label><div style={styles.sizeGrid}>{product.variants.map(v => (
+                                    <button key={v.label} onClick={() => { setSelectedVariant(v); setSizeKey(null) }} style={styles.sizeBtn(selectedVariant?.label === v.label)}>
+                                        <div style={{ fontSize: '13px', fontWeight: '700' }}>{v.label}</div>
+                                        {v.specs && (
+                                            <div style={{
+                                                fontSize: '10px',
+                                                color: selectedVariant?.label === v.label ? 'rgba(255,255,255,0.85)' : '#94a3b8',
+                                                marginTop: '4px',
+                                                marginBottom: '4px',
+                                                fontStyle: 'italic',
+                                                lineHeight: '1.3'
+                                            }}>
+                                                {v.specs}
+                                            </div>
+                                        )}
+                                    </button>
+                                ))}</div></div>
+                                {selectedVariant && <div style={{ marginTop: '12px' }}><label style={styles.label}>Pilih Ukuran</label><div style={styles.sizeGrid}>{Object.keys(selectedVariant.price_list).map(s => (<button key={s} onClick={() => setSizeKey(s)} style={styles.sizeBtn(sizeKey === s)}><div style={{ fontSize: '14px' }}>{s}</div><div style={{ fontSize: '11px' }}>{formatRupiah(selectedVariant.price_list[s])}</div></button>))}</div></div>}
+                            </>
+                        )}
+                    </>
+                );
+
+            case 'UNIT': // OFFICE (Nota, Yasin, dll)
+                return (
+                    <>
+                        {product.variants && product.variants.length > 0 && (
                             <div>
-                                <label style={styles.label}>Pilih Lebar Material</label>
+                                <label style={styles.label}>Pilih Tipe / Varian</label>
                                 <div style={styles.sizeGrid}>
-                                    {product.variants.map(variant => (
+                                    {product.variants.map(v => (
                                         <button
-                                            key={variant.label}
-                                            onClick={() => setSelectedVariant(variant)}
-                                            style={styles.sizeBtn(selectedVariant?.label === variant.label)}
+                                            key={v.label}
+                                            onClick={() => setSelectedVariant(v)}
+                                            style={styles.sizeBtn(selectedVariant?.label === v.label)}
                                         >
-                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{variant.label}</div>
-                                            <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '4px' }}>
-                                                {formatRupiah(variant.price_per_meter)}/m
+                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{v.label}</div>
+
+                                            {/* Specs Subtitle */}
+                                            {v.specs && (
+                                                <div style={{
+                                                    fontSize: '10px',
+                                                    color: selectedVariant?.label === v.label ? 'rgba(255,255,255,0.85)' : '#94a3b8',
+                                                    marginTop: '4px',
+                                                    marginBottom: '4px',
+                                                    fontStyle: 'italic',
+                                                    lineHeight: '1.3'
+                                                }}>
+                                                    {v.specs}
+                                                </div>
+                                            )}
+
+                                            <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
+                                                {formatRupiah(v.price)}
                                             </div>
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            <div style={{ marginTop: '12px' }}>
-                                <label style={styles.label}>Panjang Cetak (meter)</label>
-                                <input type="number" step="0.5" value={length} onChange={(e) => setLength(e.target.value)} style={styles.input} placeholder="0.00" autoFocus />
+                        )}
+                        {/* Jika TIERED tapi tidak ada variants (misal Nota Grosir doang), tampilkan info */}
+                        {product.calc_engine === 'TIERED' && !product.variants && (
+                            <div style={{ marginBottom: '10px', color: '#22c55e', fontSize: '12px', fontStyle: 'italic' }}>
+                                * Harga Grosir aktif (makin banyak makin murah)
                             </div>
-                        </>
-                    );
-                }
-
-                // Legacy LINEAR
-                return (<div style={styles.inputGroup}><label style={styles.label}>Panjang (meter)</label><input type="number" step="0.01" value={length} onChange={(e) => setLength(e.target.value)} style={styles.input} /></div>);
-
-            case 'MATRIX':
-                // GEN 2 MATRIX (Poster)
-                if (product.variants && product.variants[0].price_list) {
-                    return (
-                        <>
-                            <div>
-                                <label style={styles.label}>Pilih Material</label>
-                                <div style={styles.sizeGrid}>
-                                    {product.variants.map(variant => (
-                                        <button
-                                            key={variant.label}
-                                            onClick={() => { setSelectedVariant(variant); setSizeKey(null); }}
-                                            style={styles.sizeBtn(selectedVariant?.label === variant.label)}
-                                        >
-                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{variant.label}</div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            {selectedVariant && selectedVariant.price_list && (
-                                <div style={{ marginTop: '12px' }}>
-                                    <label style={styles.label}>Pilih Ukuran</label>
-                                    <div style={styles.sizeGrid}>
-                                        {Object.keys(selectedVariant.price_list).map(size => (
-                                            <button
-                                                key={size}
-                                                onClick={() => setSizeKey(size)}
-                                                style={styles.sizeBtn(sizeKey === size)}
-                                            >
-                                                <div style={{ fontSize: '14px' }}>{size}</div>
-                                                <div style={{ fontSize: '11px', opacity: 0.7 }}>{formatRupiah(selectedVariant.price_list[size])}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    );
-                }
-                // Legacy MATRIX
-                return (<div><label style={styles.label}>Pilih Ukuran</label><div style={styles.sizeGrid}>{product.prices && Object.keys(product.prices).map(key => (<button key={key} onClick={() => setSizeKey(key)} style={styles.sizeBtn(sizeKey === key)}>{key}</button>))}</div></div>);
+                        )}
+                    </>
+                );
 
             case 'MANUAL':
-                return (<div style={styles.inputGroup}><label style={styles.label}>Harga Manual</label><input type="number" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} style={styles.input} /></div>);
+                return (<div style={styles.inputGroup}><label style={styles.label}>Harga Manual</label><input type="number" value={manualPrice} onChange={e => setManualPrice(e.target.value)} style={styles.input} /></div>);
 
             default: return null;
         }
     };
 
-    // Advanced Form Render
-    if (product.pricing_model === 'ADVANCED') {
-        const advancedModalContent = (
-            <div style={styles.overlay} onClick={onClose}>
-                <div style={{ ...styles.modal, maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
-                    <AdvancedProductForm
-                        product={product}
-                        onSubmit={(formPayload) => {
-                            onAddToCart({ ...formPayload, product });
-                            onClose();
-                        }}
-                    />
-                </div>
-            </div>
-        );
-        return createPortal(advancedModalContent, document.body);
-    }
+    // STYLES (Compressed for brevity, functionality remains)
+    const styles = {
+        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+        modal: { background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', borderRadius: '20px', padding: '24px', width: '90%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto', border: '1px solid rgba(6, 182, 212, 0.2)', boxShadow: '0 0 40px rgba(6, 182, 212, 0.2)' },
+        header: { marginBottom: '20px' }, productName: { fontSize: '20px', fontWeight: '800', color: 'white' }, subtitle: { fontSize: '12px', color: '#64748b' },
+        section: { background: 'rgba(15, 23, 42, 0.8)', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' },
+        sectionLabel: { fontSize: '11px', color: '#64748b', fontWeight: '700', marginBottom: '12px', textTransform: 'uppercase' },
+        inputRow: { display: 'flex', gap: '12px' }, inputGroup: { flex: 1 }, label: { display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: '600' },
+        input: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(100, 116, 139, 0.3)', background: 'rgba(30, 41, 59, 0.8)', color: 'white', textAlign: 'center', fontSize: '16px' },
+        sizeGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }, // 2 Columns for text variants
+        sizeBtn: (isActive) => ({ padding: '12px', borderRadius: '10px', border: isActive ? 'none' : '1px solid rgba(100, 116, 139, 0.3)', background: isActive ? 'linear-gradient(135deg, #06b6d4, #3b82f6)' : 'rgba(30, 41, 59, 0.8)', color: 'white', cursor: 'pointer', textAlign: 'center' }),
+        qtyControl: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }, qtyBtn: { width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(30, 41, 59, 0.8)', color: 'white', border: '1px solid rgba(100,116,139,0.3)', cursor: 'pointer' },
+        finishingGrid: { display: 'flex', flexWrap: 'wrap', gap: '8px' }, finishingBtn: (isActive) => ({ padding: '8px 12px', borderRadius: '8px', border: isActive ? 'none' : '1px solid rgba(100, 116, 139, 0.3)', background: isActive ? '#10b981' : 'rgba(30, 41, 59, 0.8)', color: 'white', fontSize: '12px', cursor: 'pointer' }),
+        footer: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' },
+        totalValue: { fontSize: '24px', fontWeight: '800', color: '#22c55e' },
+        btnConfirm: { padding: '12px 24px', borderRadius: '10px', border: 'none', background: canSubmit() ? 'linear-gradient(135deg, #059669, #10b981)' : '#475569', color: 'white', fontWeight: '700', cursor: canSubmit() ? 'pointer' : 'not-allowed' },
+        btnCancel: { background: 'transparent', border: '1px solid #64748b', color: '#94a3b8', padding: '12px 20px', borderRadius: '10px', cursor: 'pointer' }
+    };
 
-    // Main Render
-    const modalContent = (
+    return createPortal(
         <div style={styles.overlay} onClick={onClose}>
-            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.header}>
-                    <div style={styles.productName}>{product.name}</div>
-                    <div style={styles.subtitle}>Spesifikasi Produk</div>
-                </div>
+            <div style={styles.modal} onClick={e => e.stopPropagation()}>
+                <div style={styles.header}><div style={styles.productName}>{product.name}</div><div style={styles.subtitle}>Spesifikasi Produk</div></div>
+
                 <div style={styles.section}>
                     <div style={styles.sectionLabel}>📐 Spesifikasi</div>
                     {renderSpecificInputs()}
-                    {!(inputMode === 'LINEAR' && product.variants && product.variants.length > 0) && (
+                    {!(inputMode === 'LINEAR' && isNested) && (
                         <div style={{ marginTop: '16px' }}>
                             <label style={styles.label}>Jumlah (Qty)</label>
                             <div style={styles.qtyControl}>
                                 <button style={styles.qtyBtn} onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
-                                <span style={styles.qtyValue}>{qty}</span>
+                                <span style={{ fontSize: '24px', fontWeight: '800', color: 'white', minWidth: '60px', textAlign: 'center' }}>{qty}</span>
                                 <button style={styles.qtyBtn} onClick={() => setQty(qty + 1)}>+</button>
                             </div>
                         </div>
                     )}
                 </div>
+
                 {product.finishing_groups && product.finishing_groups.length > 0 && (
                     <div style={styles.section}>
                         <div style={styles.sectionLabel}>✨ Finishing / Opsi Tambahan</div>
                         {product.finishing_groups.map(group => (
                             <div key={group.id} style={{ marginBottom: '16px' }}>
-                                <label style={{ ...styles.label, marginBottom: '8px', display: 'block' }}>{group.title}</label>
+                                <label style={{ ...styles.label, marginBottom: '8px' }}>{group.title}</label>
                                 <div style={styles.finishingGrid}>
                                     {group.options.map(opt => {
                                         const isSelected = finishingGroupSelections[group.id]?.label === opt.label;
                                         return (
-                                            <button
-                                                key={opt.label}
-                                                onClick={() => setFinishingGroupSelections({ ...finishingGroupSelections, [group.id]: opt })}
-                                                style={styles.finishingBtn(isSelected)}
-                                            >
+                                            <button key={opt.label} onClick={() => setFinishingGroupSelections({ ...finishingGroupSelections, [group.id]: opt })} style={styles.finishingBtn(isSelected)}>
                                                 {opt.label} {opt.price > 0 && `+${formatRupiah(opt.price)}`}
                                             </button>
                                         );
@@ -520,19 +388,13 @@ export function ProductConfigModal({
                         ))}
                     </div>
                 )}
+
                 <div style={styles.footer}>
-                    <div style={styles.totalSection}>
-                        <div style={styles.totalLabel}>Total Harga</div>
-                        <div style={styles.totalValue}>{formatRupiah(preview.subtotal || 0)}</div>
-                    </div>
-                    <div style={styles.actions}>
-                        <button style={styles.btnCancel} onClick={onClose}>Batal</button>
-                        <button style={styles.btnConfirm} onClick={handleSubmit} disabled={!canSubmit()}>🛒 Simpan</button>
-                    </div>
+                    <div><div style={{ fontSize: '11px', color: '#64748b' }}>TOTAL HARGA</div><div style={styles.totalValue}>{formatRupiah(preview.subtotal || 0)}</div></div>
+                    <div style={{ display: 'flex', gap: '10px' }}><button style={styles.btnCancel} onClick={onClose}>Batal</button><button style={styles.btnConfirm} onClick={handleSubmit} disabled={!canSubmit()}>🛒 Simpan</button></div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
-
-    return createPortal(modalContent, document.body);
 }

@@ -6,15 +6,17 @@ import { seedPilotProduct, verifyPilotProduct } from './data/seeders/pilotSeeder
 import { runMigration } from './data/seeders/migrationSeeder.js'
 import { runSurgicalFix } from './data/seeders/surgicalFix.js'
 import { runLargeFormatReconstruction } from './data/seeders/reconstructLargeFormat.js'
+import { runOfficeReconstruction } from './data/seeders/reconstructOffice.js'
 
 // GEN 2 INITIALIZATION SEQUENCE
 // 1. Seed pilot product - DISABLED (replaced by master products)
 // 2. Run migration (consolidate categories, archive old products)
 // 3. Run surgical fix (restore missing, move misplaced, assign input_mode)
-// 4. Run LARGE_FORMAT reconstruction (replace with 4 master products)
+// 4. Run LARGE_FORMAT reconstruction (4 master products)
+// 5. Run STATIONERY_OFFICE reconstruction (6 master products)
 
 // PILOT SEEDER DISABLED - Prevents zombie product recreation
-// Master products are now seeded via runLargeFormatReconstruction()
+// Master products are now seeded via reconstruction scripts
 // seedPilotProduct().then(() => {
 //   verifyPilotProduct();
 
@@ -26,7 +28,12 @@ setTimeout(() => {
       runSurgicalFix().then(() => {
         // Run LARGE_FORMAT reconstruction after surgical fix
         setTimeout(() => {
-          runLargeFormatReconstruction();
+          runLargeFormatReconstruction().then(() => {
+            // Run STATIONERY_OFFICE reconstruction after LARGE_FORMAT
+            setTimeout(() => {
+              runOfficeReconstruction();
+            }, 500);
+          });
         }, 500);
       });
     }, 500);
