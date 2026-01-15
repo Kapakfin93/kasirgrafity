@@ -169,8 +169,8 @@ export function useTransaction() {
         // Strict Type Conversion for Global Use
         const safeQty = parseInt(qty);
 
-        // Detect pricingType from current category
-        const pricingType = currentCategory?.logic_type || 'MANUAL';
+        // Detect pricingType: PRIORITIZE product.pricing_model (Gen 3.2), fallback to category
+        const pricingType = product.pricing_model || currentCategory?.logic_type || 'MANUAL';
 
         // ===== CALCULATE PRICE (using core calculators) =====
         let calculatedPrice = 0;

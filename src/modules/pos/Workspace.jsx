@@ -5,7 +5,7 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { CustomerSelector } from './CustomerSelector';
 import { ReceiptSection } from './ReceiptSection';
 import { NotaPreview } from './NotaPreview';
-import { ProductConfigModal } from './ProductConfigModal';
+import ProductConfigModal from './ProductConfigModal';
 import { formatRupiah } from '../../core/formatters';
 
 /**
