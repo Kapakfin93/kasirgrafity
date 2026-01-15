@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, ShoppingCart, Info, FileText, Check, Ruler } from "lucide-react";
+import {
+  X,
+  ShoppingCart,
+  Info,
+  FileText,
+  Check,
+  Ruler,
+  Lock,
+} from "lucide-react";
 
 export default function ProductConfigModal({
   isOpen,
@@ -23,32 +31,51 @@ export default function ProductConfigModal({
       setQty(product.min_qty || 1);
       setNotes("");
       setSelectedFinishings({});
-      setDimensions({ length: 1, width: 1 });
 
       // Auto-select defaults based on Mode
-      if (product.input_mode === "AREA" && product.variants?.length > 0) {
-        setSelectedVariant(product.variants[0]);
+      if (
+        (product.input_mode === "AREA" || product.input_mode === "LINEAR") &&
+        product.variants?.length > 0
+      ) {
+        const defaultVar = product.variants[0];
+        setSelectedVariant(defaultVar);
+        // For Linear, auto-set width from variant
+        if (product.input_mode === "LINEAR") {
+          setDimensions({ length: 1, width: defaultVar.width || 1 });
+        } else {
+          setDimensions({ length: 1, width: 1 });
+        }
       } else if (
         product.input_mode === "UNIT" &&
         product.variants?.length > 0
       ) {
         setSelectedVariant(product.variants[0]);
+        setDimensions({ length: 1, width: 1 });
       } else if (product.input_mode === "MATRIX") {
         setMatrixSelection({ step1: null, step2: null });
+        setDimensions({ length: 1, width: 1 });
       }
     }
   }, [isOpen, product]);
 
-  // --- 2. SAFE GUARDS & HELPERS ---
+  // --- 2. UPDATE WIDTH ON VARIANT CHANGE (LINEAR ONLY) ---
+  useEffect(() => {
+    if (product?.input_mode === "LINEAR" && selectedVariant) {
+      setDimensions((prev) => ({ ...prev, width: selectedVariant.width || 1 }));
+    }
+  }, [selectedVariant, product]);
+
+  // --- 3. SAFE GUARDS & HELPERS ---
   const safeProduct = product || {};
   const inputMode = safeProduct.input_mode || "UNIT";
   const isArea = inputMode === "AREA";
+  const isLinear = inputMode === "LINEAR"; // NEW MODE
   const isMatrix = inputMode === "MATRIX";
 
-  // --- 3. PRICE CALCULATION LOGIC ---
+  // --- 4. PRICE CALCULATION LOGIC ---
   const currentBasePrice = useMemo(() => {
     if (!product) return 0;
-    if (isArea || !isMatrix) {
+    if (isArea || isLinear || !isMatrix) {
       return selectedVariant
         ? selectedVariant.price || safeProduct.base_price || 0
         : safeProduct.base_price || 0;
@@ -69,19 +96,24 @@ export default function ProductConfigModal({
   }, [
     product,
     isArea,
+    isLinear,
     isMatrix,
     selectedVariant,
     matrixSelection,
     safeProduct,
   ]);
 
-  // AREA LOGIC: Ceiling Rounding (1.5 x 1.5 = 2.25 -> 3m)
+  // AREA/LINEAR LOGIC
   const areaCalculation = useMemo(() => {
-    if (!isArea) return { area: 0, chargeable: 0 };
+    if (!isArea && !isLinear) return { area: 0, chargeable: 0 };
+
     const rawArea = dimensions.length * dimensions.width;
-    const chargeable = Math.ceil(rawArea); // RULE: ROUND UP (CEILING)
+
+    // RULE: Area = Round Up. Linear = Exact Length.
+    const chargeable = isArea ? Math.ceil(rawArea) : dimensions.length;
+
     return { area: rawArea, chargeable };
-  }, [dimensions, isArea]);
+  }, [dimensions, isArea, isLinear]);
 
   const getTieredPrice = (base, quantity) => {
     if (!safeProduct.advanced_features?.wholesale_rules) return base;
@@ -92,15 +124,28 @@ export default function ProductConfigModal({
 
   const finalUnitPrice = useMemo(() => {
     let price = getTieredPrice(currentBasePrice, qty);
+
     if (isArea) {
-      // Display Price = Price/m² * Chargeable Area
+      // Area Price = Price/m² * Ceiled Area
       return price * areaCalculation.chargeable;
     }
+    if (isLinear) {
+      // Linear Price = Price/m * Length
+      return price * dimensions.length;
+    }
     return price;
-  }, [currentBasePrice, qty, isArea, areaCalculation]);
+  }, [
+    currentBasePrice,
+    qty,
+    isArea,
+    isLinear,
+    areaCalculation,
+    dimensions.length,
+  ]);
 
   const finishingTotal = useMemo(() => {
-    // RULE: Finishing is FREE for Large Format (Area Mode)
+    // RULE: Finishing is FREE ONLY for AREA (Banner).
+    // LINEAR (Sticker/Fabric) is PAID.
     if (isArea) return 0;
 
     if (!safeProduct.finishing_groups) return 0;
@@ -108,19 +153,27 @@ export default function ProductConfigModal({
     safeProduct.finishing_groups.forEach((group) => {
       const selected = selectedFinishings[group.id];
       if (selected) {
+        const calculateOptionPrice = (opt) => {
+          // If Linear, finishing price is per meter
+          if (isLinear && group.price_mode === "PER_METER") {
+            return opt.price * dimensions.length;
+          }
+          return opt.price;
+        };
+
         if (Array.isArray(selected)) {
           selected.forEach((optLabel) => {
             const opt = group.options?.find((o) => o.label === optLabel);
-            if (opt) total += opt.price;
+            if (opt) total += calculateOptionPrice(opt);
           });
         } else {
           const opt = group.options?.find((o) => o.label === selected);
-          if (opt) total += opt.price;
+          if (opt) total += calculateOptionPrice(opt);
         }
       }
     });
     return total;
-  }, [safeProduct, selectedFinishings, isArea]);
+  }, [safeProduct, selectedFinishings, isArea, isLinear, dimensions.length]);
 
   const grandTotal = (finalUnitPrice + finishingTotal) * qty;
 
@@ -132,7 +185,7 @@ export default function ProductConfigModal({
     return null;
   }, [safeProduct, qty]);
 
-  // --- 4. HANDLERS ---
+  // --- 5. HANDLERS ---
   const handleSave = () => {
     if (isMatrix && (!matrixSelection.step1 || !matrixSelection.step2)) {
       alert("Mohon lengkapi pilihan varian");
@@ -140,41 +193,44 @@ export default function ProductConfigModal({
     }
 
     // Payload Construction
-    const productPriceToSend = isArea
-      ? currentBasePrice // Send RAW price/m² for Area
-      : finalUnitPrice + finishingTotal; // Send Final Unit Price for others
+    const productPriceToSend =
+      isArea || isLinear
+        ? currentBasePrice // Send RAW price for recalculation
+        : finalUnitPrice + finishingTotal;
 
     let variantLabel = "Standard";
     if (isMatrix)
       variantLabel = `${matrixSelection.step1} | ${matrixSelection.step2}`;
-    else if (isArea && selectedVariant)
+    else if ((isArea || isLinear) && selectedVariant)
       variantLabel = `${selectedVariant.label} (${dimensions.length}m x ${dimensions.width}m)`;
     else if (selectedVariant) variantLabel = selectedVariant.label;
 
-    // Build finishings array for cart validator (FIX: object -> array)
+    // Build finishings array
     const finishingsArray = [];
     if (safeProduct?.finishing_groups) {
       safeProduct.finishing_groups.forEach((group) => {
         const selected = selectedFinishings[group?.id];
         if (selected) {
-          if (Array.isArray(selected)) {
-            selected.forEach((optLabel) => {
-              const opt = group?.options?.find((o) => o.label === optLabel);
-              if (opt)
-                finishingsArray.push({
-                  id: opt.label,
-                  name: opt.label,
-                  price: opt.price || 0,
-                });
-            });
-          } else {
-            const opt = group?.options?.find((o) => o.label === selected);
-            if (opt)
+          const processOpt = (optLabel) => {
+            const opt = group?.options?.find((o) => o.label === optLabel);
+            if (opt) {
+              let finalOptPrice = opt.price || 0;
+              if (isLinear && group.price_mode === "PER_METER") {
+                finalOptPrice = opt.price * dimensions.length;
+              }
+
               finishingsArray.push({
                 id: opt.label,
                 name: opt.label,
-                price: opt.price || 0,
+                price: finalOptPrice,
               });
+            }
+          };
+
+          if (Array.isArray(selected)) {
+            selected.forEach(processOpt);
+          } else {
+            processOpt(selected);
           }
         }
       });
@@ -187,17 +243,18 @@ export default function ProductConfigModal({
         pricing_model: inputMode,
       },
       qty,
-      dimensions: isArea
-        ? {
-            length: dimensions.length,
-            width: dimensions.width,
-            area: areaCalculation.area,
-          }
-        : isMatrix
-        ? { sizeKey: matrixSelection.step2 }
-        : {},
+      dimensions:
+        isArea || isLinear
+          ? {
+              length: dimensions.length,
+              width: dimensions.width,
+              area: areaCalculation.area,
+            }
+          : isMatrix
+          ? { sizeKey: matrixSelection.step2 }
+          : {},
       final_price: productPriceToSend,
-      finishings: finishingsArray, // ✅ FIXED: Array instead of object
+      finishings: finishingsArray,
       selected_details: {
         variant: variantLabel,
         notes: notes,
@@ -208,14 +265,14 @@ export default function ProductConfigModal({
 
   if (!isOpen || !product) return null;
 
-  // --- 5. RENDERERS (SULTAN STYLING APPLIED) ---
+  // --- 6. RENDERERS (SULTAN STYLING APPLIED) ---
 
-  const renderAreaInputs = () => (
+  const renderDimensionInputs = () => (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-300">
       <div>
         <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-          <span className="w-4 h-[2px] bg-cyan-500"></span> Pilih Bahan (Per
-          Meter)
+          <span className="w-4 h-[2px] bg-cyan-500"></span> Pilih Bahan{" "}
+          {isLinear ? "(Per Meter Lari)" : "(Per Meter Persegi)"}
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {product.variants?.map((v, i) => {
@@ -224,23 +281,36 @@ export default function ProductConfigModal({
               <button
                 key={i}
                 onClick={() => setSelectedVariant(v)}
-                className={`p-5 rounded-2xl border-2 text-left transition-all flex justify-between items-center group ${
+                className={`p-5 rounded-2xl border-2 text-left transition-all flex justify-between items-start group ${
                   isSelected
                     ? "border-cyan-500 bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
                     : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
                 }`}
               >
-                <span
-                  className={`font-bold text-base ${
-                    isSelected
-                      ? "text-white"
-                      : "text-slate-300 group-hover:text-white"
-                  }`}
-                >
-                  {v.label}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <span
+                    className={`font-bold text-base ${
+                      isSelected
+                        ? "text-white"
+                        : "text-slate-300 group-hover:text-white"
+                    }`}
+                  >
+                    {v.label}
+                  </span>
+                  {isLinear && (
+                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <Lock size={10} className="text-amber-500" /> Lebar:{" "}
+                      {v.width}m (Fixed)
+                    </span>
+                  )}
+                  {v.specs && (
+                    <span className="text-[10px] text-slate-600 italic">
+                      {v.specs}
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs bg-slate-900 px-3 py-1 rounded-full text-cyan-400 font-mono border border-slate-700">
-                  Rp {v.price?.toLocaleString()}/m²
+                  Rp {v.price?.toLocaleString()}/{isLinear ? "m" : "m²"}
                 </span>
               </button>
             );
@@ -250,7 +320,7 @@ export default function ProductConfigModal({
 
       <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm">
         <h3 className="text-slate-200 text-sm font-bold mb-6 flex items-center gap-2">
-          <Ruler size={18} className="text-emerald-400" /> Input Ukuran (Meter)
+          <Ruler size={18} className="text-emerald-400" /> Input Ukuran
         </h3>
         <div className="flex items-center gap-4">
           <div className="flex-1">
@@ -262,7 +332,7 @@ export default function ProductConfigModal({
               step="0.1"
               min="0.1"
               value={dimensions.length}
-              onFocus={(e) => e.target.select()} // UX: Auto-select
+              onFocus={(e) => e.target.select()}
               onChange={(e) =>
                 setDimensions((prev) => ({
                   ...prev,
@@ -273,42 +343,49 @@ export default function ProductConfigModal({
             />
           </div>
           <div className="text-slate-600 font-black text-xl pt-6">X</div>
-          <div className="flex-1">
-            <label className="text-xs text-slate-500 mb-2 block font-bold uppercase tracking-wider">
-              Lebar (m)
+          <div className="flex-1 relative">
+            <label className="text-xs text-slate-500 mb-2 block font-bold uppercase tracking-wider flex justify-between">
+              Lebar (m){" "}
+              {isLinear && <Lock size={12} className="text-amber-500" />}
             </label>
             <input
               type="number"
-              step="0.1"
-              min="0.1"
               value={dimensions.width}
-              onFocus={(e) => e.target.select()} // UX: Auto-select
+              readOnly={isLinear} // LOCK WIDTH FOR LINEAR
+              onFocus={(e) => !isLinear && e.target.select()}
               onChange={(e) =>
+                !isLinear &&
                 setDimensions((prev) => ({
                   ...prev,
                   width: parseFloat(e.target.value) || 0,
                 }))
               }
-              className="w-full bg-slate-900 border border-slate-600 rounded-xl p-4 text-white text-center font-black text-2xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all"
+              className={`w-full border rounded-xl p-4 text-center font-black text-2xl outline-none transition-all ${
+                isLinear
+                  ? "bg-slate-900/50 border-slate-800 text-slate-500 cursor-not-allowed"
+                  : "bg-slate-900 border-slate-600 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50"
+              }`}
             />
           </div>
         </div>
 
         <div className="mt-6 flex justify-between items-center bg-slate-900/80 p-4 rounded-xl border border-slate-700/50 border-dashed">
           <div className="text-xs text-slate-400 font-medium">
-            Total Luas Real:{" "}
+            Total Luas:{" "}
             <span className="text-white font-bold ml-1">
               {areaCalculation.area.toFixed(2)} m²
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">
-              Pembulatan:
-            </span>
-            <span className="text-lg text-emerald-400 font-black bg-emerald-950/30 px-3 py-1 rounded-lg border border-emerald-500/30">
-              {areaCalculation.chargeable} m²
-            </span>
-          </div>
+          {isArea && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">
+                Pembulatan:
+              </span>
+              <span className="text-lg text-emerald-400 font-black bg-emerald-950/30 px-3 py-1 rounded-lg border border-emerald-500/30">
+                {areaCalculation.chargeable} m²
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -329,8 +406,8 @@ export default function ProductConfigModal({
           </header>
 
           <div className="space-y-12">
-            {isArea ? (
-              renderAreaInputs()
+            {isArea || isLinear ? (
+              renderDimensionInputs()
             ) : (
               <section>
                 <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -459,7 +536,7 @@ export default function ProductConfigModal({
                   </span>
                   {isArea && (
                     <span className="text-emerald-400 text-[10px] bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-500/30 font-bold shadow-[0_0_10px_rgba(16,185,129,0.1)]">
-                      FREE FOR LARGE FORMAT
+                      FREE FOR BANNER
                     </span>
                   )}
                 </h3>
@@ -513,6 +590,7 @@ export default function ProductConfigModal({
                               {!isArea && opt.price > 0 ? (
                                 <span className="ml-1 opacity-70 text-[10px] bg-slate-950 px-1.5 rounded text-slate-400">
                                   +{opt.price / 1000}k
+                                  {group.price_mode === "PER_METER" ? "/m" : ""}
                                 </span>
                               ) : (
                                 <span className="ml-1 text-[10px] text-emerald-400 font-bold">
@@ -555,7 +633,7 @@ export default function ProductConfigModal({
                 <input
                   type="number"
                   value={qty}
-                  onFocus={(e) => e.target.select()} // UX: Auto-select
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) =>
                     setQty(Math.max(1, parseInt(e.target.value) || 1))
                   }
@@ -575,6 +653,15 @@ export default function ProductConfigModal({
                     <strong className="text-slate-300">{qty}</strong> x (
                     <strong className="text-slate-300">
                       {areaCalculation.chargeable}m²
+                    </strong>
+                    )
+                  </span>
+                ) : isLinear ? (
+                  <span>
+                    Total Cetak:{" "}
+                    <strong className="text-slate-300">{qty}</strong> x (
+                    <strong className="text-slate-300">
+                      {dimensions.length}m
                     </strong>
                     )
                   </span>
@@ -614,10 +701,13 @@ export default function ProductConfigModal({
           <div className="mt-8 pt-8 border-t border-slate-800/50 space-y-6">
             <div className="space-y-2 text-sm font-medium">
               <div className="flex justify-between text-slate-500">
-                <span>Harga Dasar {isArea ? "(Per Meter)" : "(Satuan)"}</span>
+                <span>
+                  Harga Dasar{" "}
+                  {isArea ? "(Per m²)" : isLinear ? "(Per m)" : "(Satuan)"}
+                </span>
                 <span className="text-slate-300">
                   Rp{" "}
-                  {isArea
+                  {isArea || isLinear
                     ? currentBasePrice.toLocaleString()
                     : finalUnitPrice.toLocaleString()}
                 </span>
@@ -627,6 +717,14 @@ export default function ProductConfigModal({
                   <span>Luas Terhitung</span>
                   <span className="text-emerald-400">
                     {areaCalculation.chargeable} m²
+                  </span>
+                </div>
+              )}
+              {isLinear && (
+                <div className="flex justify-between text-slate-500">
+                  <span>Panjang Cetak</span>
+                  <span className="text-emerald-400">
+                    {dimensions.length} m
                   </span>
                 </div>
               )}
