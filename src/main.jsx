@@ -8,6 +8,7 @@ import { runSurgicalFix } from './data/seeders/surgicalFix.js'
 import { runLargeFormatReconstruction } from './data/seeders/reconstructLargeFormat.js'
 import { runOfficeReconstruction } from './data/seeders/reconstructOffice.js'
 import { runMerchReconstruction } from './data/seeders/reconstructMerchandise.js'
+import { runA3Reconstruction } from './data/seeders/reconstructDigitalA3.js'
 
 // GEN 2 INITIALIZATION SEQUENCE
 // 1. Seed pilot product - DISABLED (replaced by master products)
@@ -35,7 +36,12 @@ setTimeout(() => {
               runOfficeReconstruction().then(() => {
                 // Run MERCHANDISE reconstruction after OFFICE
                 setTimeout(() => {
-                  runMerchReconstruction();
+                  runMerchReconstruction().then(() => {
+                    // Run DIGITAL_A3_PRO reconstruction after MERCH
+                    setTimeout(() => {
+                      runA3Reconstruction();
+                    }, 500);
+                  });
                 }, 500);
               });
             }, 500);
