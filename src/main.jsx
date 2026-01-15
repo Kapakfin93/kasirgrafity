@@ -9,6 +9,7 @@ import { runLargeFormatReconstruction } from './data/seeders/reconstructLargeFor
 import { runOfficeReconstruction } from './data/seeders/reconstructOffice.js'
 import { runMerchReconstruction } from './data/seeders/reconstructMerchandise.js'
 import { runA3Reconstruction } from './data/seeders/reconstructDigitalA3.js'
+import { runCustomReconstruction } from './data/seeders/reconstructCustom.js'
 
 // GEN 2 INITIALIZATION SEQUENCE
 // 1. Seed pilot product - DISABLED (replaced by master products)
@@ -39,7 +40,12 @@ setTimeout(() => {
                   runMerchReconstruction().then(() => {
                     // Run DIGITAL_A3_PRO reconstruction after MERCH
                     setTimeout(() => {
-                      runA3Reconstruction();
+                      runA3Reconstruction().then(() => {
+                        // Run CUSTOM_SERVICES reconstruction after A3
+                        setTimeout(() => {
+                          runCustomReconstruction();
+                        }, 500);
+                      });
                     }, 500);
                   });
                 }, 500);
