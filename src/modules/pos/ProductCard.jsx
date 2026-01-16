@@ -1,63 +1,171 @@
-import React from 'react';
-import { Package, Shirt, Scroll, Sticker, CreditCard, Settings, Printer, Stamp } from 'lucide-react';
+import React from "react";
+import {
+  Package,
+  Ruler,
+  Mountain,
+  Scroll,
+  Image as ImageIcon,
+  Shirt,
+  Settings,
+  CheckCircle2,
+  ArrowRight,
+} from "lucide-react";
 
-// Helper to pick icon based on category ID keywords
-const getIcon = (catId) => {
-    const id = catId?.toUpperCase() || '';
-    if (id.includes('JERSEY') || id.includes('KAOS')) return <Shirt size={24} className="text-cyan-400" />;
-    if (id.includes('BANNER') || id.includes('LARGE')) return <Scroll size={24} className="text-amber-400" />;
-    if (id.includes('STIKER')) return <Sticker size={24} className="text-emerald-400" />;
-    if (id.includes('A3') || id.includes('POD')) return <Printer size={24} className="text-rose-400" />;
-    if (id.includes('KARTU') || id.includes('OFFICE')) return <CreditCard size={24} className="text-purple-400" />;
-    if (id.includes('MERCH') || id.includes('PIN')) return <Stamp size={24} className="text-indigo-400" />;
-    if (id.includes('CUSTOM')) return <Settings size={24} className="text-slate-400" />;
-    return <Package size={24} className="text-slate-400" />; // Default
+export const ProductCard = ({ product, onClick }) => {
+  // --- 1. DETECT HERO CONDITION (LOOSER CHECK) ---
+  const isOutdoorHero =
+    product.categoryId === "CAT_OUTDOOR" || product.input_mode === "AREA";
+
+  // Debugging (Check Console if this triggers)
+  if (product.name.includes("SPANDUK")) {
+    console.log(
+      `[ProductCard] Rendering ${product.name}: isOutdoorHero=${isOutdoorHero}, CatID=${product.categoryId}`
+    );
+  }
+
+  // --- 2. HERO CARD LAYOUT (OUTDOOR / SPANDUK) ---
+  if (isOutdoorHero) {
+    return (
+      <div
+        onClick={() => onClick(product)}
+        className="group relative col-span-full sm:col-span-2 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 via-slate-900 to-black border-2 border-cyan-500/30 p-6 hover:border-cyan-400 hover:shadow-[0_0_40px_rgba(6,182,212,0.25)] transition-all duration-300 cursor-pointer"
+      >
+        {/* Abstract Background Decoration */}
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-400/20 transition-all duration-500"></div>
+
+        <div className="relative z-10 flex flex-col h-full justify-between">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20">
+                <Mountain className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-white uppercase tracking-wide">
+                  {product.name.replace("(Outdoor)", "")}
+                </h3>
+                <p className="text-cyan-400 text-sm font-medium tracking-wider">
+                  OUTDOOR & BALIHO HIGH RES
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Smart Badges Info */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            <Badge
+              icon={<Scroll size={14} />}
+              text="4 Opsi Bahan"
+              color="bg-slate-800 text-cyan-300 border-cyan-500/30"
+            />
+            <Badge
+              icon={<CheckCircle2 size={14} />}
+              text="Free Finishing"
+              color="bg-emerald-900/30 text-emerald-400 border-emerald-500/30"
+            />
+            <Badge
+              icon={<Ruler size={14} />}
+              text="Hitung Meter (m²)"
+              color="bg-purple-900/30 text-purple-400 border-purple-500/30"
+            />
+          </div>
+
+          {/* Action Button */}
+          <div className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-center tracking-widest uppercase group-hover:scale-[1.02] transition-transform shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2">
+            KONFIGURASI UKURAN <ArrowRight size={18} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- 3. STANDARD CARD LAYOUT (FOR OTHERS) ---
+  return (
+    <div
+      onClick={() => onClick(product)}
+      className="group relative flex flex-col justify-between overflow-hidden rounded-3xl bg-slate-900/50 border border-slate-700/50 p-5 hover:bg-slate-800 hover:border-cyan-500/50 hover:shadow-xl transition-all duration-300 cursor-pointer"
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div
+          className={`p-3 rounded-2xl ${getIconColor(
+            product.categoryId
+          )} bg-opacity-20`}
+        >
+          {getCategoryIcon(product.categoryId)}
+        </div>
+        <div className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-bold text-slate-400">
+          {product.input_mode}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-lg font-bold text-slate-100 leading-tight mb-1 line-clamp-2">
+          {product.name}
+        </h3>
+        <p className="text-slate-500 text-xs">{product.description}</p>
+      </div>
+
+      {/* Standard Price Display */}
+      <div className="mt-4 pt-4 border-t border-slate-800">
+        <p className="text-xs text-slate-400 font-medium mb-1">Mulai dari</p>
+        <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400">
+          {formatCurrency(product.base_price || 0)}
+          {product.input_mode === "LINEAR" && (
+            <span className="text-sm text-slate-500 font-normal">/m</span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
 };
 
-export default function ProductCard({ product, onSelect }) {
-    // Check if product has wholesale features enabled
-    const hasWholesale = product.advanced_features?.wholesale_rules?.length > 0 || product.calc_engine === 'TIERED' || product.input_mode === 'MATRIX';
+// --- HELPER COMPONENTS & FUNCTIONS ---
 
-    return (
-        <button
-            onClick={() => onSelect(product)}
-            // SULTAN STYLING: Dark theme, glass effect border, neon glow on hover
-            className="relative group bg-slate-800/40 backdrop-blur-md p-5 rounded-[1.5rem] border border-slate-700/50 hover:border-cyan-500/50 hover:shadow-[0_0_25px_rgba(6,182,212,0.15)] transition-all duration-300 text-left flex flex-col h-full overflow-hidden hover:-translate-y-1"
-        >
-            {/* Glow Effect Background Layer */}
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+const Badge = ({ icon, text, color }) => (
+  <div
+    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${color} text-xs font-semibold`}
+  >
+    {icon}
+    <span>{text}</span>
+  </div>
+);
 
-            <div className="relative z-10 flex-1 flex flex-col justify-between">
-                {/* HEADER: Icon & Badge */}
-                <div className="flex justify-between items-start mb-4">
-                    <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-700/50 group-hover:border-cyan-500/30 transition-colors shadow-inner">
-                        {getIcon(product.categoryId)}
-                    </div>
-                    {hasWholesale && (
-                        <span className="px-2.5 py-1 text-[10px] uppercase tracking-widest font-bold bg-emerald-950/50 text-emerald-400 rounded-full border border-emerald-800/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
-                            Grosir Ready
-                        </span>
-                    )}
-                </div>
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(amount);
+};
 
-                {/* PRODUCT INFO */}
-                <div>
-                    <h3 className="text-xl font-black text-slate-100 leading-tight mb-2 line-clamp-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-cyan-200 transition-all">
-                        {product.name}
-                    </h3>
-                    <p className="text-sm text-slate-400 font-medium flex items-baseline gap-1">
-                        Mulai <span className="text-base font-bold text-slate-300">Rp {product.base_price?.toLocaleString()}</span>
-                    </p>
-                </div>
-            </div>
+const getCategoryIcon = (catId) => {
+  switch (catId) {
+    case "CAT_OUTDOOR":
+      return <Mountain size={24} className="text-emerald-400" />;
+    case "CAT_ROLLS":
+      return <Scroll size={24} className="text-cyan-400" />;
+    case "CAT_POSTER":
+      return <ImageIcon size={24} className="text-purple-400" />;
+    case "MERCHANDISE":
+      return <Shirt size={24} className="text-pink-400" />;
+    default:
+      return <Package size={24} className="text-slate-400" />;
+  }
+};
 
-            {/* FOOTER: Input Mode Tag */}
-            <div className="relative z-10 mt-5 pt-4 border-t border-slate-700/30 flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider group-hover:text-slate-400 transition-colors">
-                <span className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${product.input_mode === 'MATRIX' ? 'bg-rose-500' : product.input_mode === 'TIERED' ? 'bg-emerald-500' : 'bg-cyan-500'}`}></span>
-                    {product.input_mode} MODE
-                </span>
-            </div>
-        </button>
-    );
-}
+const getIconColor = (catId) => {
+  switch (catId) {
+    case "CAT_OUTDOOR":
+      return "bg-emerald-500";
+    case "CAT_ROLLS":
+      return "bg-cyan-500";
+    case "CAT_POSTER":
+      return "bg-purple-500";
+    case "MERCHANDISE":
+      return "bg-pink-500";
+    default:
+      return "bg-slate-500";
+  }
+};
+
+export default ProductCard;

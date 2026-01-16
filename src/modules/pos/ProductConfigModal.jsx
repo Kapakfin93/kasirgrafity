@@ -283,7 +283,11 @@ export default function ProductConfigModal({
                 onClick={() => setSelectedVariant(v)}
                 className={`p-5 rounded-2xl border-2 text-left transition-all flex justify-between items-start group ${
                   isSelected
-                    ? "border-cyan-500 bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+                    ? isArea
+                      ? "border-cyan-400 bg-slate-800 shadow-[0_0_25px_rgba(34,211,238,0.35)]"
+                      : "border-cyan-500 bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+                    : isArea
+                    ? "border-slate-700/50 hover:border-slate-500 bg-slate-800/30 opacity-70"
                     : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
                 }`}
               >
@@ -318,7 +322,13 @@ export default function ProductConfigModal({
         </div>
       </div>
 
-      <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm">
+      <div
+        className={`p-6 rounded-3xl backdrop-blur-sm ${
+          isArea
+            ? "bg-slate-900/50 border border-slate-700 shadow-inner"
+            : "bg-slate-800/30 border border-slate-700/50"
+        }`}
+      >
         <h3 className="text-slate-200 text-sm font-bold mb-6 flex items-center gap-2">
           <Ruler size={18} className="text-emerald-400" /> Input Ukuran
         </h3>
@@ -393,7 +403,11 @@ export default function ProductConfigModal({
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300">
-      <div className="bg-[#0f172a] w-full max-w-6xl rounded-[2rem] border border-slate-700/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col md:flex-row h-[95vh] md:h-[90vh] overflow-hidden relative">
+      <div
+        className={`${
+          isArea ? "bg-slate-950" : "bg-[#0f172a]"
+        } w-full max-w-6xl rounded-[2rem] border border-slate-700/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col md:flex-row h-[95vh] md:h-[90vh] overflow-hidden relative`}
+      >
         {/* LEFT COLUMN: OPTIONS */}
         <div className="flex-1 p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950">
           <header className="mb-10 border-b border-slate-800/50 pb-6">
@@ -741,7 +755,13 @@ export default function ProductConfigModal({
               <div className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">
                 Total Estimasi
               </div>
-              <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400">
+              <div
+                className={`font-black text-transparent bg-clip-text ${
+                  isArea
+                    ? "text-5xl bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 drop-shadow-[0_0_20px_rgba(251,191,36,0.4)]"
+                    : "text-4xl bg-gradient-to-r from-cyan-400 to-emerald-400"
+                }`}
+              >
                 Rp {grandTotal.toLocaleString()}
               </div>
             </div>
