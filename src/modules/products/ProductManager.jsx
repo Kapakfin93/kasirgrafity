@@ -9,7 +9,13 @@ import { useProductStore } from "../../stores/useProductStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import { formatRupiah } from "../../core/formatters";
 import { ConfirmModal } from "../../components/ConfirmModal";
-import { Edit } from "lucide-react";
+import {
+  Edit,
+  ArrowLeft,
+  Mountain,
+  Scroll,
+  Image as ImageIcon,
+} from "lucide-react";
 
 // ============================================
 // PRODUCT FORM MODAL (with In-Context Creation)
@@ -21,6 +27,7 @@ function ProductFormModal({
   categories,
   onSave,
   onAddCategory, // Callback to open category modal
+  preselectedCategory, // NEW: Auto-select category in TABLE mode
 }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -54,7 +61,7 @@ function ProductFormModal({
       setFormData({
         name: "",
         price: 0,
-        categoryId: categories[0]?.id || "",
+        categoryId: preselectedCategory || categories[0]?.id || "",
         prices: null,
         input_mode: "",
         variants: null,
@@ -63,7 +70,7 @@ function ProductFormModal({
         advanced_features: null,
       });
     }
-  }, [product, categories, isOpen]);
+  }, [product, categories, isOpen, preselectedCategory]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1065,6 +1072,8 @@ export function ProductManager() {
 
   // UI State
   const [activeTab, setActiveTab] = useState("products"); // products | categories | finishings
+  const [viewMode, setViewMode] = useState("PILLARS"); // 'PILLARS' | 'TABLE'
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -1123,10 +1132,16 @@ export function ProductManager() {
     })),
   );
 
-  // Filter products
+  // Filter products (use activeCategoryFilter in TABLE mode, otherwise use selectedCategoryId)
+  const effectiveCategoryFilter =
+    viewMode === "TABLE" && activeCategoryFilter
+      ? activeCategoryFilter
+      : selectedCategoryId;
+
   const filteredProducts = allProducts.filter((p) => {
     const matchesCategory =
-      selectedCategoryId === "all" || p.categoryId === selectedCategoryId;
+      effectiveCategoryFilter === "all" ||
+      p.categoryId === effectiveCategoryFilter;
     const matchesSearch = p.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
@@ -1142,6 +1157,19 @@ export function ProductManager() {
       .includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  // ============================================
+  // NAVIGATION HANDLERS
+  // ============================================
+  const handleSelectCategory = (categoryId) => {
+    setActiveCategoryFilter(categoryId);
+    setViewMode("TABLE");
+  };
+
+  const handleBackToPillars = () => {
+    setViewMode("PILLARS");
+    setActiveCategoryFilter(null);
+  };
 
   // ============================================
   // HANDLERS
@@ -1423,59 +1451,182 @@ export function ProductManager() {
       <div className="pm-content">
         {/* PRODUCTS TAB */}
         {activeTab === "products" && (
-          <div className="products-table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nama Produk</th>
-                  <th>Kategori</th>
-                  <th>Tipe</th>
-                  <th>Harga</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="empty-row">
-                      {searchQuery
-                        ? "🔍 Tidak ada hasil pencarian"
-                        : "📦 Belum ada produk"}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProducts.map((product) => (
-                    <tr key={product.id}>
-                      <td className="product-name">
-                        <strong>{product.name}</strong>
-                      </td>
-                      <td>{product.categoryName}</td>
-                      <td>{getLogicTypeBadge(product.logicType)}</td>
-                      <td className="price-cell">
-                        {getProductPriceDisplay(product)}
-                      </td>
-                      <td className="action-cell">
-                        <button
-                          className="btn-edit"
-                          onClick={() =>
-                            setProductModal({ isOpen: true, product })
-                          }
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          className="btn-delete"
-                          onClick={() => handleDeleteProduct(product)}
-                        >
-                          🗑️
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {viewMode === "PILLARS" ? (
+              /* CATEGORY PILLARS VIEW (Entry Point) */
+              <div className="category-pillars-view">
+                <div className="pillars-header">
+                  <h2 className="text-2xl font-bold text-slate-100 mb-2">
+                    📂 Pilih Kategori Produk
+                  </h2>
+                  <p className="text-slate-400 text-sm mb-6">
+                    Kelola produk berdasarkan kategori untuk menghindari
+                    kesalahan input
+                  </p>
+                </div>
+
+                <div className="category-pillars-grid">
+                  {categories.map((category) => {
+                    const productCount = allProducts.filter(
+                      (p) => p.categoryId === category.id,
+                    ).length;
+
+                    // Icon mapping
+                    const getCategoryIcon = (catId) => {
+                      switch (catId) {
+                        case "CAT_OUTDOOR":
+                          return <Mountain className="w-12 h-12" />;
+                        case "CAT_ROLLS":
+                          return <Scroll className="w-12 h-12" />;
+                        case "CAT_POSTER":
+                          return <ImageIcon className="w-12 h-12" />;
+                        default:
+                          return <ImageIcon className="w-12 h-12" />;
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={category.id}
+                        className="category-pillar-card group"
+                        onClick={() => handleSelectCategory(category.id)}
+                      >
+                        {/* Background decoration */}
+                        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-400/20 transition-all duration-500"></div>
+
+                        {/* Content */}
+                        <div className="relative z-10">
+                          {/* Icon */}
+                          <div className="mb-4 p-4 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 inline-flex group-hover:scale-110 transition-transform duration-300">
+                            <div className="text-cyan-400">
+                              {getCategoryIcon(category.id)}
+                            </div>
+                          </div>
+
+                          {/* Title */}
+                          <h3 className="text-xl font-black text-white uppercase tracking-wide mb-2">
+                            {category.name}
+                          </h3>
+
+                          {/* Description */}
+                          <p className="text-cyan-400/70 text-sm mb-4 line-clamp-2">
+                            {category.description}
+                          </p>
+
+                          {/* Product Count Badge */}
+                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-400 mb-4">
+                            <span className="text-cyan-400">
+                              {productCount}
+                            </span>{" "}
+                            produk
+                          </div>
+
+                          {/* Action Button */}
+                          <button className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-sm tracking-wide uppercase hover:scale-[1.02] transition-transform shadow-lg shadow-cyan-500/25">
+                            Kelola Produk →
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* TABLE VIEW (Domain-Filtered) */
+              <div className="domain-table-view">
+                {/* Back Button & Domain Header */}
+                <div className="domain-header">
+                  <button onClick={handleBackToPillars} className="back-btn">
+                    <ArrowLeft size={20} />
+                    <span>Kembali ke Kategori</span>
+                  </button>
+                  <div className="domain-title">
+                    <h2 className="text-xl font-bold text-cyan-400">
+                      📂{" "}
+                      {
+                        categories.find((c) => c.id === activeCategoryFilter)
+                          ?.name
+                      }
+                    </h2>
+                    <p className="text-slate-500 text-sm">
+                      {filteredProducts.length} produk dalam kategori ini
+                    </p>
+                  </div>
+                  <button
+                    className="btn-primary"
+                    onClick={() =>
+                      setProductModal({
+                        isOpen: true,
+                        product: null,
+                        preselectedCategory: activeCategoryFilter,
+                      })
+                    }
+                  >
+                    ➕ Tambah Produk{" "}
+                    {
+                      categories.find((c) => c.id === activeCategoryFilter)
+                        ?.name
+                    }
+                  </button>
+                </div>
+
+                {/* Products Table */}
+                <div className="products-table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Nama Produk</th>
+                        <th>Kategori</th>
+                        <th>Tipe</th>
+                        <th>Harga</th>
+                        <th>Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProducts.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="empty-row">
+                            {searchQuery
+                              ? "🔍 Tidak ada hasil pencarian"
+                              : "📦 Belum ada produk di kategori ini"}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredProducts.map((product) => (
+                          <tr key={product.id}>
+                            <td className="product-name">
+                              <strong>{product.name}</strong>
+                            </td>
+                            <td>{product.categoryName}</td>
+                            <td>{getLogicTypeBadge(product.logicType)}</td>
+                            <td className="price-cell">
+                              {getProductPriceDisplay(product)}
+                            </td>
+                            <td className="action-cell">
+                              <button
+                                className="btn-edit"
+                                onClick={() =>
+                                  setProductModal({ isOpen: true, product })
+                                }
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                className="btn-delete"
+                                onClick={() => handleDeleteProduct(product)}
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* CATEGORIES TAB */}
