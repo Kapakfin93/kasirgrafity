@@ -18,7 +18,7 @@ const categories = [
   // POSTER & INDOOR - MATRIX LOGIC
   {
     id: "CAT_POSTER",
-    name: "Poster & Indoor",
+    name: "POSTER UV & INDOOR",
     description: "Poster Kertas A0-A2",
     icon: "Image",
     color: "purple",
