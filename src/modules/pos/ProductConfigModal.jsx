@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   X,
   ShoppingCart,
@@ -15,58 +15,43 @@ export default function ProductConfigModal({
   product,
   onAddToCart,
 }) {
-  const [qty, setQty] = useState(1);
-  const [selectedVariant, setSelectedVariant] = useState(null);
+  // State initializers use lazy init to compute from product props
+  // Parent uses key={product.id} so component remounts when product changes
+  const getInitialVariant = () => {
+    if (!product) return null;
+    if (
+      (product.input_mode === "AREA" ||
+        product.input_mode === "LINEAR" ||
+        product.input_mode === "UNIT") &&
+      product.variants?.length > 0
+    ) {
+      return product.variants[0];
+    }
+    return null;
+  };
+
+  const getInitialDimensions = () => {
+    if (!product) return { length: 1, width: 1 };
+    if (product.input_mode === "LINEAR" && product.variants?.length > 0) {
+      return { length: 1, width: product.variants[0].width || 1 };
+    }
+    return { length: 1, width: 1 };
+  };
+
+  const [qty, setQty] = useState(() => product?.min_qty || 1);
+  const [selectedVariant, setSelectedVariant] = useState(getInitialVariant);
   const [matrixSelection, setMatrixSelection] = useState({
     step1: null,
     step2: null,
   });
-  const [dimensions, setDimensions] = useState({ length: 1, width: 1 });
+  const [dimensions, setDimensions] = useState(getInitialDimensions);
   const [selectedFinishings, setSelectedFinishings] = useState({});
   const [notes, setNotes] = useState("");
 
-  // --- 1. RESET STATE ON OPEN ---
-  useEffect(() => {
-    if (isOpen && product) {
-      setQty(product.min_qty || 1);
-      setNotes("");
-      setSelectedFinishings({});
-
-      // Auto-select defaults based on Mode
-      if (
-        (product.input_mode === "AREA" || product.input_mode === "LINEAR") &&
-        product.variants?.length > 0
-      ) {
-        const defaultVar = product.variants[0];
-        setSelectedVariant(defaultVar);
-        // For Linear, auto-set width from variant
-        if (product.input_mode === "LINEAR") {
-          setDimensions({ length: 1, width: defaultVar.width || 1 });
-        } else {
-          setDimensions({ length: 1, width: 1 });
-        }
-      } else if (
-        product.input_mode === "UNIT" &&
-        product.variants?.length > 0
-      ) {
-        setSelectedVariant(product.variants[0]);
-        setDimensions({ length: 1, width: 1 });
-      } else if (product.input_mode === "MATRIX") {
-        setMatrixSelection({ step1: null, step2: null });
-        setDimensions({ length: 1, width: 1 });
-      }
-    }
-  }, [isOpen, product]);
-
-  // --- 2. UPDATE WIDTH ON VARIANT CHANGE (LINEAR ONLY) ---
-  useEffect(() => {
-    if (product?.input_mode === "LINEAR" && selectedVariant) {
-      setDimensions((prev) => ({ ...prev, width: selectedVariant.width || 1 }));
-    }
-  }, [selectedVariant, product]);
+  // NOTE: LINEAR width is now set inline in the onClick handler to avoid cascading renders
 
   // --- 3. SAFE GUARDS & HELPERS ---
-  const safeProduct = product || {};
+  const safeProduct = useMemo(() => product || {}, [product]);
   const inputMode = safeProduct.input_mode || "UNIT";
   const isArea = inputMode === "AREA";
   const isLinear = inputMode === "LINEAR"; // NEW MODE
@@ -83,7 +68,7 @@ export default function ProductConfigModal({
     // Matrix Logic
     if (!matrixSelection.step1) return safeProduct.base_price || 0;
     const variant1 = safeProduct.variants?.find(
-      (v) => v.label === matrixSelection.step1
+      (v) => v.label === matrixSelection.step1,
     );
     if (matrixSelection.step2 && variant1?.price_list) {
       return (
@@ -115,12 +100,15 @@ export default function ProductConfigModal({
     return { area: rawArea, chargeable };
   }, [dimensions, isArea, isLinear]);
 
-  const getTieredPrice = (base, quantity) => {
-    if (!safeProduct.advanced_features?.wholesale_rules) return base;
-    const rules = safeProduct.advanced_features.wholesale_rules;
-    const rule = rules.find((r) => quantity >= r.min && quantity <= r.max);
-    return rule ? rule.price : base;
-  };
+  const getTieredPrice = useCallback(
+    (base, quantity) => {
+      if (!safeProduct.advanced_features?.wholesale_rules) return base;
+      const rules = safeProduct.advanced_features.wholesale_rules;
+      const rule = rules.find((r) => quantity >= r.min && quantity <= r.max);
+      return rule ? rule.price : base;
+    },
+    [safeProduct.advanced_features],
+  );
 
   const finalUnitPrice = useMemo(() => {
     let price = getTieredPrice(currentBasePrice, qty);
@@ -141,6 +129,7 @@ export default function ProductConfigModal({
     isLinear,
     areaCalculation,
     dimensions.length,
+    getTieredPrice,
   ]);
 
   const finishingTotal = useMemo(() => {
@@ -251,8 +240,8 @@ export default function ProductConfigModal({
               area: areaCalculation.area,
             }
           : isMatrix
-          ? { sizeKey: matrixSelection.step2 }
-          : {},
+            ? { sizeKey: matrixSelection.step2 }
+            : {},
       final_price: productPriceToSend,
       finishings: finishingsArray,
       selected_details: {
@@ -280,15 +269,21 @@ export default function ProductConfigModal({
             return (
               <button
                 key={i}
-                onClick={() => setSelectedVariant(v)}
+                onClick={() => {
+                  setSelectedVariant(v);
+                  // For LINEAR, update width immediately to avoid cascading useEffect
+                  if (isLinear) {
+                    setDimensions((prev) => ({ ...prev, width: v.width || 1 }));
+                  }
+                }}
                 className={`p-5 rounded-2xl border-2 text-left transition-all flex justify-between items-start group ${
                   isSelected
                     ? isArea
                       ? "border-cyan-400 bg-slate-800 shadow-[0_0_25px_rgba(34,211,238,0.35)]"
                       : "border-cyan-500 bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
                     : isArea
-                    ? "border-slate-700/50 hover:border-slate-500 bg-slate-800/30 opacity-70"
-                    : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
+                      ? "border-slate-700/50 hover:border-slate-500 bg-slate-800/30 opacity-70"
+                      : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
                 }`}
               >
                 <div className="flex flex-col gap-1">
@@ -354,7 +349,7 @@ export default function ProductConfigModal({
           </div>
           <div className="text-slate-600 font-black text-xl pt-6">X</div>
           <div className="flex-1 relative">
-            <label className="text-xs text-slate-500 mb-2 block font-bold uppercase tracking-wider flex justify-between">
+            <label className="text-xs text-slate-500 mb-2 font-bold uppercase tracking-wider flex justify-between">
               Lebar (m){" "}
               {isLinear && <Lock size={12} className="text-amber-500" />}
             </label>
@@ -477,7 +472,7 @@ export default function ProductConfigModal({
                           )}
                         </button>
                       );
-                    }
+                    },
                   )}
                 </div>
               </section>
@@ -492,8 +487,8 @@ export default function ProductConfigModal({
                 <div className="grid grid-cols-2 gap-3">
                   {Object.keys(
                     product.variants?.find(
-                      (v) => v.label === matrixSelection.step1
-                    )?.price_list || {}
+                      (v) => v.label === matrixSelection.step1,
+                    )?.price_list || {},
                   ).map((opt, i) => {
                     const isSelected = matrixSelection.step2 === opt;
                     return (
@@ -569,7 +564,7 @@ export default function ProductConfigModal({
                             group.type === "radio"
                               ? selectedFinishings[group.id] === opt.label
                               : selectedFinishings[group.id]?.includes(
-                                  opt.label
+                                  opt.label,
                                 );
                           return (
                             <button

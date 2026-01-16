@@ -7,7 +7,6 @@ import { ReceiptSection } from "./ReceiptSection";
 import { NotaPreview } from "./NotaPreview";
 import ProductConfigModal from "./ProductConfigModal";
 import ProductCard from "./ProductCard";
-import { formatRupiah } from "../../core/formatters";
 
 /**
  * Workspace - Modern POS Interface
@@ -110,19 +109,7 @@ export function Workspace() {
 
   const isLocked = transactionStage === TRANSACTION_STAGES.POST_PAYMENT;
 
-  // Grid styling based on mode
-  const getGridStyle = () => {
-    switch (gridMode) {
-      case "compact":
-        return { gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" };
-      case "large":
-        return { gridTemplateColumns: "repeat(2, 1fr)", gap: "16px" };
-      default:
-        return { gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" };
-    }
-  };
-
-  const getModeButton = (mode, icon, title) => ({
+  const getModeButton = (mode) => ({
     padding: "8px 12px",
     borderRadius: "8px",
     border: "none",
@@ -216,8 +203,8 @@ export function Workspace() {
                 gridMode === "compact"
                   ? "6px"
                   : gridMode === "large"
-                  ? "12px"
-                  : "8px",
+                    ? "12px"
+                    : "8px",
               padding: "4px 0",
             }}
           >
@@ -375,14 +362,14 @@ export function Workspace() {
                   gridMode === "compact"
                     ? "repeat(4, 1fr)"
                     : gridMode === "large"
-                    ? "repeat(2, 1fr)"
-                    : "repeat(3, 1fr)",
+                      ? "repeat(2, 1fr)"
+                      : "repeat(3, 1fr)",
                 gap:
                   gridMode === "compact"
                     ? "8px"
                     : gridMode === "large"
-                    ? "16px"
-                    : "12px",
+                      ? "16px"
+                      : "12px",
                 padding: "4px",
               }}
             >
@@ -423,6 +410,7 @@ export function Workspace() {
 
       {/* Product Config Modal */}
       <ProductConfigModal
+        key={selectedProduct?.id || "closed"}
         isOpen={!!selectedProduct}
         onClose={() => setSelectedProduct(null)}
         product={selectedProduct}
@@ -439,7 +427,7 @@ export function Workspace() {
           paymentState={paymentState}
           order={
             lastOrder || {
-              orderNumber: `TMP-${Date.now()}`,
+              orderNumber: "TMP-PREVIEW",
               customerSnapshot: customerSnapshot,
             }
           }
