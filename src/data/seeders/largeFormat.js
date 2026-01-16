@@ -3,8 +3,8 @@ export const largeFormatProducts = [
   // KATEGORI 1: OUTDOOR PRINT (Logic: AREA)
   // =========================================
   {
-    id: "PROD_SPANDUK_V2", // New ID
-    categoryId: "CAT_OUTDOOR", // New Category
+    id: "PROD_SPANDUK_V2",
+    categoryId: "CAT_OUTDOOR",
     name: "CETAK SPANDUK (Outdoor)",
     description: "Spanduk Flexi Outdoor (Hitungan Meter Persegi).",
     base_price: 18000,
@@ -39,18 +39,15 @@ export const largeFormatProducts = [
   // ==================================================
   // KATEGORI 2: ROLL MEDIA & TEXTILE (Logic: LINEAR)
   // ==================================================
-
-  // 1. KAIN / TEXTILE
   {
     id: "PROD_KAIN_V2",
-    categoryId: "CAT_ROLLS", // New Category
+    categoryId: "CAT_ROLLS",
     name: "CETAK KAIN / TEXTILE",
     description: "Sublimasi Kain (Hitungan Meter Lari).",
     base_price: 65000,
     input_mode: "LINEAR",
     min_qty: 1,
     variants: [
-      // LOKAL
       {
         label: "Kain Lokal (L: 90cm)",
         price: 55000,
@@ -63,7 +60,6 @@ export const largeFormatProducts = [
         width: 1.2,
         specs: "Bahan Lokal Lebar",
       },
-      // IMPORT
       {
         label: "Kain Import (L: 90cm)",
         price: 65000,
@@ -104,8 +100,6 @@ export const largeFormatProducts = [
       },
     ],
   },
-
-  // 2. STIKER METERAN
   {
     id: "PROD_STIKER_METER_V2",
     categoryId: "CAT_ROLLS",
@@ -115,7 +109,6 @@ export const largeFormatProducts = [
     input_mode: "LINEAR",
     min_qty: 1,
     variants: [
-      // WHITE
       {
         label: "Vinyl White (L: 100cm)",
         price: 75000,
@@ -134,7 +127,6 @@ export const largeFormatProducts = [
         width: 1.5,
         specs: "Bahan Putih Jumbo",
       },
-      // TRANSPARAN
       {
         label: "Transparan (L: 100cm)",
         price: 80000,
@@ -153,7 +145,6 @@ export const largeFormatProducts = [
         width: 1.5,
         specs: "Tembus Pandang",
       },
-      // ONE WAY
       {
         label: "One Way (L: 100cm)",
         price: 85000,
@@ -187,8 +178,6 @@ export const largeFormatProducts = [
       },
     ],
   },
-
-  // 3. CETAK DTF (SABLON FILM) - NEW!
   {
     id: "PROD_DTF_V1",
     categoryId: "CAT_ROLLS",
@@ -201,7 +190,7 @@ export const largeFormatProducts = [
       {
         label: "PET Film (L: 60cm)",
         price: 35000,
-        width: 0.6, // FIXED WIDTH 60CM
+        width: 0.6,
         specs: "Area Cetak 58cm",
       },
     ],
@@ -222,11 +211,13 @@ export const largeFormatProducts = [
   // ===============================================
   // KATEGORI 3: POSTER & INDOOR (Logic: MATRIX)
   // ===============================================
+
+  // 1. POSTER INDOOR (STANDARD)
   {
-    id: "PROD_POSTER_V2",
-    categoryId: "CAT_POSTER", // New Category
-    name: "CETAK POSTER (Indoor & UV)",
-    description: "Cetak Poster High Resolution (Pcs).",
+    id: "PROD_POSTER_INDOOR",
+    categoryId: "CAT_POSTER",
+    name: "CETAK POSTER (Indoor)",
+    description: "Cetak Poster Indoor Waterbase (Pcs).",
     base_price: 0,
     input_mode: "MATRIX",
     min_qty: 1,
@@ -256,6 +247,59 @@ export const largeFormatProducts = [
           "Albatros (Matte)": 95000,
           "Luster (Kulit Jeruk)": 110000,
           Photopaper: 130000,
+        },
+      },
+    ],
+    finishing_groups: [
+      {
+        id: "fin_poster",
+        title: "Laminasi (Per Pcs)",
+        type: "radio",
+        price_mode: "FIXED",
+        options: [
+          { label: "Tanpa Laminasi", price: 0 },
+          { label: "Laminasi Glossy", price: 10000 },
+          { label: "Laminasi Doff", price: 10000 },
+        ],
+      },
+    ],
+  },
+
+  // 2. POSTER UV (PREMIUM)
+  {
+    id: "PROD_POSTER_UV",
+    categoryId: "CAT_POSTER",
+    name: "CETAK POSTER (UV Print)",
+    description: "Cetak Poster UV Premium / Timbul (Pcs).",
+    base_price: 0,
+    input_mode: "MATRIX",
+    min_qty: 1,
+    variants: [
+      {
+        label: "A2 (42 x 60 cm)",
+        specs: "Ukuran Sedang",
+        price_list: {
+          "Albatros (Matte)": 35000,
+          "Luster (Kulit Jeruk)": 45000,
+          Photopaper: 50000,
+        },
+      },
+      {
+        label: "A1 (60 x 84 cm)",
+        specs: "Ukuran Besar",
+        price_list: {
+          "Albatros (Matte)": 70000,
+          "Luster (Kulit Jeruk)": 90000,
+          Photopaper: 100000,
+        },
+      },
+      {
+        label: "A0 (84 x 118 cm)",
+        specs: "Ukuran Jumbo",
+        price_list: {
+          "Albatros (Matte)": 135000,
+          "Luster (Kulit Jeruk)": 175000,
+          Photopaper: 195000,
         },
       },
     ],
