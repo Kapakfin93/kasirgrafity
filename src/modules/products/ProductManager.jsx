@@ -1356,12 +1356,19 @@ export function ProductManager() {
         </div>
 
         <div className="pm-actions">
-          {activeTab === "products" && (
+          {activeTab === "products" && viewMode === "TABLE" && (
             <button
               className="btn-primary"
-              onClick={() => setProductModal({ isOpen: true, product: null })}
+              onClick={() =>
+                setProductModal({
+                  isOpen: true,
+                  product: null,
+                  preselectedCategory: activeCategoryFilter,
+                })
+              }
             >
-              ➕ Tambah Produk
+              ➕ Tambah Produk{" "}
+              {categories.find((c) => c.id === activeCategoryFilter)?.name}
             </button>
           )}
           {activeTab === "categories" && (
@@ -1733,6 +1740,7 @@ export function ProductManager() {
         categories={categories}
         onSave={handleSaveProduct}
         onAddCategory={() => setCategoryModal({ isOpen: true, category: null })}
+        preselectedCategory={productModal.preselectedCategory}
         onAddFinishing={(catId) =>
           setFinishingModal({
             isOpen: true,
