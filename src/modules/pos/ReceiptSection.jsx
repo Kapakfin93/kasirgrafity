@@ -356,6 +356,90 @@ export function ReceiptSection({
         })}
       </div>
 
+      {/* === MANUAL DISCOUNT INPUT === */}
+      {items.length > 0 && !isLocked && setDiscount && (
+        <div style={{ padding: "0 16px", marginTop: "10px" }}>
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "linear-gradient(135deg, #fef3c7 0%, #fef9e6 100%)",
+              borderRadius: "12px",
+              border: "2px solid #fbbf24",
+            }}
+          >
+            {(() => {
+              const currentSubtotal =
+                typeof totalAmount === "object"
+                  ? totalAmount.subtotal
+                  : totalAmount;
+              const discountPercent =
+                currentSubtotal > 0 ? (discount / currentSubtotal) * 100 : 0;
+              const isHighDiscount = discountPercent > 50;
+
+              return (
+                <>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      color: "#92400e",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    🎟️ Potongan / Diskon (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={currentSubtotal}
+                    value={discount === 0 ? "" : discount}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) || 0;
+                      setDiscount(Math.min(val, currentSubtotal));
+                    }}
+                    style={{
+                      width: "100%",
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                      textAlign: "right",
+                      color: "#dc2626",
+                      padding: "8px 10px",
+                      borderRadius: "8px",
+                      border: isHighDiscount
+                        ? "2px solid #dc2626"
+                        : "1px solid #d97706",
+                      background: "white",
+                      outline: "none",
+                    }}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  {isHighDiscount && (
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        padding: "6px 8px",
+                        background: "#fee2e2",
+                        borderRadius: "6px",
+                        border: "1px solid #ef4444",
+                        fontSize: "10px",
+                        color: "#991b1b",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ⚠️ Warning: Diskon {discountPercent.toFixed(0)}%
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       <div className="receipt-footer">
         {!isLocked ? (
           <>
