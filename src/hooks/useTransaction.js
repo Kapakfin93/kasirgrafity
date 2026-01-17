@@ -575,13 +575,17 @@ export function useTransaction() {
       })),
       unitPrice: unitPrice,
       totalPrice: calculatedPrice,
+      // === NOTES: Store for ALL pricing types (for SPK production) ===
+      notes:
+        rawInput.notes ||
+        rawInput.selected_details?.notes ||
+        dimensions.notes ||
+        "",
+      selected_details: rawInput.selected_details || null,
     };
 
     // ===== ADVANCED PRICING: Store additional metadata =====
     if (pricingType === "ADVANCED") {
-      // Store production notes (from AdvancedProductForm)
-      cartItem.notes = rawInput.notes || dimensions.notes || "";
-
       // Store financial breakdown for owner dashboard
       cartItem.meta = {
         revenue_print: rawInput.revenue_print || dimensions.revenue_print || 0,
@@ -589,6 +593,7 @@ export function useTransaction() {
           rawInput.revenue_finish || dimensions.revenue_finish || 0,
         detail_options:
           rawInput.detail_options || dimensions.detail_options || null,
+        notes: cartItem.notes, // Also store in meta for backward compat
       };
 
       console.log("📊 ADVANCED metadata stored:", {
@@ -735,7 +740,12 @@ export function useTransaction() {
             unit_price_final: preConfiguredItem.unit_price_final,
             revenue_print: preConfiguredItem.revenue_print,
             revenue_finish: preConfiguredItem.revenue_finish,
-            notes: preConfiguredItem.notes,
+            // === FIX: Extract notes from BOTH top-level AND selected_details ===
+            notes:
+              preConfiguredItem.notes ||
+              preConfiguredItem.selected_details?.notes ||
+              "",
+            selected_details: preConfiguredItem.selected_details || null,
             detail_options: preConfiguredItem.detail_options,
           };
         } else {
