@@ -40,6 +40,7 @@ function ProductFormModal({
     finishing_groups: [], // For finishing options
     price_tiers: null, // For SHEET/TIERED types
     advanced_features: null, // For TIERED products (wholesale_rules)
+    print_modes: null, // For BOOKLET type
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("general"); // 'general' | 'pricing' | 'finishing'
@@ -57,6 +58,7 @@ function ProductFormModal({
         finishing_groups: product.finishing_groups || [],
         price_tiers: product.price_tiers || null,
         advanced_features: product.advanced_features || null,
+        print_modes: product.print_modes || null,
       });
     } else {
       setFormData({
@@ -69,6 +71,7 @@ function ProductFormModal({
         finishing_groups: [],
         price_tiers: null,
         advanced_features: null,
+        print_modes: null,
       });
     }
   }, [product, categories, isOpen, preselectedCategory]);
@@ -256,6 +259,15 @@ function ProductFormModal({
     }
   };
 
+  // ============================================
+  // PRINT MODES HELPERS (FOR BOOKLET)
+  // ============================================
+  const updatePrintMode = (modeIndex, field, value) => {
+    const newModes = [...formData.print_modes];
+    newModes[modeIndex] = { ...newModes[modeIndex], [field]: value };
+    setFormData({ ...formData, print_modes: newModes });
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -306,6 +318,20 @@ function ProductFormModal({
           >
             🔧 Finishing
           </button>
+          {/* MODE CETAK TAB (Only for BOOKLET) */}
+          {formData.input_mode === "BOOKLET" && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("printmodes")}
+              className={`px-4 py-3 font-medium text-sm transition-colors ${
+                activeTab === "printmodes"
+                  ? "text-cyan-400 border-b-2 border-cyan-400"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              ⚙️ Mode Cetak
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="product-form">
@@ -1040,6 +1066,106 @@ function ProductFormModal({
                 >
                   ➕ Buat Grup Finishing Baru
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB CONTENT: PRINT MODES (BOOKLET only) */}
+          {activeTab === "printmodes" && formData.input_mode === "BOOKLET" && (
+            <div className="tab-content">
+              <div className="space-y-4">
+                <div className="bg-cyan-900/20 border border-cyan-700/50 rounded-xl p-4">
+                  <h3 className="text-cyan-400 font-bold mb-2 flex items-center gap-2">
+                    ⚙️ Mode Cetak / Print Modes
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Edit harga tinta/klik per lembar untuk setiap mode cetak.
+                    Harga kertas ada di tab Pricing (Variants).
+                  </p>
+                </div>
+
+                {formData.print_modes && formData.print_modes.length > 0 ? (
+                  <div className="space-y-3">
+                    {formData.print_modes.map((mode, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-slate-800 p-4 rounded-xl border border-slate-700"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          {/* Label */}
+                          <div>
+                            <label className="text-xs text-slate-500 mb-1 block">
+                              Label
+                            </label>
+                            <input
+                              type="text"
+                              value={mode.label}
+                              onChange={(e) =>
+                                updatePrintMode(idx, "label", e.target.value)
+                              }
+                              className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-cyan-500 outline-none"
+                              placeholder="Contoh: 1 Sisi (Hitam Putih)"
+                            />
+                          </div>
+
+                          {/* Price */}
+                          <div>
+                            <label className="text-xs text-slate-500 mb-1 block">
+                              Harga Cetak per Lembar (Rp)
+                            </label>
+                            <input
+                              type="number"
+                              value={mode.price}
+                              onChange={(e) =>
+                                updatePrintMode(
+                                  idx,
+                                  "price",
+                                  Number(e.target.value),
+                                )
+                              }
+                              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
+                              placeholder="0"
+                            />
+                          </div>
+
+                          {/* Description */}
+                          <div>
+                            <label className="text-xs text-slate-500 mb-1 block">
+                              Deskripsi
+                            </label>
+                            <input
+                              type="text"
+                              value={mode.description || ""}
+                              onChange={(e) =>
+                                updatePrintMode(
+                                  idx,
+                                  "description",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-400 focus:border-cyan-500 outline-none"
+                              placeholder="Hemat, Rp 250/muka"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-8 text-center">
+                    <p className="text-slate-500 text-sm">
+                      ℹ️ Belum ada print modes untuk produk ini
+                    </p>
+                  </div>
+                )}
+
+                <div className="bg-amber-900/20 border border-amber-700/50 rounded-xl p-3">
+                  <p className="text-xs text-amber-400">
+                    💡 <strong>Catatan:</strong> ID mode cetak tidak bisa
+                    diubah. Hanya Label, Price, dan Description yang bisa
+                    diedit.
+                  </p>
+                </div>
               </div>
             </div>
           )}
