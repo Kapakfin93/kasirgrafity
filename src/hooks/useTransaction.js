@@ -106,6 +106,9 @@ export function useTransaction() {
     return now.toISOString().slice(0, 16); // Format for datetime-local input
   });
 
+  // DISCOUNT STATE (with strict validation)
+  const [discount, setDiscount] = useState(0);
+
   // Initialize store on mount
   useEffect(() => {
     if (!isInitialized) {
@@ -779,7 +782,20 @@ export function useTransaction() {
   // === CALCULATION ===
   const calculateTotal = () => {
     // Standardized: Total uses 'totalPrice' field
-    return tempItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+    const subtotal = tempItems.reduce(
+      (sum, item) => sum + (item.totalPrice || 0),
+      0,
+    );
+
+    // STRICT VALIDATION: Discount cannot exceed subtotal
+    const safeDiscount = Math.min(discount, subtotal);
+    const finalAmount = Math.max(0, subtotal - safeDiscount);
+
+    return {
+      subtotal,
+      discount: safeDiscount,
+      finalAmount,
+    };
   };
 
   // === PAYMENT ACTIONS ===
@@ -808,7 +824,8 @@ export function useTransaction() {
   };
 
   const confirmPayment = (isTempo = false) => {
-    const total = calculateTotal();
+    const totals = calculateTotal();
+    const { finalAmount } = totals;
 
     // SANITASI INPUT untuk Tempo mode
     // Jika isTempo aktif dan amountPaid kosong/invalid, paksa jadi 0
@@ -913,21 +930,26 @@ export function useTransaction() {
       throw validationError; // Re-throw to stop order creation
     }
 
-    // 3. Calculate totals
-    const total = calculateTotal();
+    // 3. Calculate totals with discount
+    const totals = calculateTotal();
+    const { subtotal, discount: appliedDiscount, finalAmount } = totals;
     const paid = parseFloat(paymentState.amountPaid) || 0;
 
     const orderData = {
       items: tempItems,
-      totalAmount: total,
+
+      // FINANCIAL BREAKDOWN (Fraud Prevention)
+      subtotal: subtotal, // Sum of all items
+      discountAmount: appliedDiscount, // Discount applied
+      totalAmount: finalAmount, // Final amount after discount
 
       // [ONLINE READY] Source tracking for future online orders
       source: "OFFLINE", // 'OFFLINE' = POS Kasir, 'ONLINE' = Web (future)
       file_via: null, // null for OFFLINE, 'WA'/'EMAIL' for ONLINE (future)
 
       paidAmount: paid,
-      paymentStatus: paid >= total ? "PAID" : paid > 0 ? "DP" : "UNPAID",
-      remainingAmount: Math.max(0, total - paid),
+      paymentStatus: paid >= finalAmount ? "PAID" : paid > 0 ? "DP" : "UNPAID",
+      remainingAmount: Math.max(0, finalAmount - paid), // Uses final amount after discount
 
       // [SOP V2.0] TEMPO/VIP Flag - Bypass payment gate
       isTempo: isTempo,
@@ -980,6 +1002,7 @@ export function useTransaction() {
     setConfiguratorInput(INITIAL_INPUT_STATE);
     setPaymentState(INITIAL_PAYMENT_STATE);
     setTransactionStage(TRANSACTION_STAGES.CART);
+    setDiscount(0); // Reset discount
     clearCustomerSnapshot(); // Clear customer data for new transaction
   };
 
@@ -1249,6 +1272,10 @@ export function useTransaction() {
     removeItem,
     clearCart,
     calculateTotal,
+
+    // Discount management
+    discount,
+    setDiscount,
 
     // Payment (temporary until confirmed)
     paymentState,

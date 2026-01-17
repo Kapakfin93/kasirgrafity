@@ -37,6 +37,9 @@ export function Workspace() {
     setPriorityStandard,
     setPriorityExpress,
     setPriorityUrgent,
+    // Discount
+    discount,
+    setDiscount,
   } = useTransaction();
 
   const { createOrder } = useOrderStore();
@@ -406,6 +409,8 @@ export function Workspace() {
         setPriorityStandard={setPriorityStandard}
         setPriorityExpress={setPriorityExpress}
         setPriorityUrgent={setPriorityUrgent}
+        discount={discount}
+        setDiscount={setDiscount}
       />
 
       {/* Product Config Modal */}
