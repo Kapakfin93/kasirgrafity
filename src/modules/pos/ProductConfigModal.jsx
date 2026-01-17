@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   X,
   ShoppingCart,
@@ -48,14 +48,38 @@ export default function ProductConfigModal({
   const [selectedFinishings, setSelectedFinishings] = useState({});
   const [notes, setNotes] = useState("");
 
+  // BOOKLET specific state
+  const [printMode, setPrintMode] = useState(() => {
+    if (product?.input_mode === "BOOKLET" && product?.print_modes?.length > 0) {
+      return product.print_modes[0];
+    }
+    return null;
+  });
+  const [sheetsPerBook, setSheetsPerBook] = useState(100);
+
   // NOTE: LINEAR width is now set inline in the onClick handler to avoid cascading renders
 
   // --- 3. SAFE GUARDS & HELPERS ---
   const safeProduct = useMemo(() => product || {}, [product]);
   const inputMode = safeProduct.input_mode || "UNIT";
   const isArea = inputMode === "AREA";
-  const isLinear = inputMode === "LINEAR"; // NEW MODE
+  const isLinear = inputMode === "LINEAR";
   const isMatrix = inputMode === "MATRIX";
+  const isBooklet = inputMode === "BOOKLET"; // NEW: Booklet mode for PRINT DOKUMEN
+
+  // DEBUG: Log booklet detection
+  useEffect(() => {
+    if (product) {
+      console.log("🔍 PRINT DOKUMEN DEBUG:", {
+        productName: product.name,
+        inputMode: inputMode,
+        isBooklet: isBooklet,
+        hasPrintModes: !!product.print_modes,
+        printModesCount: product.print_modes?.length || 0,
+        printModes: product.print_modes,
+      });
+    }
+  }, [product, inputMode, isBooklet]);
 
   // --- 4. PRICE CALCULATION LOGIC ---
   const currentBasePrice = useMemo(() => {
@@ -121,14 +145,24 @@ export default function ProductConfigModal({
       // Linear Price = Price/m * Length
       return price * dimensions.length;
     }
+    if (isBooklet) {
+      // BOOKLET: Price per book = (basePrice × multiplier) × sheets
+      const multiplier = printMode?.multiplier || 1.0;
+      const effectivePrice = price * multiplier;
+      const pricePerBook = sheetsPerBook * effectivePrice;
+      return pricePerBook; // This is price PER BOOK (not per sheet)
+    }
     return price;
   }, [
     currentBasePrice,
     qty,
     isArea,
     isLinear,
+    isBooklet,
     areaCalculation,
     dimensions.length,
+    printMode,
+    sheetsPerBook,
     getTieredPrice,
   ]);
 
@@ -143,7 +177,15 @@ export default function ProductConfigModal({
       const selected = selectedFinishings[group.id];
       if (selected) {
         const calculateOptionPrice = (opt) => {
-          // If Linear, finishing price is per meter
+          // BOOKLET: PER_JOB finishing (once per book, not × sheets)
+          if (isBooklet && group.price_mode === "PER_JOB") {
+            return opt.price; // Once per book
+          }
+          // BOOKLET: PER_UNIT finishing (× sheets per book)
+          if (isBooklet && group.price_mode === "PER_UNIT") {
+            return opt.price * sheetsPerBook;
+          }
+          // LINEAR: per meter
           if (isLinear && group.price_mode === "PER_METER") {
             return opt.price * dimensions.length;
           }
@@ -162,7 +204,15 @@ export default function ProductConfigModal({
       }
     });
     return total;
-  }, [safeProduct, selectedFinishings, isArea, isLinear, dimensions.length]);
+  }, [
+    safeProduct,
+    selectedFinishings,
+    isArea,
+    isLinear,
+    isBooklet,
+    dimensions.length,
+    sheetsPerBook,
+  ]);
 
   const grandTotal = (finalUnitPrice + finishingTotal) * qty;
 
@@ -238,17 +288,25 @@ export default function ProductConfigModal({
               length: dimensions.length,
               width: dimensions.width,
               area: areaCalculation.area,
-              variantLabel: selectedVariant?.label || "", // ADDED: Include variant name
+              variantLabel: selectedVariant?.label || "",
             }
           : isMatrix
             ? {
-                sizeKey: matrixSelection.step1, // FIXED: step1 = size (A2, A1, A0)
-                material: matrixSelection.step2, // FIXED: step2 = material (Albatros, Luster)
+                sizeKey: matrixSelection.step1,
+                material: matrixSelection.step2,
               }
-            : {
-                // UNIT and other types - include variant label
-                variantLabel: selectedVariant?.label || "",
-              },
+            : isBooklet
+              ? {
+                  variantLabel: selectedVariant?.label || "",
+                  printModeId: printMode?.id || "",
+                  printModeLabel: printMode?.label || "",
+                  sheetsPerBook: sheetsPerBook,
+                  bookletQty: qty, // For description builder
+                }
+              : {
+                  // UNIT and other types
+                  variantLabel: selectedVariant?.label || "",
+                },
       final_price: productPriceToSend,
       finishings: finishingsArray,
       selected_details: {
@@ -481,6 +539,108 @@ export default function ProductConfigModal({
                       );
                     },
                   )}
+                </div>
+              </section>
+            )}
+
+            {/* BOOKLET: Print Mode Selector */}
+            {isBooklet && (
+              <section className="animate-in slide-in-from-top-4 duration-300">
+                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <span className="w-4 h-[2px] bg-purple-500"></span>
+                  Mode Cetak
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {product.print_modes?.map((mode, i) => {
+                    const isSelected = printMode?.id === mode.id;
+                    // Calculate price per sheet for this mode
+                    const basePrice =
+                      selectedVariant?.price || product.base_price || 500;
+                    const pricePerSheet = basePrice * mode.multiplier;
+                    const savings =
+                      mode.multiplier < 2.0 && mode.multiplier > 1.0
+                        ? Math.round((1 - mode.multiplier / 2.0) * 100)
+                        : 0;
+
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setPrintMode(mode)}
+                        className={`p-4 rounded-xl border-2 text-left transition-all group relative overflow-hidden ${
+                          isSelected
+                            ? "border-purple-500 bg-gradient-to-br from-purple-900/30 to-slate-800 shadow-[0_0_20px_rgba(168,85,247,0.3)]"
+                            : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
+                        }`}
+                      >
+                        {/* HEMAT badge for duplex modes */}
+                        {savings > 0 && (
+                          <div className="absolute top-2 right-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg">
+                            HEMAT {savings}%
+                          </div>
+                        )}
+
+                        <div className="flex items-start justify-between mb-2">
+                          <span
+                            className={`font-bold text-sm ${
+                              isSelected
+                                ? "text-purple-400"
+                                : "text-slate-300 group-hover:text-white"
+                            }`}
+                          >
+                            {mode.label}
+                          </span>
+                          {isSelected && (
+                            <Check size={16} className="text-purple-400" />
+                          )}
+                        </div>
+
+                        {/* Show calculated price per sheet */}
+                        <div
+                          className={`text-base font-black mb-1 ${
+                            isSelected ? "text-purple-300" : "text-slate-400"
+                          }`}
+                        >
+                          Rp {pricePerSheet.toLocaleString()}/lembar
+                        </div>
+
+                        <div className="text-[10px] text-slate-500">
+                          {mode.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* BOOKLET: Sheets Per Book Input */}
+            {isBooklet && (
+              <section className="animate-in slide-in-from-top-4 duration-300">
+                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <span className="w-4 h-[2px] bg-purple-500"></span>
+                  Lembar Per Buku
+                </h3>
+                <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
+                  <label className="text-xs text-slate-500 mb-3 block font-bold uppercase tracking-wider">
+                    Jumlah Lembar per Buku
+                  </label>
+                  <input
+                    type="number"
+                    value={sheetsPerBook}
+                    onChange={(e) =>
+                      setSheetsPerBook(parseInt(e.target.value) || 1)
+                    }
+                    onFocus={(e) => e.target.select()}
+                    min="1"
+                    className="w-full bg-slate-900 border border-purple-600/50 rounded-xl p-5 text-white text-center font-black text-3xl focus:border-purple-500 focus:ring-2 focus:ring-purple-500/50 outline-none transition-all"
+                  />
+                  <div className="mt-3 text-xs text-slate-500 text-center">
+                    1 buku ={" "}
+                    <span className="text-purple-400 font-bold">
+                      {sheetsPerBook}
+                    </span>{" "}
+                    lembar kertas
+                  </div>
                 </div>
               </section>
             )}

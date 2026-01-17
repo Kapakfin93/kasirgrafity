@@ -338,6 +338,57 @@ export function useTransaction() {
           unitPrice = priceForSize + matrixFinishingCost;
           break;
 
+        case "BOOKLET":
+          // BOOKLET pricing for Print Dokumen (Booklet system)
+          // dimensions = { variantLabel, printModeId, sheetsPerBook }
+          const { variantLabel, printModeId, sheetsPerBook } = dimensions;
+
+          if (!sheetsPerBook || sheetsPerBook <= 0) {
+            throw new Error(
+              `CART REJECTED: Lembar per buku tidak valid (${sheetsPerBook})`,
+            );
+          }
+
+          // Get base price from variant
+          let basePrice = parseFloat(product.price) || 0;
+
+          // Get print mode multiplier
+          let multiplier = 1.0;
+          if (product.print_modes && printModeId) {
+            const printMode = product.print_modes.find(
+              (m) => m.id === printModeId,
+            );
+            if (printMode) {
+              multiplier = printMode.multiplier || 1.0;
+            }
+          }
+
+          // Calculate effective price per sheet with multiplier
+          const effectivePrice = basePrice * multiplier;
+
+          // Price per book = sheets × effective price
+          const pricePerBook = sheetsPerBook * effectivePrice;
+
+          // Handle finishing costs
+          let finishingPerBook = 0;
+          finishings.forEach((f) => {
+            if (f.price_mode === "PER_JOB") {
+              // PER_JOB: Once per book
+              finishingPerBook += f.price || 0;
+            } else {
+              // PER_UNIT: Per sheet
+              finishingPerBook += (f.price || 0) * sheetsPerBook;
+            }
+          });
+
+          // Total per book
+          const totalPerBook = pricePerBook + finishingPerBook;
+
+          // Grand total = total per book × quantity (number of books)
+          calculatedPrice = totalPerBook * safeQty;
+          unitPrice = totalPerBook;
+          break;
+
         case "UNIT":
           // UNIT pricing for Merchandise/Office
           const finishingCost = calculateFinishingCost(finishings);

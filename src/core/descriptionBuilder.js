@@ -77,6 +77,27 @@ export const buildItemDescription = ({
       break;
     }
 
+    case "BOOKLET": {
+      // Format: "HVS 70gr - Bolak-Balik (BW) - 10 buku @ 200 lembar"
+      const material = specs.variantLabel || "";
+      const printMode = specs.printModeLabel || "";
+      const bookInfo =
+        specs.bookletQty && specs.sheetsPerBook
+          ? `${specs.bookletQty} buku @ ${specs.sheetsPerBook} lembar`
+          : specs.sheetsPerBook
+            ? `${specs.sheetsPerBook} lembar/buku`
+            : "";
+
+      if (material && printMode && bookInfo) {
+        variantPart = `${material} - ${printMode} - ${bookInfo}`;
+      } else if (material && printMode) {
+        variantPart = `${material} - ${printMode}`;
+      } else if (bookInfo) {
+        variantPart = bookInfo;
+      }
+      break;
+    }
+
     case "UNIT":
     case "UNIT_SHEET":
       // Format: "Mug Keramik Custom" or "DISPLAY SYSTEM - X-Banner"
