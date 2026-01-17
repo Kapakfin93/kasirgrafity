@@ -34,21 +34,37 @@ export const buildItemDescription = ({
 
   // Build variant/specs part based on pricing type
   switch (pricingType) {
-    case "AREA":
-      // Format: "Flexi 280gr (2m x 3m)"
+    case "AREA": {
+      // Format: "Flexi 280gr (2m x 3m)" or "CETAK SPANDUK - Flexi 280gr (2m x 3m)"
+      let areaPart = "";
       if (specs.length && specs.width) {
-        variantPart = `(${specs.length}m x ${specs.width}m)`;
+        areaPart = `(${specs.length}m x ${specs.width}m)`;
+      }
+      // Include variant label if available
+      if (specs.variantLabel) {
+        variantPart = `${specs.variantLabel} ${areaPart}`;
+      } else {
+        variantPart = areaPart;
       }
       break;
+    }
 
-    case "LINEAR":
-      // Format: "Kain Lokal 90cm (5m)"
+    case "LINEAR": {
+      // Format: "Kain Lokal 90cm (5m)" or "Vinyl White 100cm (3m)"
+      let linearPart = "";
       if (specs.length) {
-        variantPart = `(${specs.length}m)`;
+        linearPart = `(${specs.length}m)`;
+      }
+      // Include variant label if available
+      if (specs.variantLabel) {
+        variantPart = `${specs.variantLabel} ${linearPart}`;
+      } else {
+        variantPart = linearPart;
       }
       break;
+    }
 
-    case "MATRIX":
+    case "MATRIX": {
       // Format: "CETAK POSTER (UV Print) - A2 - Albatros (Matte)"
       // Format fallback: "CETAK POSTER (UV Print) (A2)" if no material
       if (specs.sizeKey && specs.material) {
@@ -59,6 +75,7 @@ export const buildItemDescription = ({
         variantPart = `(${specs.sizeKey})`;
       }
       break;
+    }
 
     case "UNIT":
     case "UNIT_SHEET":

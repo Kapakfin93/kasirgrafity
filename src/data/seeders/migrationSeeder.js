@@ -32,7 +32,7 @@ const NEW_PILLARS = [
   },
   {
     id: "CAT_POSTER",
-    name: "Poster & Indoor",
+    name: "POSTER UV & INDOOR", // UPDATED: User's preferred name
     description: "Poster Kertas A0-A2",
     icon: "Image",
     color: "purple",
@@ -77,7 +77,7 @@ const LEGACY_OFFICE_PRODUCTS = [
  * STEP A: Create New Pillar Categories
  */
 async function createPillarCategories() {
-  console.log("📁 STEP A: Creating 4 New Pillar Categories...");
+  console.log("📁 STEP A: Creating/Updating Pillar Categories...");
 
   const results = [];
 
@@ -87,8 +87,18 @@ async function createPillarCategories() {
       const existing = await db.categories.get(pillar.id);
 
       if (existing) {
-        console.log(`  ℹ️  [${pillar.id}] Already exists, skipping`);
-        results.push({ id: pillar.id, action: "SKIPPED" });
+        // UPDATE existing category with latest data from source
+        await db.categories.update(pillar.id, {
+          name: pillar.name, // ✅ UPDATE name (allows edits)
+          description: pillar.description,
+          icon: pillar.icon,
+          color: pillar.color,
+          logic_type: pillar.logic_type,
+          sort_order: pillar.sort_order,
+          is_active: pillar.is_active,
+        });
+        console.log(`  🔄 [${pillar.id}] Updated: ${pillar.name}`);
+        results.push({ id: pillar.id, action: "UPDATED" });
       } else {
         await db.categories.add(pillar);
         console.log(`  ✅ [${pillar.id}] Created: ${pillar.name}`);
@@ -109,7 +119,7 @@ async function createPillarCategories() {
  */
 async function migrateProducts() {
   console.log(
-    "\n📦 STEP B: Migrating Products to New Categories (Smart Mapping)..."
+    "\n📦 STEP B: Migrating Products to New Categories (Smart Mapping)...",
   );
 
   const migrationStats = {
@@ -168,7 +178,7 @@ async function migrateProducts() {
     if (targetPillar) {
       categoryMapping.set(cat.id, targetPillar);
       console.log(
-        `    📌 "${cat.name}" (${cat.id.substring(0, 8)}...) → ${targetPillar}`
+        `    📌 "${cat.name}" (${cat.id.substring(0, 8)}...) → ${targetPillar}`,
       );
     }
   }
@@ -229,13 +239,13 @@ async function migrateProducts() {
       ) {
         // Already in a new pillar (e.g., pilot product)
         console.log(
-          `  ✅ [ALREADY MIGRATED] ${product.name} (${product.categoryId})`
+          `  ✅ [ALREADY MIGRATED] ${product.name} (${product.categoryId})`,
         );
         migrationStats.skipped.count++;
       } else {
         // Orphaned product (unknown category)
         console.warn(
-          `  ⚠️  [ORPHAN] ${product.name} (categoryId: ${product.categoryId})`
+          `  ⚠️  [ORPHAN] ${product.name} (categoryId: ${product.categoryId})`,
         );
         migrationStats.skipped.count++;
       }
@@ -247,16 +257,16 @@ async function migrateProducts() {
   // Summary
   console.log("\n  📊 Migration Summary:");
   console.log(
-    `    LARGE_FORMAT: ${migrationStats.LARGE_FORMAT.moved} products`
+    `    LARGE_FORMAT: ${migrationStats.LARGE_FORMAT.moved} products`,
   );
   console.log(
-    `    DIGITAL_A3_PRO: ${migrationStats.DIGITAL_A3_PRO.moved} products`
+    `    DIGITAL_A3_PRO: ${migrationStats.DIGITAL_A3_PRO.moved} products`,
   );
   console.log(
-    `    STATIONERY_OFFICE: ${migrationStats.STATIONERY_OFFICE.moved} products`
+    `    STATIONERY_OFFICE: ${migrationStats.STATIONERY_OFFICE.moved} products`,
   );
   console.log(
-    `    MERCH_APPAREL: ${migrationStats.MERCH_APPAREL.moved} products`
+    `    MERCH_APPAREL: ${migrationStats.MERCH_APPAREL.moved} products`,
   );
   console.log(`    Archived: ${migrationStats.archived.count} products`);
   console.log(`    Skipped: ${migrationStats.skipped.count} products`);
@@ -270,7 +280,7 @@ async function migrateProducts() {
  */
 async function archiveOldCategories() {
   console.log(
-    "\n🗄️  STEP C: Archiving Legacy Categories (Kill All Strangers)..."
+    "\n🗄️  STEP C: Archiving Legacy Categories (Kill All Strangers)...",
   );
 
   const SAFE_IDS = [
@@ -294,7 +304,7 @@ async function archiveOldCategories() {
           sort_order: 999, // Push to bottom
         });
         console.log(
-          `  🗑️  [CLEANUP] Archived: ${category.name} (ID: ${category.id})`
+          `  🗑️  [CLEANUP] Archived: ${category.name} (ID: ${category.id})`,
         );
         archiveResults.push({
           id: category.id,
@@ -412,13 +422,13 @@ export async function runMigration() {
     const categoryCount = await db.categories.count();
     if (categoryCount === 0) {
       console.log(
-        "📦 STEP 0: Database empty - seeding initial data from MASTER_DATA..."
+        "📦 STEP 0: Database empty - seeding initial data from MASTER_DATA...",
       );
       await seedMasterData();
       console.log("  ✅ Initial data seeded\n");
     } else {
       console.log(
-        `📦 STEP 0: Database has ${categoryCount} categories - skipping initial seed\n`
+        `📦 STEP 0: Database has ${categoryCount} categories - skipping initial seed\n`,
       );
     }
 

@@ -238,6 +238,7 @@ export default function ProductConfigModal({
               length: dimensions.length,
               width: dimensions.width,
               area: areaCalculation.area,
+              variantLabel: selectedVariant?.label || "", // ADDED: Include variant name
             }
           : isMatrix
             ? {
