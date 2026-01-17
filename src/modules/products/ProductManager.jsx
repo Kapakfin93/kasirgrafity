@@ -364,7 +364,208 @@ function ProductFormModal({
           {/* TAB CONTENT: PRICING */}
           {activeTab === "pricing" && (
             <div className="tab-content">
-              {hasVariantPricing ? (
+              {/* PRIORITY 1: TIERED MODE (Hybrid: Variants + Tiers) */}
+              {formData.input_mode === "TIERED" ? (
+                <div className="space-y-6">
+                  {/* SECTION A: Variant Editor (Always Visible for TIERED) */}
+                  <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <h3 className="text-cyan-400 font-bold flex items-center gap-2">
+                          <Edit size={16} /> 1. Varian / Tipe Produk
+                        </h3>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Contoh: Softcover, Hardcover, Kalender Meja, dll.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addVariant}
+                        className="text-xs bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-500 shadow-lg shadow-cyan-500/20 flex items-center gap-1 font-bold transition-colors"
+                      >
+                        + Tambah Varian
+                      </button>
+                    </div>
+
+                    {!formData.variants || formData.variants.length === 0 ? (
+                      <div className="text-center p-8 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50">
+                        <p className="text-slate-500 text-sm mb-2">
+                          Produk ini belum memiliki varian tipe.
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          Klik tombol "+ Tambah Varian" di atas jika produk ini
+                          punya tipe beda harga (misal: Softcover vs Hardcover).
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-3">
+                          {formData.variants.map((variant, idx) => (
+                            <div
+                              key={idx}
+                              className="flex gap-3 items-center bg-slate-900 p-3 rounded-lg border border-slate-700/50 animate-in fade-in slide-in-from-top-2"
+                            >
+                              <div className="flex-1 space-y-1">
+                                <label className="text-[10px] text-slate-500 mb-1 block">
+                                  Nama Varian
+                                </label>
+                                <input
+                                  type="text"
+                                  value={variant.label}
+                                  onChange={(e) =>
+                                    updateVariant(idx, "label", e.target.value)
+                                  }
+                                  className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-slate-200 font-medium focus:border-cyan-500 outline-none"
+                                  placeholder="Contoh: Softcover 180"
+                                />
+                              </div>
+                              <div className="w-32">
+                                <label className="text-[10px] text-slate-500 mb-1 block">
+                                  Harga Dasar (Rp)
+                                </label>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-2 text-xs text-slate-500">
+                                    Rp
+                                  </span>
+                                  <input
+                                    type="number"
+                                    value={variant.price}
+                                    onChange={(e) =>
+                                      updateVariant(
+                                        idx,
+                                        "price",
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                    className="w-full bg-slate-800 border border-slate-700 rounded pl-8 pr-2 py-1 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
+                                    placeholder="0"
+                                  />
+                                </div>
+                              </div>
+                              <div className="pt-5">
+                                <button
+                                  type="button"
+                                  onClick={() => deleteVariant(idx)}
+                                  className="text-slate-600 hover:text-red-500 text-xl px-2 transition-colors"
+                                  title="Hapus Varian"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-3">
+                          💡 Harga dasar untuk setiap tipe/varian produk
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* SECTION B: Tier Table (Always Show for TIERED) */}
+                  <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h3 className="text-emerald-400 font-bold mb-3 flex items-center gap-2">
+                      <Edit size={16} />{" "}
+                      {formData.variants?.length > 0
+                        ? "2. Aturan Harga Grosir (Tiers)"
+                        : "Aturan Harga Grosir (Tiers)"}
+                    </h3>
+                    <div className="space-y-3">
+                      {(
+                        formData.price_tiers ||
+                        formData.advanced_features?.wholesale_rules ||
+                        []
+                      ).map((tier, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-2 p-3 bg-slate-900 rounded-lg border border-slate-700/50"
+                        >
+                          {/* Min Qty */}
+                          <div className="w-24">
+                            <label className="text-[10px] text-slate-500 mb-1 block">
+                              Min Qty
+                            </label>
+                            <input
+                              type="number"
+                              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 outline-none"
+                              value={tier.min_qty || tier.min || 0}
+                              onChange={(e) =>
+                                updateTier(
+                                  index,
+                                  tier.min_qty !== undefined
+                                    ? "min_qty"
+                                    : "min",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </div>
+                          {/* Max Qty */}
+                          <div className="w-24">
+                            <label className="text-[10px] text-slate-500 mb-1 block">
+                              Max Qty
+                            </label>
+                            <input
+                              type="number"
+                              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 outline-none"
+                              value={tier.max_qty || tier.max || 0}
+                              onChange={(e) =>
+                                updateTier(
+                                  index,
+                                  tier.max_qty !== undefined
+                                    ? "max_qty"
+                                    : "max",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </div>
+                          {/* Price */}
+                          <div className="flex-1">
+                            <label className="text-[10px] text-slate-500 mb-1 block">
+                              Harga Satuan (Rp)
+                            </label>
+                            <input
+                              type="number"
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
+                              value={tier.price}
+                              onChange={(e) =>
+                                updateTier(index, "price", e.target.value)
+                              }
+                            />
+                            <span className="text-[10px] text-slate-600 mt-1 block text-right">
+                              {formatNumber(tier.price)}
+                            </span>
+                          </div>
+                          {/* Delete Button */}
+                          <button
+                            type="button"
+                            onClick={() => deleteTier(index)}
+                            className="text-slate-600 hover:text-red-500 text-xl px-2 transition-colors"
+                            title="Hapus Tier"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Add Tier Button */}
+                    <button
+                      type="button"
+                      onClick={addTier}
+                      className="mt-3 w-full py-2 border border-dashed border-cyan-500/30 text-cyan-500 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors text-sm"
+                    >
+                      ➕ Tambah Tier Baru
+                    </button>
+                    <p className="text-xs text-slate-400 mt-3">
+                      {formData.variants?.length > 0
+                        ? "💡 Harga grosir akan menggantikan harga dasar saat Qty tercapai"
+                        : "💡 Harga berdasarkan jumlah pesanan (quantity-based pricing)"}
+                    </p>
+                  </div>
+                </div>
+              ) : /* PRIORITY 2: LINEAR/AREA with variants */
+              hasVariantPricing ? (
                 /* VARIANT PRICING TABLE (For LINEAR/AREA) */
                 <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-6">
                   <h3 className="text-cyan-400 font-bold mb-4 flex items-center gap-2">
@@ -446,12 +647,14 @@ function ProductFormModal({
                       : "Harga per meter persegi (m²)"}
                   </p>
                 </div>
-              ) : formData.price_tiers?.length > 0 ||
-                formData.advanced_features?.wholesale_rules?.length > 0 ? (
-                /* TIERED PRICING EDITOR (For SHEET/TIERED products like POD A3+, BUKU YASIN) */
+              ) : /* PRIORITY 3: SHEET mode with tiers */
+              formData.input_mode === "SHEET" &&
+                (formData.price_tiers?.length > 0 ||
+                  formData.advanced_features?.wholesale_rules?.length > 0) ? (
+                /* SHEET PRICING (Legacy TIERED without variants) */
                 <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-6">
-                  <h3 className="text-cyan-400 font-bold mb-4 flex items-center gap-2">
-                    <Edit size={16} /> Edit Harga Bertingkat (Tiered)
+                  <h3 className="text-emerald-400 font-bold mb-4 flex items-center gap-2">
+                    <Edit size={16} /> Edit Harga Bertingkat (Sheet)
                   </h3>
                   <div className="space-y-3">
                     {(
@@ -540,7 +743,8 @@ function ProductFormModal({
                     💡 Harga berdasarkan jumlah pesanan (quantity-based pricing)
                   </p>
                 </div>
-              ) : formData.input_mode === "MATRIX" &&
+              ) : /* PRIORITY 4: MATRIX products */
+              formData.input_mode === "MATRIX" &&
                 formData.variants?.length > 0 ? (
                 /* DEEP MATRIX EDITOR (For POSTER with price_list) */
                 <div className="space-y-4">
