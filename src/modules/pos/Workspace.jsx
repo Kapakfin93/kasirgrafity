@@ -4,6 +4,7 @@ import { useOrderStore } from "../../stores/useOrderStore";
 import { useAuthStore } from "../../stores/useAuthStore";
 import { CustomerSelector } from "./CustomerSelector";
 import { ReceiptSection } from "./ReceiptSection";
+import { PaymentModal } from "./PaymentModal";
 import { NotaPreview } from "./NotaPreview";
 import ProductConfigModal from "./ProductConfigModal";
 import ProductCard from "./ProductCard";
@@ -50,6 +51,7 @@ export function Workspace() {
   const [selectedProduct, setSelectedProduct] = useState(null); // Modal state
   const [gridMode, setGridMode] = useState("normal"); // Grid size
   const [isTempo, setIsTempo] = useState(false); // [SOP V2.0] TEMPO/VIP mode
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false); // NEW: Payment modal state
 
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
@@ -396,21 +398,35 @@ export function Workspace() {
         removeItem={removeItem}
         totalAmount={calculateTotal()}
         paymentState={paymentState}
-        updatePayment={updatePaymentState}
-        onConfirmPayment={handleConfirmPayment}
         isLocked={isLocked}
         onPrint={handlePrint}
         onReset={handleNewTransaction}
-        isTempo={isTempo}
-        setIsTempo={setIsTempo}
         customerSnapshot={customerSnapshot}
+        onOpenPaymentModal={() => setIsPaymentModalOpen(true)}
+      />
+
+      {/* Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        totalAmount={calculateTotal()}
+        onConfirmPayment={() => {
+          setIsPaymentModalOpen(false);
+          handleConfirmPayment();
+        }}
+        discount={discount}
+        setDiscount={setDiscount}
+        paymentState={paymentState}
+        updatePayment={updatePaymentState}
+        customerName={customerSnapshot?.name}
         targetDate={targetDate}
         setTargetDate={setTargetDate}
         setPriorityStandard={setPriorityStandard}
         setPriorityExpress={setPriorityExpress}
         setPriorityUrgent={setPriorityUrgent}
-        discount={discount}
-        setDiscount={setDiscount}
+        isTempo={isTempo}
+        setIsTempo={setIsTempo}
+        items={items}
       />
 
       {/* Product Config Modal */}
