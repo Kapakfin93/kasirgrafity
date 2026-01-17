@@ -245,7 +245,10 @@ export default function ProductConfigModal({
                 sizeKey: matrixSelection.step1, // FIXED: step1 = size (A2, A1, A0)
                 material: matrixSelection.step2, // FIXED: step2 = material (Albatros, Luster)
               }
-            : {},
+            : {
+                // UNIT and other types - include variant label
+                variantLabel: selectedVariant?.label || "",
+              },
       final_price: productPriceToSend,
       finishings: finishingsArray,
       selected_details: {

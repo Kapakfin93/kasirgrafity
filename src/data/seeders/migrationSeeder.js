@@ -61,6 +61,16 @@ const NEW_PILLARS = [
     sort_order: 6,
     is_active: 1,
   },
+  {
+    id: "CUSTOM_SERVICES",
+    name: "Custom & Services",
+    description: "Item Manual & Jasa",
+    icon: "Settings",
+    color: "slate",
+    logic_type: "MANUAL",
+    sort_order: 7,
+    is_active: 1,
+  },
 ];
 
 // === DUPLICATE PRODUCTS TO ARCHIVE (Legacy OFFICE Simple Versions) ===
@@ -284,10 +294,16 @@ async function archiveOldCategories() {
   );
 
   const SAFE_IDS = [
-    "LARGE_FORMAT",
+    // NEW PILLAR CATEGORIES (Must match NEW_PILLARS array)
+    "CAT_OUTDOOR",
+    "CAT_ROLLS",
+    "CAT_POSTER",
     "DIGITAL_A3_PRO",
     "STATIONERY_OFFICE",
     "MERCH_APPAREL",
+    "CUSTOM_SERVICES",
+    // LEGACY IDs (for backward compatibility)
+    "LARGE_FORMAT",
   ];
   const archiveResults = [];
 

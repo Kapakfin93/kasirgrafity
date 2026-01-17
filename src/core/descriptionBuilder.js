@@ -79,9 +79,13 @@ export const buildItemDescription = ({
 
     case "UNIT":
     case "UNIT_SHEET":
-      // Format: "Mug Keramik Custom" (no variant needed, name is descriptive)
-      // Or: "HVS A3+ 100gr" (name already includes variant)
-      variantPart = "";
+      // Format: "Mug Keramik Custom" or "DISPLAY SYSTEM - X-Banner"
+      // Include variant label if available (for products with specific variants)
+      if (specs.variantLabel) {
+        variantPart = specs.variantLabel;
+      } else {
+        variantPart = "";
+      }
       break;
 
     case "MANUAL":
