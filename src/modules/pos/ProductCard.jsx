@@ -19,9 +19,29 @@ export const ProductCard = ({ product, onClick }) => {
   // Debugging (Check Console if this triggers)
   if (product.name.includes("SPANDUK")) {
     console.log(
-      `[ProductCard] Rendering ${product.name}: isOutdoorHero=${isOutdoorHero}, CatID=${product.categoryId}`
+      `[ProductCard] Rendering ${product.name}: isOutdoorHero=${isOutdoorHero}, CatID=${product.categoryId}`,
     );
   }
+
+  // --- CALCULATE DISPLAY PRICE FOR MATRIX PRODUCTS ---
+  const getDisplayPrice = () => {
+    // For MATRIX products, find minimum price from price_list
+    if (product.input_mode === "MATRIX" && product.variants?.length > 0) {
+      let minPrice = Infinity;
+      product.variants.forEach((variant) => {
+        if (variant.price_list) {
+          Object.values(variant.price_list).forEach((price) => {
+            if (price < minPrice) minPrice = price;
+          });
+        }
+      });
+      return minPrice === Infinity ? 0 : minPrice;
+    }
+    // For other products, use base_price
+    return product.base_price || 0;
+  };
+
+  const displayPrice = getDisplayPrice();
 
   // --- 2. HERO CARD LAYOUT (OUTDOOR / SPANDUK) ---
   if (isOutdoorHero) {
@@ -88,7 +108,7 @@ export const ProductCard = ({ product, onClick }) => {
       <div className="flex items-start justify-between mb-4">
         <div
           className={`p-3 rounded-2xl ${getIconColor(
-            product.categoryId
+            product.categoryId,
           )} bg-opacity-20`}
         >
           {getCategoryIcon(product.categoryId)}
@@ -109,7 +129,7 @@ export const ProductCard = ({ product, onClick }) => {
       <div className="mt-4 pt-4 border-t border-slate-800">
         <p className="text-xs text-slate-400 font-medium mb-1">Mulai dari</p>
         <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400">
-          {formatCurrency(product.base_price || 0)}
+          {formatCurrency(displayPrice)}
           {product.input_mode === "LINEAR" && (
             <span className="text-sm text-slate-500 font-normal">/m</span>
           )}

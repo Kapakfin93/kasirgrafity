@@ -753,55 +753,8 @@ function ProductFormModal({
                 formData.variants?.length > 0 ? (
                 /* DEEP MATRIX EDITOR (For POSTER with price_list) */
                 <div className="space-y-6">
-                  {/* EMERGENCY EXIT BUTTON (Prominent & Clickable) */}
-                  <div className="bg-gradient-to-r from-red-900/40 to-slate-900 border-2 border-red-500/50 p-5 rounded-xl flex items-center justify-between shadow-xl shadow-red-900/20 relative z-50">
-                    <div className="flex-1 pr-4">
-                      <h4 className="text-red-400 font-bold text-base flex items-center gap-2">
-                        ⚠️ Hapus Mode Matrix (Tabel)
-                      </h4>
-                      <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                        Klik tombol ini untuk mengubah produk menjadi{" "}
-                        <strong className="text-cyan-400">
-                          Mode Varian Simple
-                        </strong>
-                        .
-                        <br />
-                        Sistem akan otomatis menghapus tulisan "Warna" agar
-                        lebih fleksibel.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log("🚀 FORCE RESET EXECUTION STARTED");
-
-                        // DIRECT EXECUTION - NO CONFIRMATION DIALOG
-                        setFormData((prev) => ({
-                          ...prev,
-                          input_mode: "TIERED", // Force switch to Hybrid
-                          variants: [
-                            { label: "NCR 1 Ply (HVS)", price: 25000 },
-                            { label: "NCR 2 Ply", price: 45000 },
-                            { label: "NCR 3 Ply", price: 65000 },
-                            { label: "NCR 4 Ply", price: 85000 },
-                          ],
-                          price_tiers: [], // Keep tiers empty as per safety strategy
-                        }));
-
-                        console.log(
-                          "✅ FORCE RESET COMPLETED: Mode switched to TIERED",
-                        );
-                      }}
-                      className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-sm shadow-2xl hover:scale-105 transition-transform flex-shrink-0 cursor-pointer"
-                    >
-                      🔄 RESET SEKARANG
-                    </button>
-                  </div>
-
-                  {/* EXISTING MATRIX COMPONENT (Dimmed to encourage reset) */}
-                  <div className="opacity-40 pointer-events-none select-none">
+                  {/* MATRIX EDITOR - NOW FULLY EDITABLE */}
+                  <div>
                     <h3 className="text-cyan-400 font-bold mb-3 flex items-center gap-2">
                       <Edit size={16} /> Edit Harga Matrix (Per Ukuran & Bahan)
                     </h3>
@@ -827,7 +780,17 @@ function ProductFormModal({
                                   type="number"
                                   className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right text-yellow-400 text-sm focus:border-cyan-500 outline-none"
                                   value={price}
-                                  disabled
+                                  onChange={(e) => {
+                                    const newVariants = [...formData.variants];
+                                    // Update nested price_list
+                                    newVariants[vIndex].price_list[
+                                      materialName
+                                    ] = Number(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      variants: newVariants,
+                                    });
+                                  }}
                                 />
                               </div>
                             ),
@@ -838,6 +801,31 @@ function ProductFormModal({
                     <p className="text-xs text-slate-500 mt-3">
                       💡 Harga per lembar sesuai ukuran dan bahan kertas
                     </p>
+
+                    {/* SMALL RESET LINK - Bottom, unobtrusive */}
+                    <div className="mt-4 pt-4 border-t border-slate-700/30">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (
+                            confirm(
+                              "Yakin ingin reset ke mode Varian kosong? Data Matrix akan dihapus.",
+                            )
+                          ) {
+                            setFormData((prev) => ({
+                              ...prev,
+                              input_mode: "TIERED",
+                              variants: [],
+                              price_tiers: [],
+                            }));
+                          }
+                        }}
+                        className="text-xs text-slate-500 hover:text-red-400 underline transition-colors"
+                      >
+                        ↻ Reset ke Mode Varian (Hybrid)
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : isMatrixType ? (
