@@ -339,7 +339,8 @@ export function useTransaction() {
           break;
 
         case "BOOKLET":
-          // BOOKLET pricing for Print Dokumen (Booklet system)
+          // BOOKLET pricing for Print Dokumen (Additive Model)
+          // NEW SCHEMA: Paper price + Print price (no multiplier)
           // dimensions = { variantLabel, printModeId, sheetsPerBook }
           const { variantLabel, printModeId, sheetsPerBook } = dimensions;
 
@@ -349,44 +350,65 @@ export function useTransaction() {
             );
           }
 
-          // Get base price from variant
-          let basePrice = parseFloat(product.price) || 0;
+          // Get paper price from variant (if available)
+          let paperPrice = 0;
+          if (product.variants && product.variants.length > 0) {
+            const selectedVariant = product.variants.find(
+              (v) => v.label === variantLabel,
+            );
+            if (selectedVariant && selectedVariant.price) {
+              paperPrice = parseFloat(selectedVariant.price) || 0;
+            }
+          }
 
-          // Get print mode multiplier
-          let multiplier = 1.0;
+          // Fallback to base price if no variant price
+          if (paperPrice === 0) {
+            paperPrice = parseFloat(product.base_price) || 0;
+          }
+
+          // Get print price from print_modes (NEW SCHEMA)
+          let printPrice = 0;
           if (product.print_modes && printModeId) {
             const printMode = product.print_modes.find(
               (m) => m.id === printModeId,
             );
             if (printMode) {
-              multiplier = printMode.multiplier || 1.0;
+              printPrice = parseFloat(printMode.price) || 0;
             }
           }
 
-          // Calculate effective price per sheet with multiplier
-          const effectivePrice = basePrice * multiplier;
+          // ADDITIVE FORMULA: (Paper Price + Print Price) × Sheets
+          const contentCost = (paperPrice + printPrice) * sheetsPerBook;
 
-          // Price per book = sheets × effective price
-          const pricePerBook = sheetsPerBook * effectivePrice;
-
-          // Handle finishing costs
+          // Handle finishing costs (PER_JOB = once per book)
           let finishingPerBook = 0;
           finishings.forEach((f) => {
             if (f.price_mode === "PER_JOB") {
               // PER_JOB: Once per book
               finishingPerBook += f.price || 0;
             } else {
-              // PER_UNIT: Per sheet
+              // PER_UNIT: Per sheet (rare for booklet)
               finishingPerBook += (f.price || 0) * sheetsPerBook;
             }
           });
 
-          // Total per book
-          const totalPerBook = pricePerBook + finishingPerBook;
+          // Total per book = content cost + finishing
+          const totalPerBook = contentCost + finishingPerBook;
 
           // Grand total = total per book × quantity (number of books)
           calculatedPrice = totalPerBook * safeQty;
           unitPrice = totalPerBook;
+
+          console.log("📚 BOOKLET Pricing:", {
+            paperPrice,
+            printPrice,
+            sheetsPerBook,
+            contentCost,
+            finishingPerBook,
+            totalPerBook,
+            qty: safeQty,
+            grandTotal: calculatedPrice,
+          });
           break;
 
         case "UNIT":

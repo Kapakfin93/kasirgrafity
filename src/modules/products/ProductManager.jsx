@@ -9,6 +9,7 @@ import { useProductStore } from "../../stores/useProductStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import { formatRupiah } from "../../core/formatters";
 import { ConfirmModal } from "../../components/ConfirmModal";
+import db from "../../data/db/schema"; // ✅ For data injection button
 import {
   Edit,
   ArrowLeft,
@@ -1532,6 +1533,94 @@ export function ProductManager() {
     });
   };
 
+  // ============================================
+  // TEMPORARY DATA INJECTION (BOOKLET FIX)
+  // ============================================
+  const fixBookletData = async () => {
+    if (!confirm("Update Data Print Dokumen ke Format Baru?")) return;
+
+    try {
+      // 1. DELETE OLD DATA
+      await db.products.delete("master_print_dokumen");
+
+      // 2. INJECT NEW DATA
+      await db.products.add({
+        id: "master_print_dokumen",
+        categoryId: "DIGITAL_A3_PRO", // Ensure this Category ID matches your DB!
+        name: "PRINT DOKUMEN (A4/F4 HVS)",
+        input_mode: "BOOKLET",
+        calc_engine: "BOOKLET",
+        base_price: 0,
+        min_qty: 1,
+
+        // VARIAN KERTAS
+        variants: [
+          { label: "HVS 70gr", price: 200, specs: "Putih Standar" },
+          { label: "HVS 80gr", price: 250, specs: "Putih Tebal" },
+          { label: "Bookpaper 72gr", price: 300, specs: "Krem Novel" },
+          { label: "Art Paper 120gr", price: 500, specs: "Glossy" },
+        ],
+
+        // ONGKOS CETAK (PER KLIK)
+        print_modes: [
+          {
+            id: "single_sided",
+            label: "1 Sisi (Hitam Putih)",
+            price: 300,
+            description: "Teks Hitam Standard",
+          },
+          {
+            id: "duplex_bw",
+            label: "Bolak-Balik (Hitam Putih)",
+            price: 500,
+            description: "Hemat (Rp 250/muka)",
+          },
+          {
+            id: "duplex_color",
+            label: "Bolak-Balik (Full Color)",
+            price: 1500,
+            description: "Warna Tajam",
+          },
+        ],
+
+        // FINISHING
+        finishing_groups: [
+          {
+            id: "fin_binding",
+            title: "Jilid / Binding",
+            type: "radio",
+            price_mode: "PER_JOB",
+            required: false,
+            options: [
+              { label: "Tanpa Jilid", price: 0 },
+              { label: "Staples Pojok", price: 2000 },
+              { label: "Jilid Lakban", price: 3000 },
+              { label: "Softcover", price: 15000 },
+            ],
+          },
+          {
+            id: "fin_cover",
+            title: "Cover Depan",
+            type: "radio",
+            price_mode: "PER_JOB",
+            options: [
+              { label: "Tanpa Cover", price: 0 },
+              { label: "Mika Bening", price: 3000 },
+            ],
+          },
+        ],
+        is_active: 1,
+        is_archived: 0,
+      });
+
+      alert("✅ SUKSES! Data Print Dokumen sudah diperbarui.");
+      window.location.reload(); // Refresh to see changes
+    } catch (error) {
+      console.error(error);
+      alert("❌ GAGAL: " + error.message);
+    }
+  };
+
   // Get price display (SMART VERSION - handles all input modes)
   const getProductPriceDisplay = (product) => {
     // 1. If product uses Variants (Linear/Area/Matrix)
@@ -1624,6 +1713,21 @@ export function ProductManager() {
         </div>
 
         <div className="pm-actions">
+          {/* TEMPORARY DATA INJECTION BUTTON */}
+          <button
+            className="btn-warning"
+            onClick={fixBookletData}
+            style={{
+              backgroundColor: "#f59e0b",
+              color: "#000",
+              fontWeight: "bold",
+              marginRight: "10px",
+            }}
+            title="Update PRINT DOKUMEN ke schema baru (additive pricing)"
+          >
+            🛠️ FIX DATA BOOKLET
+          </button>
+
           {activeTab === "products" && viewMode === "TABLE" && (
             <button
               className="btn-primary"

@@ -127,41 +127,43 @@ const A3_PRODUCTS = [
 
   // 3. MASTER PRINT DOKUMEN (The Booklet)
   // Logic: BOOKLET (Material x Print Mode x Sheets/Book) + PER_JOB Finishing
+  // NEW SCHEMA: Additive Pricing (Paper + Ink, no multiplier)
   {
     id: "master_print_dokumen",
     categoryId: "DIGITAL_A3_PRO",
     name: "PRINT DOKUMEN (A4/F4 HVS)",
     input_mode: "BOOKLET", // Special mode for booklet calculation
     calc_engine: "BOOKLET",
-    base_price: 500, // Base price per sheet
+    base_price: 0, // Not used in new schema
     min_qty: 1, // Minimum 1 book
 
-    // STEP 1: Material variants (price per sheet, 1 side)
+    // STEP 1: Material variants (PAPER price per sheet)
     variants: [
-      { label: "HVS 70gr", price: 500, specs: "Standard Office" },
-      { label: "HVS 80gr", price: 600, specs: "Premium Thick" },
-      { label: "Art Paper 120gr", price: 1200, specs: "Glossy / Doff" },
+      { label: "HVS 70gr", price: 200, specs: "Putih Standar" },
+      { label: "HVS 80gr", price: 250, specs: "Putih Tebal" },
+      { label: "Bookpaper 72gr", price: 300, specs: "Krem Novel" },
+      { label: "Art Paper 120gr", price: 500, specs: "Glossy" },
     ],
 
-    // STEP 2: Print modes (affects final price calculation)
+    // STEP 2: Print modes (INK/CLICK price per sheet, NO MULTIPLIER)
     print_modes: [
       {
         id: "single_sided",
         label: "1 Sisi (Hitam Putih)",
-        multiplier: 1.0,
-        description: "Cetak pada 1 sisi saja",
+        price: 300, // Rp 300 per sheet for ink
+        description: "Teks Hitam Standard",
       },
       {
         id: "duplex_bw",
         label: "Bolak-Balik (Hitam Putih)",
-        multiplier: 1.8,
-        description: "1 lembar = 2 halaman (lebih hemat)",
+        price: 500, // Rp 500 per sheet for duplex ink
+        description: "Hemat (Rp 250/muka)",
       },
       {
         id: "duplex_color",
         label: "Bolak-Balik (Full Color)",
-        multiplier: 3.5,
-        description: "2 sisi full color",
+        price: 1500, // Rp 1500 per sheet for color duplex
+        description: "Warna Tajam",
       },
     ],
 
@@ -175,22 +177,20 @@ const A3_PRODUCTS = [
         required: false,
         options: [
           { label: "Tanpa Jilid", price: 0 },
-          { label: "Staples Pojok", price: 2500 },
-          { label: "Staples Tengah (2 Titik)", price: 3000 },
-          { label: "Spiral Plastik", price: 10000 },
-          { label: "Spiral Kawat", price: 8000 },
+          { label: "Staples Pojok", price: 2000 },
+          { label: "Jilid Lakban", price: 3000 },
+          { label: "Softcover", price: 15000 },
         ],
       },
       {
         id: "fin_cover",
-        title: "Cover Depan/Belakang",
+        title: "Cover Depan",
         type: "radio",
         price_mode: "PER_JOB",
         required: false,
         options: [
           { label: "Tanpa Cover", price: 0 },
-          { label: "Cover Mika Bening", price: 5000 },
-          { label: "Cover Hard (Karton)", price: 15000 },
+          { label: "Mika Bening", price: 3000 },
         ],
       },
     ],
@@ -236,13 +236,36 @@ const A3_PRODUCTS = [
 export async function runA3Reconstruction() {
   console.log("🖨️ DIGITAL A3+ RECONSTRUCTION STARTING...");
   try {
+    // ✅ HARDCODED Category ID (Case-sensitive, exact match)
+    const REAL_CAT_ID = "DIGITAL_A3_PRO";
+    console.log(`✅ Using hardcoded category ID: ${REAL_CAT_ID}`);
+
+    // Verify category exists
+    const categoryExists = await db.categories.get(REAL_CAT_ID);
+    if (!categoryExists) {
+      console.error(
+        `❌ FATAL: Category '${REAL_CAT_ID}' tidak ditemukan di database!`,
+      );
+      console.error(
+        "   Pastikan migration seeder sudah run dan kategori sudah dibuat.",
+      );
+      return;
+    }
+
+    // Update all products with HARDCODED category ID
+    const productsWithRealId = A3_PRODUCTS.map((p) => ({
+      ...p,
+      categoryId: REAL_CAT_ID, // ✅ Hardcoded, reliable!
+    }));
+
     // STRATEGY: NUCLEAR CLEANUP by Category ID + Keywords
     const zombies = await db.products
       .filter((p) => {
         const name = p.name.toLowerCase();
         const cat = p.categoryId || "";
         const isZombie =
-          cat === "DIGITAL_A3_PRO" ||
+          cat === REAL_CAT_ID ||
+          cat === "DIGITAL_A3_PRO" || // Legacy fallback
           name.includes("stiker a3") ||
           name.includes("kartu nama") ||
           name.includes("brosur") ||
@@ -268,16 +291,19 @@ export async function runA3Reconstruction() {
       // Ignore if doesn't exist
     }
 
-    // SEED NEW MASTERS
-    for (const mp of A3_PRODUCTS) {
+    // SEED NEW MASTERS (with hardcoded category ID)
+    for (const mp of productsWithRealId) {
       await db.products.put(mp);
-      console.log(`✅ Seeded: ${mp.name}`);
+      console.log(`✅ Seeded: ${mp.name} → Category: ${REAL_CAT_ID}`);
 
       // VERIFICATION: Log print_modes for PRINT DOKUMEN
       if (mp.id === "master_print_dokumen") {
         console.log("🔍 PRINT DOKUMEN verification:", {
+          categoryId: mp.categoryId,
+          inputMode: mp.input_mode,
           hasPrintModes: !!mp.print_modes,
           printModesCount: mp.print_modes?.length || 0,
+          modes: mp.print_modes?.map((m) => `${m.label} (Rp ${m.price})`),
         });
       }
     }

@@ -146,11 +146,12 @@ export default function ProductConfigModal({
       return price * dimensions.length;
     }
     if (isBooklet) {
-      // BOOKLET: Price per book = (basePrice × multiplier) × sheets
-      const multiplier = printMode?.multiplier || 1.0;
-      const effectivePrice = price * multiplier;
-      const pricePerBook = sheetsPerBook * effectivePrice;
-      return pricePerBook; // This is price PER BOOK (not per sheet)
+      // BOOKLET: Additive Pricing Model (Paper + Ink)
+      // Formula: (Paper Price + Print Price) × Sheets
+      const paperPrice = selectedVariant?.price || 0;
+      const printPrice = printMode?.price || 0;
+      const contentCost = (paperPrice + printPrice) * sheetsPerBook;
+      return contentCost; // Price per transaction unit (sheetsPerBook)
     }
     return price;
   }, [
@@ -162,6 +163,7 @@ export default function ProductConfigModal({
     areaCalculation,
     dimensions.length,
     printMode,
+    selectedVariant,
     sheetsPerBook,
     getTieredPrice,
   ]);
@@ -262,6 +264,7 @@ export default function ProductConfigModal({
                 id: opt.label,
                 name: opt.label,
                 price: finalOptPrice,
+                price_mode: group.price_mode || "PER_UNIT", // ✅ Include price_mode for BOOKLET
               });
             }
           };
@@ -543,75 +546,93 @@ export default function ProductConfigModal({
               </section>
             )}
 
-            {/* BOOKLET: Print Mode Selector */}
-            {isBooklet && (
-              <section className="animate-in slide-in-from-top-4 duration-300">
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <span className="w-4 h-[2px] bg-purple-500"></span>
-                  Mode Cetak
+            {/* BOOKLET: Debug info if print_modes missing */}
+            {isBooklet && !product.print_modes && (
+              <div className="bg-red-900/30 border-2 border-red-500 rounded-xl p-6 animate-pulse">
+                <h3 className="text-red-400 font-black text-lg mb-2">
+                  ⚠️ DATABASE ERROR
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {product.print_modes?.map((mode, i) => {
-                    const isSelected = printMode?.id === mode.id;
-                    // Calculate price per sheet for this mode
-                    const basePrice =
-                      selectedVariant?.price || product.base_price || 500;
-                    const pricePerSheet = basePrice * mode.multiplier;
-                    const savings =
-                      mode.multiplier < 2.0 && mode.multiplier > 1.0
-                        ? Math.round((1 - mode.multiplier / 2.0) * 100)
-                        : 0;
+                <p className="text-red-300 text-sm mb-3">
+                  Product tidak memiliki print_modes array!
+                </p>
+                <p className="text-slate-400 text-xs font-mono">
+                  Run console command untuk fix database.
+                </p>
+              </div>
+            )}
 
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => setPrintMode(mode)}
-                        className={`p-4 rounded-xl border-2 text-left transition-all group relative overflow-hidden ${
-                          isSelected
-                            ? "border-purple-500 bg-gradient-to-br from-purple-900/30 to-slate-800 shadow-[0_0_20px_rgba(168,85,247,0.3)]"
-                            : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
-                        }`}
-                      >
-                        {/* HEMAT badge for duplex modes */}
-                        {savings > 0 && (
-                          <div className="absolute top-2 right-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg">
-                            HEMAT {savings}%
-                          </div>
-                        )}
+            {/* BOOKLET: Print Mode Selector */}
+            {isBooklet &&
+              product.print_modes &&
+              product.print_modes.length > 0 && (
+                <section className="animate-in slide-in-from-top-4 duration-300">
+                  <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <span className="w-4 h-[2px] bg-purple-500"></span>
+                    Mode Cetak
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {product.print_modes?.map((mode, i) => {
+                      const isSelected = printMode?.id === mode.id;
+                      // NEW SCHEMA: mode.price is the actual ink/click cost
+                      const paperPrice = selectedVariant?.price || 0;
+                      const printPrice = mode.price || 0;
+                      const totalPricePerSheet = paperPrice + printPrice;
+                      // HEMAT badge logic (no longer needed with new pricing)
+                      const savings = 0; // Remove savings badge for now
 
-                        <div className="flex items-start justify-between mb-2">
-                          <span
-                            className={`font-bold text-sm ${
-                              isSelected
-                                ? "text-purple-400"
-                                : "text-slate-300 group-hover:text-white"
-                            }`}
-                          >
-                            {mode.label}
-                          </span>
-                          {isSelected && (
-                            <Check size={16} className="text-purple-400" />
-                          )}
-                        </div>
-
-                        {/* Show calculated price per sheet */}
-                        <div
-                          className={`text-base font-black mb-1 ${
-                            isSelected ? "text-purple-300" : "text-slate-400"
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setPrintMode(mode)}
+                          className={`p-4 rounded-xl border-2 text-left transition-all group relative overflow-hidden ${
+                            isSelected
+                              ? "border-purple-500 bg-gradient-to-br from-purple-900/30 to-slate-800 shadow-[0_0_20px_rgba(168,85,247,0.3)]"
+                              : "border-slate-700/50 hover:border-slate-500 bg-slate-800/30"
                           }`}
                         >
-                          Rp {pricePerSheet.toLocaleString()}/lembar
-                        </div>
+                          {/* HEMAT badge for duplex modes */}
+                          {savings > 0 && (
+                            <div className="absolute top-2 right-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg">
+                              HEMAT {savings}%
+                            </div>
+                          )}
 
-                        <div className="text-[10px] text-slate-500">
-                          {mode.description}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
+                          <div className="flex items-start justify-between mb-2">
+                            <span
+                              className={`font-bold text-sm ${
+                                isSelected
+                                  ? "text-purple-400"
+                                  : "text-slate-300 group-hover:text-white"
+                              }`}
+                            >
+                              {mode.label}
+                            </span>
+                            {isSelected && (
+                              <Check size={16} className="text-purple-400" />
+                            )}
+                          </div>
+
+                          {/* Show calculated price per sheet */}
+                          <div
+                            className={`text-base font-black mb-1 ${
+                              isSelected ? "text-purple-300" : "text-slate-400"
+                            }`}
+                          >
+                            Rp {totalPricePerSheet.toLocaleString()}/lembar
+                          </div>
+                          <div className="text-[9px] text-slate-600 font-mono">
+                            Kertas: Rp{paperPrice} + Cetak: Rp{printPrice}
+                          </div>
+
+                          <div className="text-[10px] text-slate-500">
+                            {mode.description}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
 
             {/* BOOKLET: Sheets Per Book Input */}
             {isBooklet && (

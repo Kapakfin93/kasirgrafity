@@ -1,15 +1,19 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
-import { seedPilotProduct, verifyPilotProduct } from './data/seeders/pilotSeeder.js'
-import { runMigration } from './data/seeders/migrationSeeder.js'
-import { runSurgicalFix } from './data/seeders/surgicalFix.js'
-import { runLargeFormatReconstruction } from './data/seeders/reconstructLargeFormat.js'
-import { runOfficeReconstruction } from './data/seeders/reconstructOffice.js'
-import { runMerchReconstruction } from './data/seeders/reconstructMerchandise.js'
-import { runA3Reconstruction } from './data/seeders/reconstructDigitalA3.js'
-import { runCustomReconstruction } from './data/seeders/reconstructCustom.js'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import App from "./App.jsx";
+import {
+  seedPilotProduct,
+  verifyPilotProduct,
+} from "./data/seeders/pilotSeeder.js";
+import { runMigration } from "./data/seeders/migrationSeeder.js";
+import { runSurgicalFix } from "./data/seeders/surgicalFix.js";
+import { runLargeFormatReconstruction } from "./data/seeders/reconstructLargeFormat.js";
+import { runOfficeReconstruction } from "./data/seeders/reconstructOffice.js";
+import { runMerchReconstruction } from "./data/seeders/reconstructMerchandise.js";
+import { runA3Reconstruction } from "./data/seeders/reconstructDigitalA3.js";
+import { runCustomReconstruction } from "./data/seeders/reconstructCustom.js";
+import db from "./data/db/schema.js";
 
 // GEN 2 INITIALIZATION SEQUENCE
 // 1. Seed pilot product - DISABLED (replaced by master products)
@@ -39,7 +43,17 @@ setTimeout(() => {
                 setTimeout(() => {
                   runMerchReconstruction().then(() => {
                     // Run DIGITAL_A3_PRO reconstruction after MERCH
-                    setTimeout(() => {
+                    setTimeout(async () => {
+                      // ✅ ONE-TIME CLEANUP: Force delete old PRINT DOKUMEN before reconstruction
+                      try {
+                        await db.products.delete("master_print_dokumen");
+                        console.log(
+                          "🧹 Pre-cleanup: Deleted old master_print_dokumen",
+                        );
+                      } catch (e) {
+                        // Ignore if doesn't exist
+                      }
+
                       runA3Reconstruction().then(() => {
                         // Run CUSTOM_SERVICES reconstruction after A3
                         setTimeout(() => {
@@ -59,8 +73,8 @@ setTimeout(() => {
 }, 500);
 // });
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
   </StrictMode>,
-)
+);
