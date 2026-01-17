@@ -8,17 +8,16 @@ export function ReceiptSection({
   onItemClick,
   onConfirmPayment,
   transactionStage,
-  // Props baru untuk Diskon & State
+  // Props untuk Diskon & State
   discount,
   setDiscount,
-  isLocked = false, // Default false jika tidak ada props
+  isLocked = false, // Default false
 }) {
   const formatRupiah = (n) => {
     return "Rp " + n.toLocaleString("id-ID");
   };
 
   // --- LOGIKA PERHITUNGAN TOTAL & DISKON ---
-  // Handle jika totalAmount berupa object (Subtotal, Diskon, Final) atau number biasa
   const subtotal =
     typeof totalAmount === "object" ? totalAmount.subtotal : totalAmount;
   const appliedDiscount =
@@ -26,7 +25,7 @@ export function ReceiptSection({
   const finalAmount =
     typeof totalAmount === "object" ? totalAmount.finalAmount : totalAmount;
 
-  // Determine button text based on stage
+  // Menentukan teks tombol berdasarkan tahapan transaksi
   const getButtonText = () => {
     if (!transactionStage) return "SIMPAN & BAYAR";
 
@@ -36,7 +35,7 @@ export function ReceiptSection({
       case "AWAITING_PAYMENT":
         return "PROSES PEMBAYARAN";
       case "POST_PAYMENT":
-        return null; // Hide button in post-payment stage
+        return null; // Sembunyikan tombol saat struk muncul
       default:
         return "SIMPAN & BAYAR";
     }
@@ -105,7 +104,7 @@ export function ReceiptSection({
                 {item.description}
               </div>
 
-              {/* Finishings display */}
+              {/* Menampilkan Detail Finishing / Mode Cetak */}
               {item.finishings && item.finishings.length > 0 && (
                 <ul
                   className="item-finishings"
@@ -133,7 +132,7 @@ export function ReceiptSection({
                   e.stopPropagation();
                   removeItem(item.id);
                 }}
-                disabled={isLocked} // Disable delete jika terkunci/dibayar
+                disabled={isLocked}
                 style={{
                   opacity: isLocked ? 0.3 : 1,
                   cursor: isLocked ? "not-allowed" : "pointer",
@@ -146,8 +145,7 @@ export function ReceiptSection({
         ))}
       </div>
 
-      {/* === FITUR INPUT DISKON MANUAL === */}
-      {/* Hanya muncul jika ada items, setDiscount tersedia, dan transaksi belum dikunci */}
+      {/* === FITUR INPUT DISKON MANUAL (Kuning) === */}
       {items.length > 0 && !isLocked && setDiscount && (
         <div style={{ padding: "0 16px", marginTop: "10px" }}>
           <div
@@ -185,7 +183,6 @@ export function ReceiptSection({
                     value={discount === 0 ? "" : discount}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 0;
-                      // VALIDASI KETAT: Tidak boleh melebihi subtotal
                       setDiscount(Math.min(val, subtotal));
                     }}
                     style={{
@@ -206,7 +203,6 @@ export function ReceiptSection({
                     onFocus={(e) => e.target.select()}
                   />
 
-                  {/* Warning jika > 50% */}
                   {isHighDiscount && (
                     <div
                       style={{
@@ -235,7 +231,7 @@ export function ReceiptSection({
           className="total-section"
           style={{ display: "flex", flexDirection: "column", gap: "8px" }}
         >
-          {/* TAMPILAN SUBTOTAL (Hanya muncul jika ada diskon) */}
+          {/* TAMPILAN SUBTOTAL (Jika ada diskon) */}
           {appliedDiscount > 0 && (
             <>
               <div
@@ -271,7 +267,7 @@ export function ReceiptSection({
             </>
           )}
 
-          {/* TAMPILAN GRAND TOTAL */}
+          {/* GRAND TOTAL */}
           <div
             style={{
               display: "flex",
@@ -293,7 +289,7 @@ export function ReceiptSection({
           </div>
         </div>
 
-        {/* Conditionally render button based on stage */}
+        {/* Tombol Pembayaran */}
         {buttonText && (
           <button
             className="btn-pay"

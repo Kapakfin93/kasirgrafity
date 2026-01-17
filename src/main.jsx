@@ -13,6 +13,7 @@ import { runOfficeReconstruction } from "./data/seeders/reconstructOffice.js";
 import { runMerchReconstruction } from "./data/seeders/reconstructMerchandise.js";
 import { runA3Reconstruction } from "./data/seeders/reconstructDigitalA3.js";
 import { runCustomReconstruction } from "./data/seeders/reconstructCustom.js";
+import { updateMajalahProduct } from "./data/seeders/updateMajalah.js";
 import db from "./data/db/schema.js";
 
 // GEN 2 INITIALIZATION SEQUENCE
@@ -57,7 +58,12 @@ setTimeout(() => {
                       runA3Reconstruction().then(() => {
                         // Run CUSTOM_SERVICES reconstruction after A3
                         setTimeout(() => {
-                          runCustomReconstruction();
+                          runCustomReconstruction().then(() => {
+                            // Update CETAK MAJALAH product after CUSTOM
+                            setTimeout(() => {
+                              updateMajalahProduct();
+                            }, 500);
+                          });
                         }, 500);
                       });
                     }, 500);
