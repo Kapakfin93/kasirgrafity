@@ -365,7 +365,12 @@ function ProductFormModal({
           {activeTab === "pricing" && (
             <div className="tab-content">
               {/* PRIORITY 1: TIERED MODE (Hybrid: Variants + Tiers) */}
-              {formData.input_mode === "TIERED" ? (
+              {/* MODIFIED: Check TIERED string OR Structural Traits (Variants + Tiers) */}
+              {formData.input_mode === "TIERED" ||
+              // Fallback for legacy data: treat as TIERED if it behaves like one
+              (formData.variants?.length > 0 &&
+                (formData.price_tiers?.length > 0 ||
+                  formData.advanced_features?.wholesale_rules?.length > 0)) ? (
                 <div className="space-y-6">
                   {/* SECTION A: Variant Editor (Always Visible for TIERED) */}
                   <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
@@ -747,52 +752,93 @@ function ProductFormModal({
               formData.input_mode === "MATRIX" &&
                 formData.variants?.length > 0 ? (
                 /* DEEP MATRIX EDITOR (For POSTER with price_list) */
-                <div className="space-y-4">
-                  <h3 className="text-cyan-400 font-bold mb-3 flex items-center gap-2">
-                    <Edit size={16} /> Edit Harga Matrix (Per Ukuran & Bahan)
-                  </h3>
-                  {formData.variants.map((variant, vIndex) => (
-                    <div
-                      key={vIndex}
-                      className="bg-slate-900 p-4 rounded-xl border border-slate-700"
-                    >
-                      <h4 className="text-cyan-400 font-bold mb-3">
-                        {variant.label} ({variant.specs})
+                <div className="space-y-6">
+                  {/* EMERGENCY EXIT BUTTON (Prominent & Clickable) */}
+                  <div className="bg-gradient-to-r from-red-900/40 to-slate-900 border-2 border-red-500/50 p-5 rounded-xl flex items-center justify-between shadow-xl shadow-red-900/20 relative z-50">
+                    <div className="flex-1 pr-4">
+                      <h4 className="text-red-400 font-bold text-base flex items-center gap-2">
+                        ⚠️ Hapus Mode Matrix (Tabel)
                       </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {Object.entries(variant.price_list || {}).map(
-                          ([materialName, price]) => (
-                            <div
-                              key={materialName}
-                              className="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700/50"
-                            >
-                              <span className="text-xs text-slate-300">
-                                {materialName}
-                              </span>
-                              <input
-                                type="number"
-                                className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right text-yellow-400 text-sm focus:border-cyan-500 outline-none"
-                                value={price}
-                                onChange={(e) => {
-                                  const newVariants = [...formData.variants];
-                                  // Update nested price_list
-                                  newVariants[vIndex].price_list[materialName] =
-                                    Number(e.target.value);
-                                  setFormData({
-                                    ...formData,
-                                    variants: newVariants,
-                                  });
-                                }}
-                              />
-                            </div>
-                          ),
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                        Klik tombol ini untuk mengubah produk menjadi{" "}
+                        <strong className="text-cyan-400">
+                          Mode Varian Simple
+                        </strong>
+                        .
+                        <br />
+                        Sistem akan otomatis menghapus tulisan "Warna" agar
+                        lebih fleksibel.
+                      </p>
                     </div>
-                  ))}
-                  <p className="text-xs text-slate-500 mt-3">
-                    💡 Harga per lembar sesuai ukuran dan bahan kertas
-                  </p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log("🚀 FORCE RESET EXECUTION STARTED");
+
+                        // DIRECT EXECUTION - NO CONFIRMATION DIALOG
+                        setFormData((prev) => ({
+                          ...prev,
+                          input_mode: "TIERED", // Force switch to Hybrid
+                          variants: [
+                            { label: "NCR 1 Ply (HVS)", price: 25000 },
+                            { label: "NCR 2 Ply", price: 45000 },
+                            { label: "NCR 3 Ply", price: 65000 },
+                            { label: "NCR 4 Ply", price: 85000 },
+                          ],
+                          price_tiers: [], // Keep tiers empty as per safety strategy
+                        }));
+
+                        console.log(
+                          "✅ FORCE RESET COMPLETED: Mode switched to TIERED",
+                        );
+                      }}
+                      className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-sm shadow-2xl hover:scale-105 transition-transform flex-shrink-0 cursor-pointer"
+                    >
+                      🔄 RESET SEKARANG
+                    </button>
+                  </div>
+
+                  {/* EXISTING MATRIX COMPONENT (Dimmed to encourage reset) */}
+                  <div className="opacity-40 pointer-events-none select-none">
+                    <h3 className="text-cyan-400 font-bold mb-3 flex items-center gap-2">
+                      <Edit size={16} /> Edit Harga Matrix (Per Ukuran & Bahan)
+                    </h3>
+                    {formData.variants.map((variant, vIndex) => (
+                      <div
+                        key={vIndex}
+                        className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-3"
+                      >
+                        <h4 className="text-cyan-400 font-bold mb-3">
+                          {variant.label} ({variant.specs})
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {Object.entries(variant.price_list || {}).map(
+                            ([materialName, price]) => (
+                              <div
+                                key={materialName}
+                                className="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700/50"
+                              >
+                                <span className="text-xs text-slate-300">
+                                  {materialName}
+                                </span>
+                                <input
+                                  type="number"
+                                  className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right text-yellow-400 text-sm focus:border-cyan-500 outline-none"
+                                  value={price}
+                                  disabled
+                                />
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-slate-500 mt-3">
+                      💡 Harga per lembar sesuai ukuran dan bahan kertas
+                    </p>
+                  </div>
                 </div>
               ) : isMatrixType ? (
                 /* LEGACY MATRIX PRICING (Old format) */
@@ -823,24 +869,54 @@ function ProductFormModal({
                 </div>
               ) : (
                 /* STANDARD SINGLE PRICE (For UNIT/MERCHANDISE) */
-                <div className="form-group">
-                  <label>💰 Harga (Rp)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.price}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        price: parseInt(e.target.value) || 0,
-                      })
-                    }
-                    placeholder="0"
-                  />
-                  <span className="form-hint">
-                    {formatRupiah(formData.price)}
-                  </span>
-                </div>
+                <>
+                  <div className="form-group">
+                    <label>💰 Harga (Rp)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.price}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          price: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      placeholder="0"
+                    />
+                    <span className="form-hint">
+                      {formatRupiah(formData.price)}
+                    </span>
+                  </div>
+
+                  {/* CONVERT TO HYBRID BUTTON */}
+                  <div className="mt-8 p-4 bg-slate-800/50 border border-slate-700 border-dashed rounded-xl flex items-center justify-between">
+                    <div>
+                      <h4 className="text-cyan-400 font-bold text-sm">
+                        ✨ Mode Varian & Grosir
+                      </h4>
+                      <p className="text-[10px] text-slate-400 max-w-xs mt-1">
+                        Produk ini punya banyak tipe (Standard, Premium, dll)
+                        atau harga bertingkat?
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // FORCE CONVERT TO TIERED
+                        setFormData({
+                          ...formData,
+                          input_mode: "TIERED",
+                          variants: formData.variants || [], // Initialize array if null
+                          price_tiers: formData.price_tiers || [], // Initialize tiers
+                        });
+                      }}
+                      className="bg-cyan-900/50 hover:bg-cyan-600 text-cyan-400 hover:text-white border border-cyan-500/30 px-4 py-2 rounded-lg transition-all text-xs font-bold shadow-lg"
+                    >
+                      🔄 Aktifkan Mode Varian
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}
