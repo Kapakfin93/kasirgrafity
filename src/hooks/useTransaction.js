@@ -272,42 +272,69 @@ export function useTransaction() {
 
         case "MATRIX":
           // MATRIX pricing for Poster/Size-based products
-          // Data format: product.prices = { A2: 40000, A1: 75000, A0: 140000 }
-          const { sizeKey } = dimensions;
+          // Supports TWO data formats:
+          // 1. LEGACY: product.prices = { A2: 40000, A1: 75000, A0: 140000 }
+          // 2. NEW: product.variants[].price_list = { "Albatros": 25000, "Luster": 30000 }
+          const { sizeKey, material } = dimensions;
 
-          // Validate product has prices object
-          if (!product.prices || typeof product.prices !== "object") {
-            throw new Error(
-              `CART ITEM REJECTED: Product ${product.name} tidak memiliki data prices`,
+          let priceForSize = 0;
+
+          // Check NEW format first (variants with price_list)
+          if (product.variants && product.variants.length > 0) {
+            const selectedVariant = product.variants.find(
+              (v) => v.label.includes(sizeKey), // Find variant by size (e.g., "A2 (42 x 60 cm)")
             );
+
+            if (selectedVariant && selectedVariant.price_list) {
+              // Get price from price_list using material
+              if (!material) {
+                throw new Error(
+                  `CART ITEM REJECTED: Bahan/material belum dipilih untuk ${product.name}`,
+                );
+              }
+              priceForSize = selectedVariant.price_list[material];
+
+              if (!priceForSize || priceForSize <= 0) {
+                throw new Error(
+                  `CART ITEM REJECTED: Harga tidak ditemukan untuk ${sizeKey} - ${material}`,
+                );
+              }
+            }
           }
 
-          // Validate sizeKey is selected
-          if (!sizeKey) {
-            throw new Error(
-              `CART ITEM REJECTED: Ukuran (sizeKey) belum dipilih`,
-            );
+          // Fallback to LEGACY format if NEW format not found
+          if (
+            !priceForSize &&
+            product.prices &&
+            typeof product.prices === "object"
+          ) {
+            if (!sizeKey) {
+              throw new Error(
+                `CART ITEM REJECTED: Ukuran (sizeKey) belum dipilih`,
+              );
+            }
+            priceForSize = product.prices[sizeKey];
+
+            if (!priceForSize || priceForSize <= 0) {
+              throw new Error(
+                `CART ITEM REJECTED: Harga tidak ditemukan untuk ukuran ${sizeKey}`,
+              );
+            }
           }
 
-          // Get price for selected size
-          const priceForSize = product.prices[sizeKey];
-
+          // If still no price found, error
           if (!priceForSize || priceForSize <= 0) {
             throw new Error(
-              `CART ITEM REJECTED: Harga tidak ditemukan untuk ukuran ${sizeKey}`,
+              `CART ITEM REJECTED: Product ${product.name} tidak memiliki data harga yang valid`,
             );
           }
 
           // Calculate with finishing cost
           const matrixFinishingCost = calculateFinishingCost(finishings);
-          const matrixResult = calculateMatrixPrice(
-            sizeKey, // 'A2', 'A1', etc
-            product.prices, // { A2: 40000, A1: 75000, ... }
-            safeQty,
-          );
 
+          // Calculate total (priceForSize is per unit)
           calculatedPrice =
-            matrixResult.subtotal + matrixFinishingCost * safeQty;
+            priceForSize * safeQty + matrixFinishingCost * safeQty;
           unitPrice = priceForSize + matrixFinishingCost;
           break;
 

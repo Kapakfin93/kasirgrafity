@@ -240,7 +240,10 @@ export default function ProductConfigModal({
               area: areaCalculation.area,
             }
           : isMatrix
-            ? { sizeKey: matrixSelection.step2 }
+            ? {
+                sizeKey: matrixSelection.step1, // FIXED: step1 = size (A2, A1, A0)
+                material: matrixSelection.step2, // FIXED: step2 = material (Albatros, Luster)
+              }
             : {},
       final_price: productPriceToSend,
       finishings: finishingsArray,
