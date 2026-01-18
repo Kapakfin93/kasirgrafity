@@ -385,10 +385,11 @@ export const useOrderStore = create((set, get) => ({
       }
 
       // STEP 1: Generate Order Number (ATOMIC)
+      // Note: We use the hybrid generator we defined earlier
       const orderNumber = await get()._generateOrderNumber();
       console.log("✅ Generated order number:", orderNumber);
 
-      // STEP 2: Create Order with Generated Number (UUID auto-generated in constructor)
+      // STEP 2: Create Order Object (Local Model)
       const order = new Order({
         ...orderData,
         orderNumber,
@@ -399,9 +400,92 @@ export const useOrderStore = create((set, get) => ({
 
       order.updatePaymentStatus();
 
-      // STEP 3: Save to IndexedDB (UUID already in order.id)
-      await db.orders.put(order.toJSON()); // Use put() for explicit ID
-      // Note: order.id already set by Order constructor (UUID)
+      // Prepare Plain Object for Storage
+      const orderDoc = order.toJSON();
+      let isSynced = false;
+
+      // STEP 3: CLOUD SYNC (Supabase)
+      // "Hybrid Cloud: Cloud First, Local Cache"
+      if (navigator.onLine) {
+        try {
+          const { importSupabase } = await import("../services/supabaseClient");
+          const supabase = importSupabase?.supabase;
+
+          if (supabase) {
+            // A. Prepare Order Payload (Snake Case for DB)
+            const supabaseOrder = {
+              id: orderDoc.id,
+              order_number: orderDoc.orderNumber,
+              customer_id: orderDoc.customerId || null,
+              customer_name: orderDoc.customerSnapshot?.name, // Flatted for search
+              customer_snapshot: orderDoc.customerSnapshot,
+              production_status: orderDoc.productionStatus,
+              payment_status: orderDoc.paymentStatus,
+              total_amount: orderDoc.totalAmount,
+              paid_amount: orderDoc.paidAmount,
+              remaining_amount: orderDoc.remainingAmount,
+              discount: orderDoc.discount || 0,
+              final_amount:
+                orderDoc.finalAmount ||
+                orderDoc.totalAmount - (orderDoc.discount || 0),
+              dp_amount: orderDoc.dpAmount || 0,
+              notes: orderDoc.notes,
+              meta: orderDoc.meta,
+              created_at: orderDoc.createdAt,
+            };
+
+            // B. Insert Order
+            const { error: orderError } = await supabase
+              .from("orders")
+              .insert(supabaseOrder);
+            if (orderError) throw orderError;
+
+            // C. Insert Items
+            if (orderDoc.items && orderDoc.items.length > 0) {
+              const supabaseItems = orderDoc.items.map((item) => ({
+                order_id: orderDoc.id,
+                product_id: item.productId,
+                product_name: item.productName,
+                description: item.description,
+                category_id: item.categoryId,
+                pricing_type: item.pricingType,
+                input_mode: item.inputMode,
+                qty: item.qty,
+                unit_price: item.unitPrice,
+                total_price: item.totalPrice,
+                // Map 'bom' or 'specs' to specs_snapshot
+                specs_snapshot: item.specsSnapshot || item.specs || null,
+                meta: item.meta,
+              }));
+
+              const { error: itemsError } = await supabase
+                .from("order_items")
+                .insert(supabaseItems);
+              if (itemsError) throw itemsError;
+            }
+            isSynced = true;
+            console.log("☁️ Uploaded to Supabase successfully!");
+          }
+        } catch (cloudError) {
+          console.error(
+            "⚠️ Cloud Sync Failed (Saving Local Only):",
+            cloudError,
+          );
+          console.error(
+            "   Details:",
+            cloudError.message,
+            cloudError.details,
+            cloudError.hint,
+          );
+          isSynced = false;
+          // Don't throw, proceed to local save
+        }
+      }
+
+      // STEP 4: Save to IndexedDB (Local Cache)
+      // Always save locally, with sync status
+      const localDoc = { ...orderDoc, synced: isSynced };
+      await db.orders.put(localDoc);
 
       set((state) => ({
         orders: [...state.orders, order],
@@ -409,7 +493,7 @@ export const useOrderStore = create((set, get) => ({
         loading: false,
       }));
 
-      console.log("✅ Order created successfully:", order);
+      console.log("✅ Order saved locally (Synced: " + isSynced + ")");
       return order;
     } catch (error) {
       console.error("❌ Order creation failed:", error);
