@@ -81,17 +81,24 @@ export function OwnerDashboard() {
   const totalExpenses = getTotalExpenses(dateRange.start, dateRange.end);
 
   // ADVANCED REVENUE SPLIT CALCULATION
+  // Includes: ADVANCED metadata + SERVICE fees (Express/Urgent priority)
   const revenueBreakdown = filteredOrders.reduce(
     (acc, order) => {
       if (!order.items || !Array.isArray(order.items)) return acc;
 
       order.items.forEach((item) => {
-        // Check if item has ADVANCED metadata
+        // === SERVICE FEES: Express (+15k) / Urgent (+30k) ===
+        // These are pure profit items with pricingType: "SERVICE"
+        if (item.pricingType === "SERVICE") {
+          acc.revenueFinish += item.totalPrice || 0;
+          return; // Don't double-count
+        }
+
+        // === ADVANCED PRODUCTS: Use split revenue metadata ===
         if (
           item.meta?.revenue_print !== undefined ||
           item.meta?.revenue_finish !== undefined
         ) {
-          // ADVANCED product - use split revenue
           acc.revenuePrint += item.meta.revenue_print || 0;
           acc.revenueFinish += item.meta.revenue_finish || 0;
         } else {

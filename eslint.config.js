@@ -28,7 +28,8 @@ export default defineConfig([
         "warn",
         { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^_" },
       ],
-      "react/prop-types": "off",
+      // Note: react/prop-types requires eslint-plugin-react to be installed
+      // Using TypeScript or PropTypes library is the recommended approach
     },
   },
 ]);
