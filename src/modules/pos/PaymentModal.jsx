@@ -1,5 +1,5 @@
-/* eslint-disable react/prop-types */
 import React, { useEffect, useRef } from "react";
+
 import { formatRupiah } from "../../core/formatters";
 import { PRIORITY_CONFIG } from "../../hooks/useTransaction";
 
@@ -47,6 +47,30 @@ export function PaymentModal({
 
   const isTunai = mode === "TUNAI";
   const canProceed = isTempo || paid >= finalAmount;
+
+  // --- STYLE HELPERS (Refactor Nested Ternaries) ---
+  const getStatusColor = () => {
+    if (paid >= finalAmount) return "#10b981"; // Green
+    if (isTempo) return "#fbbf24"; // Amber/Yellow
+    return "#f43f5e"; // Red
+  };
+
+  const getStatusBaseColor = () => {
+    if (paid >= finalAmount) return "16, 185, 129";
+    if (isTempo) return "251, 191, 36";
+    return "244, 63, 94";
+  };
+
+  const getStatusBg = () => `rgba(${getStatusBaseColor()}, 0.1)`;
+  const getStatusBorder = (width = "1px") =>
+    `${width} solid rgba(${getStatusBaseColor()}, 0.3)`;
+  const getStatusShadow = () => `0 0 20px rgba(${getStatusBaseColor()}, 0.2)`;
+
+  const getStatusText = () => {
+    if (paid >= finalAmount) return "KEMBALIAN";
+    if (isTempo) return "SISA (MASUK PIUTANG)";
+    return "KURANG BAYAR";
+  };
 
   useEffect(() => {
     if (isOpen && inputRef.current && isTunai) {
@@ -99,6 +123,9 @@ export function PaymentModal({
         backdropFilter: "blur(8px)",
       }}
       onClick={onClose}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      role="button"
+      tabIndex={0}
     >
       <div
         style={{
@@ -113,6 +140,9 @@ export function PaymentModal({
           border: "1px solid #334155",
         }}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        tabIndex="-1"
       >
         {/* Header */}
         <div
@@ -423,7 +453,7 @@ export function PaymentModal({
                   >
                     +
                     {formatRupiah(PRIORITY_CONFIG.FEE_EXPRESS).replace(
-                      "Rp ",
+                      /Rp /g,
                       "",
                     )}
                   </button>
@@ -443,7 +473,7 @@ export function PaymentModal({
                   >
                     +
                     {formatRupiah(PRIORITY_CONFIG.FEE_URGENT).replace(
-                      "Rp ",
+                      /Rp /g,
                       "",
                     )}
                   </button>
@@ -565,205 +595,174 @@ export function PaymentModal({
               </button>
             </div>
 
-            {/* Amount Input (TUNAI/TRANSFER) */}
-            {!isTempo && (
-              <>
-                <label
+            {/* Amount Input (ALWAYS VISIBLE) */}
+            <label
+              style={{
+                display: "block",
+                fontSize: "10px",
+                fontWeight: "700",
+                color: "#64748b",
+                marginBottom: "6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }}
+            >
+              Uang Diterima {isTempo ? "(Opsional / DP)" : ""}
+            </label>
+            <input
+              ref={inputRef}
+              type="text"
+              value={formatDisplayNumber(amountPaid)}
+              onChange={handleAmountChange}
+              onFocus={(e) => e.target.select()}
+              placeholder="0"
+              style={{
+                width: "100%",
+                padding: "14px",
+                fontSize: "28px",
+                fontWeight: "900",
+                textAlign: "right",
+                color: getStatusColor(),
+                background: "#0f172a",
+                border: getStatusBorder("2px"),
+                borderRadius: "10px",
+                outline: "none",
+                fontFamily: "monospace",
+                boxShadow:
+                  paid >= finalAmount || isTempo ? getStatusShadow() : "none",
+              }}
+            />
+
+            {/* Quick Shortcuts */}
+            <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
+              <button
+                onClick={() => setQuickAmount(finalAmount)}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "1px solid #10b981",
+                  background: "rgba(16, 185, 129, 0.1)",
+                  color: "#10b981",
+                  fontWeight: "700",
+                  fontSize: "10px",
+                  cursor: "pointer",
+                }}
+              >
+                LUNAS
+              </button>
+              <button
+                onClick={() => setQuickAmount(50000)}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "1px solid #475569",
+                  background: "transparent",
+                  color: "#94a3b8",
+                  fontWeight: "600",
+                  fontSize: "10px",
+                  cursor: "pointer",
+                }}
+              >
+                50.000
+              </button>
+              <button
+                onClick={() => setQuickAmount(100000)}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "1px solid #475569",
+                  background: "transparent",
+                  color: "#94a3b8",
+                  fontWeight: "600",
+                  fontSize: "10px",
+                  cursor: "pointer",
+                }}
+              >
+                100.000
+              </button>
+            </div>
+
+            {/* Change/Debt Display */}
+            <div
+              style={{
+                marginTop: "14px",
+                padding: "14px",
+                borderRadius: "10px",
+                background: getStatusBg(),
+                border: getStatusBorder(),
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span
                   style={{
-                    display: "block",
-                    fontSize: "10px",
-                    fontWeight: "700",
                     color: "#64748b",
-                    marginBottom: "6px",
+                    fontSize: "10px",
                     textTransform: "uppercase",
                     letterSpacing: "0.1em",
                   }}
                 >
-                  Uang Diterima
-                </label>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={formatDisplayNumber(amountPaid)}
-                  onChange={handleAmountChange}
-                  onFocus={(e) => e.target.select()}
-                  placeholder="0"
+                  {getStatusText()}
+                </span>
+                <span
                   style={{
-                    width: "100%",
-                    padding: "14px",
-                    fontSize: "28px",
+                    fontSize: "24px",
                     fontWeight: "900",
-                    textAlign: "right",
-                    color: paid >= finalAmount ? "#10b981" : "#fbbf24",
-                    background: "#0f172a",
-                    border:
-                      paid >= finalAmount
-                        ? "2px solid #10b981"
-                        : "1px solid #475569",
-                    borderRadius: "10px",
-                    outline: "none",
+                    color: getStatusColor(),
                     fontFamily: "monospace",
-                    boxShadow:
-                      paid >= finalAmount
-                        ? "0 0 20px rgba(16, 185, 129, 0.2)"
-                        : "none",
-                  }}
-                />
-
-                {/* Quick Shortcuts */}
-                <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
-                  <button
-                    onClick={() => setQuickAmount(finalAmount)}
-                    style={{
-                      flex: 1,
-                      padding: "8px",
-                      borderRadius: "6px",
-                      border: "1px solid #10b981",
-                      background: "rgba(16, 185, 129, 0.1)",
-                      color: "#10b981",
-                      fontWeight: "700",
-                      fontSize: "10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    UANG PAS
-                  </button>
-                  <button
-                    onClick={() => setQuickAmount(50000)}
-                    style={{
-                      flex: 1,
-                      padding: "8px",
-                      borderRadius: "6px",
-                      border: "1px solid #475569",
-                      background: "transparent",
-                      color: "#94a3b8",
-                      fontWeight: "600",
-                      fontSize: "10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    50.000
-                  </button>
-                  <button
-                    onClick={() => setQuickAmount(100000)}
-                    style={{
-                      flex: 1,
-                      padding: "8px",
-                      borderRadius: "6px",
-                      border: "1px solid #475569",
-                      background: "transparent",
-                      color: "#94a3b8",
-                      fontWeight: "600",
-                      fontSize: "10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    100.000
-                  </button>
-                </div>
-
-                {/* Change Display */}
-                <div
-                  style={{
-                    marginTop: "14px",
-                    padding: "14px",
-                    borderRadius: "10px",
-                    background:
-                      paid >= finalAmount
-                        ? "rgba(16, 185, 129, 0.1)"
-                        : "rgba(244, 63, 94, 0.1)",
-                    border:
-                      paid >= finalAmount
-                        ? "1px solid rgba(16, 185, 129, 0.3)"
-                        : "1px solid rgba(244, 63, 94, 0.3)",
+                    textShadow: `0 0 20px rgba(${getStatusBaseColor()}, 0.4)`,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: "#64748b",
-                        fontSize: "10px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
-                      }}
-                    >
-                      {paid >= finalAmount ? "KEMBALIAN" : "SISA TAGIHAN"}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "24px",
-                        fontWeight: "900",
-                        color: paid >= finalAmount ? "#10b981" : "#f43f5e",
-                        fontFamily: "monospace",
-                        textShadow:
-                          paid >= finalAmount
-                            ? "0 0 20px rgba(16, 185, 129, 0.4)"
-                            : "0 0 20px rgba(244, 63, 94, 0.4)",
-                      }}
-                    >
-                      {formatRupiah(paid >= finalAmount ? change : sisaBayar)}
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
+                  {formatRupiah(paid >= finalAmount ? change : sisaBayar)}
+                </span>
+              </div>
+            </div>
 
-            {/* TEMPO Mode Warning */}
-            {isTempo && (
+            {/* TEMPO Mode Badge (Simplified) */}
+            {isTempo && paid < finalAmount && (
               <div
                 style={{
-                  padding: "20px",
+                  marginTop: "16px",
+                  padding: "12px",
                   background:
-                    "linear-gradient(135deg, rgba(190, 18, 60, 0.1) 0%, rgba(244, 63, 94, 0.05) 100%)",
-                  borderRadius: "12px",
-                  border: "1px solid rgba(244, 63, 94, 0.3)",
+                    "linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%)",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(251, 191, 36, 0.3)",
                   textAlign: "center",
                 }}
               >
-                <p style={{ margin: 0, fontSize: "40px" }}>⚠️</p>
-                <h3
-                  style={{
-                    margin: "10px 0 6px",
-                    color: "#f43f5e",
-                    fontSize: "15px",
-                    fontWeight: "900",
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  MODE TEMPO / HUTANG
-                </h3>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: "11px" }}>
-                  Pesanan akan diproses tanpa pembayaran. Faktur akan dicetak.
-                </p>
                 <div
                   style={{
-                    marginTop: "12px",
-                    padding: "10px",
-                    background: "rgba(251, 191, 36, 0.1)",
-                    borderRadius: "8px",
-                    border: "1px solid rgba(251, 191, 36, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    marginBottom: "4px",
                   }}
                 >
-                  <p
+                  <span style={{ fontSize: "16px" }}>📝</span>
+                  <strong
                     style={{
-                      margin: 0,
                       color: "#fbbf24",
-                      fontSize: "10px",
-                      fontWeight: "700",
+                      fontSize: "12px",
+                      letterSpacing: "0.05em",
                     }}
                   >
-                    Sisa Tagihan:{" "}
-                    <strong style={{ color: "#f43f5e", fontSize: "13px" }}>
-                      {formatRupiah(finalAmount)}
-                    </strong>
-                  </p>
+                    INVOICE TEMPO DIAKTIFKAN
+                  </strong>
                 </div>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: "10px" }}>
+                  Sisa tagihan Rp {formatDisplayNumber(sisaBayar)} akan dicatat
+                  sebagai piutang VIP.
+                </p>
               </div>
             )}
           </div>
@@ -777,6 +776,69 @@ export function PaymentModal({
             background: "rgba(15, 23, 42, 0.8)",
           }}
         >
+          {/* Receiver & Tempo Method Input */}
+          {/* Tempo Payment Method Selector (Only overrides if paying DP) */}
+          {isTempo && paid > 0 && (
+            <div style={{ flex: 1 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "10px",
+                  fontWeight: "700",
+                  color: "#fbbf24",
+                  marginBottom: "4px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Metode Bayar DP
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "2px",
+                  background: "#334155",
+                  padding: "2px",
+                  borderRadius: "8px",
+                }}
+              >
+                <button
+                  onClick={() => updatePayment({ mode: "TUNAI" })}
+                  style={{
+                    flex: 1,
+                    padding: "8px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: mode === "TUNAI" ? "#fbbf24" : "transparent",
+                    color: mode === "TUNAI" ? "#000" : "#94a3b8",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                  }}
+                >
+                  TUNAI
+                </button>
+                <button
+                  onClick={() => updatePayment({ mode: "NON_TUNAI" })}
+                  style={{
+                    flex: 1,
+                    padding: "8px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background:
+                      mode === "NON_TUNAI" ? "#fbbf24" : "transparent",
+                    color: mode === "NON_TUNAI" ? "#000" : "#94a3b8",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                  }}
+                >
+                  TRANSFER
+                </button>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={onConfirmPayment}
             disabled={!canProceed}
@@ -798,16 +860,18 @@ export function PaymentModal({
               boxShadow: canProceed
                 ? isTempo
                   ? "0 0 30px rgba(244, 63, 94, 0.4)"
-                  : "0 0 30px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)"
+                  : "0 0 30px rgba(16, 185, 129, 0.4)"
                 : "none",
               transition: "all 0.3s",
             }}
           >
             {isTempo
-              ? "⚠️ SIMPAN SEBAGAI HUTANG"
+              ? paid > 0
+                ? "PROSES TEMPO (+ DP)"
+                : "PROSES TEMPO (TANPA DP)"
               : paid >= finalAmount
-                ? "✅ PROSES & CETAK"
-                : `⏳ KURANG BAYAR: ${formatRupiah(sisaBayar)}`}
+                ? "LUNAS & SELESAI"
+                : "SIMPAN SEBAGAI DP"}
           </button>
         </div>
       </div>

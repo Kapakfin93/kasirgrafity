@@ -1,4 +1,3 @@
-/* eslint-disable */
 /**
  * useTransaction Hook - REFACTORED
  * Temporary UI workspace for configuring items before adding to order
@@ -12,17 +11,9 @@
 
 import { useState, useEffect } from "react";
 import { v4 as uuid } from "uuid";
-// REMOVED: import { MASTER_DATA } from '../data/initialData'; // NO FALLBACK
 import { useProductStore } from "../stores/useProductStore";
-import {
-  calculateAreaPrice,
-  calculateLinearPrice,
-  calculateMatrixPrice,
-  calculateUnitSheetPrice,
-  calculateUnitPrice,
-  calculateManualPrice,
-} from "../core/calculators";
-import { validateTransactionInput } from "../core/validators";
+import { calculatePriceByLogic } from "./transactionLogic";
+// ✅ CORRECT IMPORT PATH (Ensure this file exists!)
 import {
   buildItemDescription,
   extractFinishingNames,
@@ -169,339 +160,39 @@ export function useTransaction() {
       manualPrice,
     } = rawInput;
 
-    // Helper: Calculate total finishing cost from finishings array
-    const calculateFinishingCost = (finishings) => {
-      if (!finishings || finishings.length === 0) return 0;
-      return finishings.reduce((total, f) => total + (f.price || 0), 0);
-    };
-
     // 1. Validate product data (MUST exist)
-    if (!product || !product.id || !product.name) {
+    if (!product?.id || !product?.name) {
       throw new Error("CART ITEM REJECTED: Product data tidak valid");
     }
 
     // 2. Validate qty (MUST be > 0)
-    if (!qty || qty <= 0 || isNaN(qty)) {
+    if (!qty || qty <= 0 || Number.isNaN(qty)) {
       throw new Error(`CART ITEM REJECTED: Quantity harus > 0 (${qty})`);
     }
 
     // Strict Type Conversion for Global Use
-    const safeQty = parseInt(qty);
+    const safeQty = Number.parseInt(qty);
 
     // Detect pricingType: PRIORITIZE product.pricing_model (Gen 3.2), fallback to category
     const pricingType =
       product.pricing_model || currentCategory?.logic_type || "MANUAL";
 
-    // ===== CALCULATE PRICE (using core calculators) =====
+    // ===== CALCULATE PRICE (using Unified Logic) =====
     let calculatedPrice = 0;
     let unitPrice = 0;
 
     try {
-      switch (pricingType) {
-        case "AREA":
-          // 1. Strict Parsing & Validation
-          const areaBasePrice = parseFloat(product.price);
-          const areaLength = parseFloat(dimensions.length);
-          const areaWidth = parseFloat(dimensions.width);
+      const result = calculatePriceByLogic({
+        mode: pricingType,
+        product,
+        qty: safeQty,
+        dimensions,
+        finishings,
+        manualPrice,
+      });
 
-          if (isNaN(areaBasePrice))
-            throw new Error(
-              `CART REJECTED: Harga produk tidak valid (${product.price})`,
-            );
-          if (isNaN(areaLength) || areaLength <= 0)
-            throw new Error(
-              `CART REJECTED: Panjang tidak valid (${dimensions.length})`,
-            );
-          if (isNaN(areaWidth) || areaWidth <= 0)
-            throw new Error(
-              `CART REJECTED: Lebar tidak valid (${dimensions.width})`,
-            );
-
-          // 2. Re-Calculate using Core Calculator (CORRECTED PARAMS)
-          const areaResult = calculateAreaPrice(
-            areaLength,
-            areaWidth,
-            areaBasePrice,
-            safeQty,
-          );
-
-          if (!areaResult || isNaN(areaResult.subtotal)) {
-            throw new Error(
-              `CALCULATION FAILED: Hasil perhitungan AREA invalid`,
-            );
-          }
-
-          // Add Finishing Cost
-          const areaFinishingCost = calculateFinishingCost(finishings);
-          calculatedPrice = areaResult.subtotal + areaFinishingCost * safeQty;
-          unitPrice = areaResult.subtotal / safeQty + areaFinishingCost;
-          break;
-
-        case "LINEAR":
-          // 1. Strict Parsing & Validation
-          const linearBasePrice = parseFloat(product.price);
-          const linearLength = parseFloat(dimensions.length);
-
-          if (isNaN(linearBasePrice))
-            throw new Error(
-              `CART REJECTED: Harga produk tidak valid (${product.price})`,
-            );
-          if (isNaN(linearLength) || linearLength <= 0)
-            throw new Error(
-              `CART REJECTED: Panjang tidak valid (${dimensions.length})`,
-            );
-
-          // 2. Re-Calculate using Core Calculator (CORRECTED PARAMS)
-          const linearResult = calculateLinearPrice(
-            linearLength,
-            linearBasePrice,
-            safeQty,
-          );
-
-          if (!linearResult || isNaN(linearResult.subtotal)) {
-            throw new Error(
-              `CALCULATION FAILED: Hasil perhitungan LINEAR invalid`,
-            );
-          }
-
-          // Add Finishing Cost
-          const linFinishingCost = calculateFinishingCost(finishings);
-          calculatedPrice = linearResult.subtotal + linFinishingCost * safeQty;
-          unitPrice = linearResult.subtotal / safeQty + linFinishingCost;
-          break;
-
-        case "MATRIX":
-          // MATRIX pricing for Poster/Size-based products
-          // Supports TWO data formats:
-          // 1. LEGACY: product.prices = { A2: 40000, A1: 75000, A0: 140000 }
-          // 2. NEW: product.variants[].price_list = { "Albatros": 25000, "Luster": 30000 }
-          const { sizeKey, material } = dimensions;
-
-          let priceForSize = 0;
-
-          // Check NEW format first (variants with price_list)
-          if (product.variants && product.variants.length > 0) {
-            const selectedVariant = product.variants.find(
-              (v) => v.label.includes(sizeKey), // Find variant by size (e.g., "A2 (42 x 60 cm)")
-            );
-
-            if (selectedVariant && selectedVariant.price_list) {
-              // Get price from price_list using material
-              if (!material) {
-                throw new Error(
-                  `CART ITEM REJECTED: Bahan/material belum dipilih untuk ${product.name}`,
-                );
-              }
-              priceForSize = selectedVariant.price_list[material];
-
-              if (!priceForSize || priceForSize <= 0) {
-                throw new Error(
-                  `CART ITEM REJECTED: Harga tidak ditemukan untuk ${sizeKey} - ${material}`,
-                );
-              }
-            }
-          }
-
-          // Fallback to LEGACY format if NEW format not found
-          if (
-            !priceForSize &&
-            product.prices &&
-            typeof product.prices === "object"
-          ) {
-            if (!sizeKey) {
-              throw new Error(
-                `CART ITEM REJECTED: Ukuran (sizeKey) belum dipilih`,
-              );
-            }
-            priceForSize = product.prices[sizeKey];
-
-            if (!priceForSize || priceForSize <= 0) {
-              throw new Error(
-                `CART ITEM REJECTED: Harga tidak ditemukan untuk ukuran ${sizeKey}`,
-              );
-            }
-          }
-
-          // If still no price found, error
-          if (!priceForSize || priceForSize <= 0) {
-            throw new Error(
-              `CART ITEM REJECTED: Product ${product.name} tidak memiliki data harga yang valid`,
-            );
-          }
-
-          // Calculate with finishing cost
-          const matrixFinishingCost = calculateFinishingCost(finishings);
-
-          // Calculate total (priceForSize is per unit)
-          calculatedPrice =
-            priceForSize * safeQty + matrixFinishingCost * safeQty;
-          unitPrice = priceForSize + matrixFinishingCost;
-          break;
-
-        case "BOOKLET":
-          // BOOKLET pricing for Print Dokumen (Additive Model)
-          // NEW SCHEMA: Paper price + Print price (no multiplier)
-          // dimensions = { variantLabel, printModeId, sheetsPerBook }
-          const { variantLabel, printModeId, sheetsPerBook } = dimensions;
-
-          if (!sheetsPerBook || sheetsPerBook <= 0) {
-            throw new Error(
-              `CART REJECTED: Lembar per buku tidak valid (${sheetsPerBook})`,
-            );
-          }
-
-          // Get paper price from variant (if available)
-          let paperPrice = 0;
-          if (product.variants && product.variants.length > 0) {
-            const selectedVariant = product.variants.find(
-              (v) => v.label === variantLabel,
-            );
-            if (selectedVariant && selectedVariant.price) {
-              paperPrice = parseFloat(selectedVariant.price) || 0;
-            }
-          }
-
-          // Fallback to base price if no variant price
-          if (paperPrice === 0) {
-            paperPrice = parseFloat(product.base_price) || 0;
-          }
-
-          // Get print price from print_modes (NEW SCHEMA)
-          let printPrice = 0;
-          if (product.print_modes && printModeId) {
-            const printMode = product.print_modes.find(
-              (m) => m.id === printModeId,
-            );
-            if (printMode) {
-              printPrice = parseFloat(printMode.price) || 0;
-            }
-          }
-
-          // ADDITIVE FORMULA: (Paper Price + Print Price) × Sheets
-          const contentCost = (paperPrice + printPrice) * sheetsPerBook;
-
-          // Handle finishing costs (PER_JOB = once per book)
-          let finishingPerBook = 0;
-          finishings.forEach((f) => {
-            if (f.price_mode === "PER_JOB") {
-              // PER_JOB: Once per book
-              finishingPerBook += f.price || 0;
-            } else {
-              // PER_UNIT: Per sheet (rare for booklet)
-              finishingPerBook += (f.price || 0) * sheetsPerBook;
-            }
-          });
-
-          // Total per book = content cost + finishing
-          const totalPerBook = contentCost + finishingPerBook;
-
-          // Grand total = total per book × quantity (number of books)
-          calculatedPrice = totalPerBook * safeQty;
-          unitPrice = totalPerBook;
-
-          console.log("📚 BOOKLET Pricing:", {
-            paperPrice,
-            printPrice,
-            sheetsPerBook,
-            contentCost,
-            finishingPerBook,
-            totalPerBook,
-            qty: safeQty,
-            grandTotal: calculatedPrice,
-          });
-          break;
-
-        case "UNIT":
-          // UNIT pricing for Merchandise/Office
-          const finishingCost = calculateFinishingCost(finishings);
-          const unitResult = calculateUnitPrice(
-            product.price || 0, // basePrice
-            finishingCost, // total finishing cost
-            safeQty,
-          );
-
-          if (!unitResult.subtotal || unitResult.subtotal <= 0) {
-            throw new Error(
-              `CART ITEM REJECTED: Harga tidak valid untuk ${product.name}`,
-            );
-          }
-
-          calculatedPrice = unitResult.subtotal;
-          unitPrice = unitResult.subtotal / safeQty; // Calculate unit price from total
-          break;
-
-        case "UNIT_SHEET":
-          // UNIT_SHEET pricing for A3+ products
-          const cuttingCost = dimensions?.cuttingCost || 0;
-          const sheetFinishingCost = calculateFinishingCost(finishings);
-
-          const sheetResult = calculateUnitSheetPrice(
-            product.price || 0, // basePrice
-            cuttingCost, // cutting cost
-            sheetFinishingCost, // finishing cost
-            safeQty,
-          );
-
-          if (!sheetResult.subtotal || sheetResult.subtotal <= 0) {
-            throw new Error(
-              `CART ITEM REJECTED: Harga tidak valid untuk ${product.name}`,
-            );
-          }
-
-          calculatedPrice = sheetResult.subtotal;
-          unitPrice = sheetResult.subtotal / safeQty; // Calculate unit price from total
-          break;
-
-        case "MANUAL":
-          // Trust user input manualPrice
-          const inputManualPrice = parseFloat(manualPrice);
-          if (!inputManualPrice || inputManualPrice <= 0) {
-            throw new Error("Harga manual wajib diisi dan harus > 0");
-          }
-
-          const manualResult = calculateManualPrice(inputManualPrice, safeQty);
-          calculatedPrice = manualResult.subtotal;
-          unitPrice = inputManualPrice;
-          break;
-
-        case "ADVANCED":
-          // ADVANCED pricing model - Trust pre-calculated payload from AdvancedProductForm
-          // The form already calculated wholesale tiers + finishing costs
-
-          // Extract values from rawInput (these come from AdvancedProductForm's onSubmit)
-          const advancedTotal = rawInput.total_price || dimensions.total_price;
-          const advancedUnitPrice =
-            rawInput.unit_price_final || dimensions.unit_price_final;
-
-          // Validate we have the required data
-          if (!advancedTotal || advancedTotal <= 0) {
-            throw new Error(
-              "CART ITEM REJECTED: Total price dari ADVANCED form tidak valid",
-            );
-          }
-
-          if (!advancedUnitPrice || advancedUnitPrice <= 0) {
-            throw new Error(
-              "CART ITEM REJECTED: Unit price dari ADVANCED form tidak valid",
-            );
-          }
-
-          // Trust the pre-calculated values
-          calculatedPrice = advancedTotal;
-          unitPrice = advancedUnitPrice;
-
-          console.log("✅ ADVANCED pricing: Using pre-calculated values", {
-            total: calculatedPrice,
-            unitPrice,
-            qty: safeQty,
-          });
-          break;
-
-        default:
-          throw new Error(
-            `CART ITEM REJECTED: Pricing type tidak dikenali (${pricingType})`,
-          );
-      }
+      calculatedPrice = result.subtotal;
+      unitPrice = result.unitPrice;
     } catch (calcError) {
       throw new Error(
         `CART ITEM REJECTED: Error kalkulasi harga - ${calcError.message}`,
@@ -509,8 +200,8 @@ export function useTransaction() {
     }
 
     // 5. Validate calculated price (MUST be > 0, NO zero-price items in final cart)
-    if (typeof calculatedPrice !== "number" || isNaN(calculatedPrice)) {
-      throw new Error(
+    if (typeof calculatedPrice !== "number" || Number.isNaN(calculatedPrice)) {
+      throw new TypeError(
         `CART ITEM REJECTED: Harga hasil kalkulasi NaN (${product.name})`,
       );
     }
@@ -539,20 +230,24 @@ export function useTransaction() {
     }
 
     // 6. Validate description (MUST contain product name)
-    if (!description || !description.includes(product.name)) {
+    if (!description?.includes(product.name)) {
       throw new Error(
         `CART ITEM REJECTED: Deskripsi tidak valid (${description})`,
       );
     }
 
     // 7. Validate calculated price (MUST be > 0 and not NaN)
-    if (!calculatedPrice || isNaN(calculatedPrice) || calculatedPrice <= 0) {
+    if (
+      !calculatedPrice ||
+      Number.isNaN(calculatedPrice) ||
+      calculatedPrice <= 0
+    ) {
       throw new Error(
         `CART ITEM REJECTED: Harga tidak valid (${calculatedPrice}). Periksa input dimensi/ukuran.`,
       );
     }
 
-    if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
+    if (!unitPrice || Number.isNaN(unitPrice) || unitPrice <= 0) {
       throw new Error(
         `CART ITEM REJECTED: Harga satuan tidak valid (${unitPrice})`,
       );
@@ -562,6 +257,7 @@ export function useTransaction() {
     const cartItem = {
       id: uuid(),
       productId: product.id,
+      categoryId: product.categoryId, // Data Enrichment: Inject Category ID for Reporting
       name: product.name,
       productName: product.name, // For ReceiptSection compatibility
       description: description,
@@ -614,7 +310,7 @@ export function useTransaction() {
   const _calculateCurrentPrice = () => {
     const {
       product,
-      qty,
+      // qty, // Unused in destructuring because accessed via configuratorInput.qty directly in logic call
       length,
       width,
       sizeKey,
@@ -628,78 +324,29 @@ export function useTransaction() {
     if (!product && logic_type !== "MANUAL")
       return { subtotal: 0, breakdown: "" };
 
-    // Calculate finishing cost
-    const finishingCost = (selectedFinishings || []).reduce(
-      (sum, f) => sum + (f.price || 0),
-      0,
-    );
-
-    let result = { subtotal: 0, breakdown: "" };
-
     try {
-      // Delegate to core calculators
-      switch (logic_type) {
-        case "AREA":
-          if (length && width && product?.price) {
-            result = calculateAreaPrice(
-              parseFloat(length),
-              parseFloat(width),
-              product.price,
-              qty,
-            );
-            result.subtotal += finishingCost * qty;
-          }
-          break;
-
-        case "LINEAR":
-          if (length && product?.price) {
-            result = calculateLinearPrice(
-              parseFloat(length),
-              product.price,
-              qty,
-            );
-            result.subtotal += finishingCost * qty;
-          }
-          break;
-
-        case "MATRIX":
-          if (sizeKey && product?.prices) {
-            result = calculateMatrixPrice(sizeKey, product.prices, qty);
-            result.subtotal += finishingCost * qty;
-          }
-          break;
-
-        case "UNIT_SHEET":
-          if (product?.price) {
-            result = calculateUnitSheetPrice(
-              product.price,
-              0,
-              finishingCost,
-              qty,
-            );
-          }
-          break;
-
-        case "UNIT":
-          if (product?.price) {
-            result = calculateUnitPrice(product.price, finishingCost, qty);
-          }
-          break;
-
-        case "MANUAL":
-          const price = parseFloat(manualPrice) || 0;
-          result = calculateManualPrice(price, qty);
-          break;
-      }
+      // UNIFIED PREVIEW LOGIC
+      const result = calculatePriceByLogic({
+        mode: logic_type,
+        product,
+        qty: configuratorInput.qty,
+        dimensions: {
+          length,
+          width,
+          sizeKey,
+          material: configuratorInput.material, // Passed in context? Assuming yes or handled in logic
+        },
+        finishings: selectedFinishings,
+        manualPrice,
+      });
+      return {
+        subtotal: Math.floor(result.subtotal),
+        breakdown: result.breakdown,
+      };
     } catch (e) {
-      console.error("Calculation Error:", e);
+      console.error("Preview Error:", e);
       return { subtotal: 0, breakdown: "Error" };
     }
-
-    return {
-      subtotal: isNaN(result.subtotal) ? 0 : Math.floor(result.subtotal),
-      breakdown: result.breakdown,
-    };
   };
 
   // === CART ACTIONS ===
@@ -934,12 +581,9 @@ export function useTransaction() {
   };
 
   const confirmPayment = (isTempo = false) => {
-    const totals = calculateTotal();
-    const { finalAmount } = totals;
-
     // SANITASI INPUT untuk Tempo mode
     // Jika isTempo aktif dan amountPaid kosong/invalid, paksa jadi 0
-    let paid = parseFloat(paymentState.amountPaid) || 0;
+    let paid = Number.parseFloat(paymentState.amountPaid) || 0;
 
     // [SOP V2.0] TEMPO MODE BYPASS
     // Jika Tempo aktif, skip validasi pembayaran - langsung lock & proceed
@@ -966,33 +610,27 @@ export function useTransaction() {
   };
 
   /**
-   * assertValidCartItem - Validate individual cart item
-   * @throws {Error} If item violates contract
+   * finalizeOrder (Rule #1)
+   * Collects and hands over data to useOrderStore.createOrder
+   * Does NOT touch database directly.
+   *
+   * STRICT VALIDATION: Block empty or invalid orders
+   *
+   * @param {Function} createOrderFn - useOrderStore.createOrder
+   * @param {Object} currentUser - Current logged-in user (for audit)
+   * @param {boolean} isTempo - [SOP V2.0] TEMPO/VIP flag to bypass payment gate
    */
-  const assertValidCartItem = (item, index) => {
-    if (!item.name || item.name.trim() === "") {
-      throw new Error(`ORDER REJECTED: Item #${index + 1} tidak memiliki nama`);
-    }
-
-    if (!item.description || item.description.trim() === "") {
-      throw new Error(
-        `ORDER REJECTED: Item #${index + 1} "${item.name}" tidak memiliki deskripsi`,
-      );
-    }
-
-    if (typeof item.totalPrice !== "number" || isNaN(item.totalPrice)) {
-      throw new Error(
-        `ORDER REJECTED: Item #${index + 1} "${item.name}" memiliki harga invalid (NaN)`,
-      );
-    }
-
-    if (item.totalPrice <= 0) {
-      throw new Error(
-        `ORDER REJECTED: Item #${index + 1} "${item.name}" memiliki harga ${item.totalPrice} (harus > 0)`,
-      );
-    }
-  };
-
+  /**
+   * finalizeOrder (Rule #1)
+   * Collects and hands over data to useOrderStore.createOrder
+   * Does NOT touch database directly.
+   *
+   * STRICT VALIDATION: Block empty or invalid orders
+   *
+   * @param {Function} createOrderFn - useOrderStore.createOrder
+   * @param {Object} currentUser - Current logged-in user (for audit)
+   * @param {boolean} isTempo - [SOP V2.0] TEMPO/VIP flag to bypass payment gate
+   */
   /**
    * finalizeOrder (Rule #1)
    * Collects and hands over data to useOrderStore.createOrder
@@ -1008,15 +646,13 @@ export function useTransaction() {
     console.log("=== finalizeOrder called ===");
     console.log("isTempo:", isTempo);
 
-    // ===== CRITICAL VALIDATION: BLOCK INVALID ORDERS =====
-
     // 0. Validate Customer Snapshot (MANDATORY)
     if (!customerSnapshot.name || customerSnapshot.name.trim() === "") {
       throw new Error("ORDER REJECTED: Nama customer wajib diisi");
     }
 
     // 0b. Validate Current User (for meta.createdBy)
-    if (!currentUser || !currentUser.name) {
+    if (!currentUser?.name) {
       throw new Error(
         "ORDER REJECTED: CS/Kasir tidak terdeteksi. Silakan login kembali.",
       );
@@ -1029,76 +665,179 @@ export function useTransaction() {
 
     console.log(`Validating ${tempItems.length} items...`);
 
-    // 2. Validate EVERY item
-    try {
-      tempItems.forEach((item, index) => {
-        assertValidCartItem(item, index);
-      });
-      console.log("✅ All items passed validation");
-    } catch (validationError) {
-      console.error("❌ Item validation failed:", validationError);
-      throw validationError; // Re-throw to stop order creation
-    }
+    // 2. Validate EVERY item (3 PILLARS OF VALIDATION)
+    const validItems = tempItems.map((item, index) => {
+      // Pillar A: IDENTITY (product_id)
+      // If item comes from 'Quick Input' and has no DB ID, mark it clearly.
+      // Use timestamp to ensure uniqueness for manual items in same batch if needed,
+      // though map index is safer for collision in same ms.
+      // User requested: 'MANUAL_INPUT_' + Date.now()
+      const safeProductId =
+        item.productId || item.id || "MANUAL_INPUT_" + Date.now() + "_" + index;
+
+      // Pillar B: VALUE (price & subtotal)
+      const safePrice = Number(item.unitPrice || item.price);
+      const safeQty = Number(item.qty) || 1;
+
+      if (Number.isNaN(safePrice))
+        throw new Error(`Harga Error pada item #${index + 1}: ${item.name}`);
+      if (Number.isNaN(safeQty) || safeQty <= 0)
+        throw new Error(`Qty Error pada item #${index + 1}: ${item.name}`);
+
+      // Pillar C: CONTEXT (metadata) - STRICT STRUCTURE
+      // Structure to Enforce:
+      // variant_label, specs_json, custom_dimensions, finishing_list, notes
+      const safeMetadata = {
+        original_name: item.name || item.productName,
+        variant_label:
+          item.dimensions?.selectedVariant?.label ||
+          item.dimensions?.sizeKey ||
+          "Standard",
+        specs_json: {
+          // Capture all dimension props as potential specs
+          ...item.dimensions,
+          // Explicitly keep printModeId and sheetsPerBook if they exist
+          print_mode_id: item.dimensions?.printModeId,
+          sheets_per_book: item.dimensions?.sheetsPerBook,
+        },
+        custom_dimensions:
+          item.dimensions?.length && item.dimensions?.width
+            ? { w: item.dimensions.width, h: item.dimensions.length } // user asked for w then h
+            : null,
+        finishing_list: item.finishings || [],
+        notes: item.notes || item.note || "",
+
+        // Keep legacy keys for backward compat if needed, but prioritize user request
+        variant_selected:
+          item.dimensions?.selectedVariant?.label ||
+          item.dimensions?.sizeKey ||
+          null,
+        user_note: item.notes || item.note || "",
+      };
+
+      if (!safeProductId)
+        throw new Error(`Item ke-${index + 1} kehilangan ID Produk.`);
+
+      return {
+        // Enforce internal standard keys for store consumption
+        ...item,
+        id: item.id || uuid(),
+        productId: safeProductId,
+        productName: item.name,
+        qty: safeQty,
+        price: safePrice,
+        unitPrice: safePrice,
+        totalPrice: safePrice * safeQty,
+
+        // THE PACKAGED METADATA
+        metadata: safeMetadata,
+      };
+    });
+
+    console.log("✅ All items passed 3-Pillar Validation");
 
     // 3. Calculate totals with discount
-    const totals = calculateTotal();
-    const { subtotal, discount: appliedDiscount, finalAmount } = totals;
-    const paid = parseFloat(paymentState.amountPaid) || 0;
+    const subtotal = validItems.reduce((sum, i) => sum + i.totalPrice, 0);
+    const safeDiscount = Math.min(discount, subtotal);
+    const finalAmount = Math.max(0, subtotal - safeDiscount);
 
-    const orderData = {
-      items: tempItems,
+    // Payment Logic
+    const paidInput = Number.parseFloat(paymentState.amountPaid) || 0;
+    const paid = isTempo ? 0 : paidInput;
 
-      // FINANCIAL BREAKDOWN (Fraud Prevention)
-      subtotal: subtotal, // Sum of all items
-      discountAmount: appliedDiscount, // Discount applied
-      totalAmount: finalAmount, // Final amount after discount
+    // Status Logic
+    let paymentStatus = "UNPAID";
+    if (paid >= finalAmount) paymentStatus = "PAID";
+    else if (paid > 0) paymentStatus = "DP";
 
-      // [ONLINE READY] Source tracking for future online orders
-      source: "OFFLINE", // 'OFFLINE' = POS Kasir, 'ONLINE' = Web (future)
-      file_via: null, // null for OFFLINE, 'WA'/'EMAIL' for ONLINE (future)
+    // 4. PREPARE HEADER (SNAKE_CASE STRICT MAPPING)
+    // User Requirement:
+    // customerPhone -> customer_phone
+    // customerName -> customer_name
+    // paymentMethod -> payment_method
+    // grandTotal -> total_amount  <-- NOTE: User requested grandTotal maps to total_amount.
+    //                            This implies total_amount is the FINAL BILL.
+    //                            I will map finalAmount -> total_amount.
+    // discount -> discount_amount
+    // tax -> tax_amount
 
-      paidAmount: paid,
-      paymentStatus: paid >= finalAmount ? "PAID" : paid > 0 ? "DP" : "UNPAID",
-      remainingAmount: Math.max(0, finalAmount - paid), // Uses final amount after discount
+    // What about the sum of items? Usually that is 'subtotal'.
+    // If Supabase has 'grand_total' column, I should potentially fill that too?
+    // I will fill both to be safe, but prioritize the user's mapping.
 
-      // [SOP V2.0] TEMPO/VIP Flag - Bypass payment gate
-      isTempo: isTempo,
+    const orderPayload = {
+      // --- HEADER ---
+      customer_name: customerSnapshot.name.trim() || "Guest",
+      customer_phone: customerSnapshot.whatsapp.trim() || "-",
 
-      // [PRIORITY SYSTEM] Deadline
-      targetDate: targetDate,
+      payment_method: paymentState.mode || "CASH",
 
-      // Customer Snapshot (immutable after creation)
-      customerSnapshot: {
-        name: customerSnapshot.name.trim(),
-        whatsapp: customerSnapshot.whatsapp.trim(),
-      },
+      // FINANCIALS
+      // User: "grandTotal -> total_amount"
+      total_amount: finalAmount, // FINAL AMOUNT TO PAY
 
-      // Metadata Log (Audit Trail)
+      // User: "discount -> discount_amount"
+      discount_amount: safeDiscount,
+
+      // User: "tax -> tax_amount"
+      tax_amount: 0,
+
+      // ADDITIONAL STANDARD FIELDS (Inferred from schema context)
+      // I will store the sum of items in 'subtotal' if it exists, or 'original_amount'
+      // To be safe I'll assume 'grand_total' might also exist or be an alias.
+      // But strictly following "grandTotal -> total_amount":
+
+      // Standard Supabase fields often used:
+      paid_amount: paid,
+      remaining_amount: Math.max(0, finalAmount - paid),
+      payment_status: paymentStatus,
+
+      status: "PENDING",
+      production_status: "PENDING",
+      is_tempo: isTempo,
+      source: "OFFLINE",
+
+      target_date: targetDate,
+      created_at: new Date().toISOString(),
+
+      received_by: currentUser.name,
       meta: {
-        createdAt: new Date().toISOString(),
-        createdBy: currentUser.name, // CS who created the order
-        printedAt: null,
-        printedBy: null,
+        createdBy: currentUser.name,
+        shift: "morning",
+        temp_id: uuid(),
       },
 
-      createdAt: new Date().toISOString(),
-      notes: "",
+      // ITEMS PAYLOAD
+      items: validItems.map((item) => ({
+        // User requested STRICT mapping for items:
+        // order_id: orderData.id (handled in store/backend)
+        // product_id: safeProductId
+        // product_name: item.name
+        // quantity: safeQty
+        // price: safePrice
+        // subtotal: safePrice * safeQty
+        // metadata: safeMetadata
+
+        product_id: item.productId,
+        product_name: item.productName,
+        quantity: item.qty,
+        price: item.price,
+        subtotal: item.totalPrice,
+        metadata: item.metadata,
+      })),
     };
 
-    console.log("Order data prepared:", orderData);
+    console.log("🚀 Payload Safeguard (SNAKE_CASE):", orderPayload);
 
     try {
       console.log("Calling createOrderFn...");
-      const order = await createOrderFn(orderData);
-      console.log("createOrderFn returned:", order);
-      console.log("Order ID:", order?.id);
-      console.log("Order Number:", order?.orderNumber);
+      const order = await createOrderFn(orderPayload);
 
       if (!order) {
         throw new Error("createOrderFn returned null/undefined");
       }
 
-      console.log("✅ Returning order:", order);
+      console.log("✅ Transaction Saved Successfully:", order.id);
       return order;
     } catch (error) {
       console.error("❌ Order Finalization Failed:", error);
@@ -1138,7 +877,7 @@ export function useTransaction() {
           manualPrice,
           finishings = [],
         } = inputData;
-        const safeQty = parseInt(qty) || 1;
+        const safeQty = Number.parseInt(qty) || 1;
 
         // GEN 2: Mode Detection Hierarchy
         // 1. Use product.input_mode (Gen 2)
@@ -1163,213 +902,27 @@ export function useTransaction() {
           calcEngine: product?.calc_engine,
         });
 
-        // Helper: Calculate finishing cost
-        const calculateFinishingCost = (fins, multiplier = 1) => {
-          if (!fins || fins.length === 0) return 0;
-          return fins.reduce(
-            (total, f) => total + (f.price || 0) * multiplier,
-            0,
-          );
-        };
-
-        // Helper: Lookup tiered price from wholesale rules
-        const getTieredPrice = (quantity, product) => {
-          if (!product?.calc_engine || product.calc_engine !== "TIERED")
-            return null;
-          if (!product?.advanced_features?.wholesale_rules) return null;
-
-          const tier = product.advanced_features.wholesale_rules.find(
-            (rule) => quantity >= rule.min && quantity <= rule.max,
-          );
-
-          return tier?.price || product.base_price || product.price || 0;
-        };
-
-        let subtotal = 0;
-
-        switch (mode) {
-          case "LINEAR":
-            // GEN 2: LINEAR with Variants (Stiker Meteran)
-            if (
-              product?.calc_engine === "ROLLS" &&
-              dimensions.selectedVariant
-            ) {
-              const lengthVal = parseFloat(dimensions.length) || 0;
-              const variantPrice =
-                dimensions.selectedVariant.price_per_meter || 0;
-
-              if (lengthVal > 0) {
-                let basePrice = lengthVal * variantPrice;
-
-                // Add finishing groups (per meter for LINEAR)
-                const finishingCost = calculateFinishingCost(
-                  finishings,
-                  lengthVal,
-                );
-
-                subtotal = (basePrice + finishingCost) * safeQty;
-
-                console.log("  📏 LINEAR Gen 2:", {
-                  length: lengthVal,
-                  variantPrice,
-                  basePrice,
-                  finishingCost,
-                  qty: safeQty,
-                  subtotal,
-                });
-              }
-            }
-            // Legacy LINEAR (Textile)
-            else {
-              const linPrice = parseFloat(product?.price) || 0;
-              const linLen = parseFloat(dimensions.length) || 0;
-
-              if (linLen > 0) {
-                const linResult = calculateLinearPrice(
-                  linLen,
-                  linPrice,
-                  safeQty,
-                );
-                subtotal =
-                  (linResult?.subtotal || 0) +
-                  calculateFinishingCost(finishings) * safeQty;
-
-                console.log("  📏 LINEAR Legacy:", {
-                  linLen,
-                  linPrice,
-                  subtotal,
-                });
-              }
-            }
-            break;
-
-          case "AREA":
-            // Legacy AREA (Flexi, Banner)
-            const areaPrice = parseFloat(product?.price) || 0;
-            const areaLen = parseFloat(dimensions.length) || 0;
-            const areaWid = parseFloat(dimensions.width) || 0;
-
-            if (areaLen > 0 && areaWid > 0) {
-              const areaResult = calculateAreaPrice(
-                areaLen,
-                areaWid,
-                areaPrice,
-                safeQty,
-              );
-              subtotal =
-                (areaResult?.subtotal || 0) +
-                calculateFinishingCost(finishings) * safeQty;
-
-              console.log("  📐 AREA:", {
-                areaLen,
-                areaWid,
-                areaPrice,
-                subtotal,
-              });
-            }
-            break;
-
-          case "MATRIX":
-            // MATRIX (Poster sizes)
-            const sizeKey = dimensions.sizeKey;
-
-            if (sizeKey && product?.prices?.[sizeKey]) {
-              const matResult = calculateMatrixPrice(
-                product.prices,
-                sizeKey,
-                safeQty,
-              );
-              subtotal =
-                (matResult?.subtotal || 0) +
-                calculateFinishingCost(finishings) * safeQty;
-
-              console.log("  📊 MATRIX:", { sizeKey, subtotal });
-            }
-            break;
-
-          case "SHEET":
-          case "TIERED":
-          case "UNIT_SHEET":
-          case "UNIT":
-            // GEN 2: TIERED Pricing (NCR Advanced, Kalender)
-            if (product?.calc_engine === "TIERED") {
-              const tierPrice = getTieredPrice(safeQty, product);
-
-              if (tierPrice) {
-                subtotal =
-                  tierPrice * safeQty +
-                  calculateFinishingCost(finishings) * safeQty;
-
-                console.log("  💎 TIERED:", {
-                  qty: safeQty,
-                  tierPrice,
-                  subtotal,
-                  rulesCount:
-                    product.advanced_features?.wholesale_rules?.length,
-                });
-              }
-            }
-            // Legacy UNIT/SHEET (Simple pricing)
-            else {
-              const unitPrice = parseFloat(product?.price) || 0;
-
-              // Use appropriate calculator based on mode
-              if (mode === "UNIT_SHEET") {
-                const sheetResult = calculateUnitSheetPrice(unitPrice, safeQty);
-                subtotal =
-                  (sheetResult?.subtotal || 0) +
-                  calculateFinishingCost(finishings) * safeQty;
-              } else {
-                const unitResult = calculateUnitPrice(unitPrice, safeQty);
-                subtotal =
-                  (unitResult?.subtotal || 0) +
-                  calculateFinishingCost(finishings) * safeQty;
-              }
-
-              console.log(`  🔢 ${mode}:`, {
-                unitPrice,
-                qty: safeQty,
-                subtotal,
-              });
-            }
-            break;
-
-          case "MANUAL":
-            // Manual pricing (Custom items)
-            const manPrice = parseFloat(manualPrice) || 0;
-            subtotal =
-              manPrice * safeQty + calculateFinishingCost(finishings) * safeQty;
-
-            console.log("  ✏️  MANUAL:", { manPrice, subtotal });
-            break;
-
-          case "HYBRID":
-            // HYBRID should have been resolved to AREA/LINEAR in mode detection
-            // Fallback to AREA for safety
-            console.warn("⚠️  HYBRID not resolved - falling back to AREA");
-            const hybLen = parseFloat(dimensions.length) || 0;
-            const hybWid = parseFloat(dimensions.width) || 0;
-            const hybPrice = parseFloat(product?.price) || 0;
-
-            if (hybLen > 0 && hybWid > 0) {
-              const hybResult = calculateAreaPrice(
-                hybLen,
-                hybWid,
-                hybPrice,
-                safeQty,
-              );
-              subtotal =
-                (hybResult?.subtotal || 0) +
-                calculateFinishingCost(finishings) * safeQty;
-            }
-            break;
-
-          default:
-            console.warn("⚠️  Unknown mode:", mode);
-            subtotal = 0;
+        try {
+          const result = calculatePriceByLogic({
+            mode,
+            product,
+            qty: safeQty,
+            dimensions: {
+              ...dimensions,
+              // Ensure legacy compatibility if needed
+              length: dimensions.length,
+              width: dimensions.width,
+              sizeKey: dimensions.sizeKey || dimensions.selectedVariant?.label, // fallback
+            },
+            finishings,
+            manualPrice,
+          });
+          console.log(`  🔢 ${mode}:`, { subtotal: result.subtotal });
+          return { subtotal: result.subtotal };
+        } catch (err) {
+          console.error("❌ calculateItemPrice unified error:", err);
+          return { subtotal: 0 };
         }
-
-        return { subtotal };
       } catch (err) {
         console.error("❌ calculateItemPrice error:", err);
         return { subtotal: 0 };

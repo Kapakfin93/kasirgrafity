@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
-import { useOrderStore } from "../../stores/useOrderStore";
 import { formatRupiah } from "../../core/formatters";
 
 /**
@@ -18,13 +17,36 @@ export function NotaPreview({
   paymentState,
   order,
   onClose,
-  onPrint,
   onReset,
   autoPrint = false,
   type = "NOTA",
 }) {
   const { mode, amountPaid } = paymentState || {};
-  const paid = parseFloat(amountPaid) || 0;
+  const paid = Number.parseFloat(amountPaid) || 0;
+
+  // FAIL-SAFE DISCOUNT LOGIC (User Request)
+  // 1. Calculate Real Subtotal (Sum of all item totals)
+  const realSubtotal = items.reduce(
+    (sum, item) => sum + (item.totalPrice || 0),
+    0,
+  );
+
+  // 2. Determine Final Total
+  const finalTotalAmount =
+    typeof totalAmount === "object"
+      ? totalAmount.finalAmount || 0
+      : totalAmount || 0;
+
+  // 3. Calculate Implied Discount (Subtotal - FinalTotal)
+  const impliedDiscount = realSubtotal - finalTotalAmount;
+
+  // 4. Set Display Values
+  const subtotal = realSubtotal;
+  // Only show positive discounts, ensuring no floating point noise (though typically integer in IDR)
+  const discount = impliedDiscount > 0 ? impliedDiscount : 0;
+
+  // Render values
+  const displayTotal = finalTotalAmount;
 
   // STATE
   const [printMode, setPrintMode] = useState(type); // Use type prop as initial
@@ -33,10 +55,32 @@ export function NotaPreview({
 
   // REF
   const notaRef = useRef(null);
+  const overlayRef = useRef(null);
 
   // Calculate status
-  const sisaBayar = totalAmount - paid;
+  const sisaBayar = displayTotal - paid;
   const statusText = sisaBayar <= 0 ? "LUNAS" : "BELUM LUNAS";
+
+  // === EVENT LISTENERS (Modal & Keys) ===
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+
+    const handleClickOutside = (e) => {
+      if (overlayRef.current && e.target === overlayRef.current) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [onClose]);
 
   // === AUTO PRINT LOGIC ===
   useEffect(() => {
@@ -45,7 +89,7 @@ export function NotaPreview({
       setPrintMode(type);
       // Delay to ensure render completes
       const timer = setTimeout(() => {
-        window.print();
+        globalThis.print();
       }, 500);
       return () => clearTimeout(timer);
     }
@@ -62,11 +106,7 @@ export function NotaPreview({
     iframe.style.bottom = "0";
     iframe.style.zIndex = "9999";
 
-    document.body.appendChild(iframe);
-
-    // Ambil isi nota HTML
-    const content = document.getElementById("printable-nota").innerHTML;
-
+    // Gunakan srcdoc untuk menghindari deprecated document.write
     // INJEKSI CSS LENGKAP AGAR SAMA DENGAN PREVIEW
     const style = `
             <style>
@@ -140,8 +180,9 @@ export function NotaPreview({
             </style>
         `;
 
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(`
+    const content = document.getElementById("printable-nota").innerHTML;
+
+    iframe.srcdoc = `
             <html>
             <head>
                 <title>Cetak Nota - Joglo Print</title>
@@ -157,32 +198,18 @@ export function NotaPreview({
                         window.focus();
                         window.print();
                     }
-                <\/script>
+                </script>
             </body>
             </html>
-        `);
-    iframe.contentDocument.close();
+        `;
+
+    document.body.appendChild(iframe);
 
     // Hapus iframe setelah 2 detik (memberi waktu print dialog muncul)
     setTimeout(() => {
-      document.body.removeChild(iframe);
+      iframe.remove();
     }, 2000);
   }, []);
-  // 2. Print SPK (Produksi)
-  const handlePrintSPK = useCallback(async () => {
-    // Audit Trail
-    if (order?.id) {
-      useOrderStore.getState().updateOrder(order.id, {
-        "meta.printedDOAt": new Date().toISOString(),
-      });
-    }
-
-    setPrintMode("SPK");
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => setPrintMode("NOTA"), 1000);
-    }, 100);
-  }, [order]);
 
   // 3. Share Image (WA) dengan Watermark
   const handleShareImage = useCallback(async () => {
@@ -226,7 +253,7 @@ export function NotaPreview({
       // Format nomor WA (0812xxx -> 62812xxx)
       const formatWA = (number) => {
         if (!number) return "";
-        let clean = number.replace(/\D/g, ""); // Hapus karakter non-angka
+        let clean = number.replaceAll(/\D/g, ""); // Hapus karakter non-angka
         if (clean.startsWith("0")) clean = "62" + clean.slice(1); // Ganti 0 depan jadi 62
         if (!clean.startsWith("62")) clean = "62" + clean; // Pastikan mulai 62
         return clean;
@@ -238,7 +265,7 @@ export function NotaPreview({
 
       if (phone) {
         // Siapkan template pesan
-        const text = `Halo Kak *${customerName}*,\n\nTerima kasih sudah order di *JOGLO PRINTING* 🎨\n\nBerikut kami lampirkan nota digital untuk pesanan:\n📋 *${order?.orderNumber || "N/A"}*\n\n💰 Total: ${formatRupiah(totalAmount)}\n📌 Status: ${paymentState?.amountPaid >= totalAmount ? "LUNAS ✅" : "BELUM LUNAS ⏳"}\n\n_Gambar nota sudah didownload, silakan lampirkan._\n\nMohon dicek kembali. Terima kasih! 🙏`;
+        const text = `Halo Kak *${customerName}*,\n\nTerima kasih sudah order di *JOGLO PRINTING* 🎨\n\nBerikut kami lampirkan nota digital untuk pesanan:\n📋 *${order?.orderNumber || "N/A"}*\n\n💰 Total: ${formatRupiah(displayTotal)}\n📌 Status: ${paymentState?.amountPaid >= displayTotal ? "LUNAS ✅" : "BELUM LUNAS ⏳"}\n\n_Gambar nota sudah didownload, silakan lampirkan._\n\nMohon dicek kembali. Terima kasih! 🙏`;
 
         // Buka WhatsApp
         const waUrl = `https://wa.me/${formatWA(phone)}?text=${encodeURIComponent(text)}`;
@@ -260,7 +287,7 @@ export function NotaPreview({
       setShowWatermark(false);
       setIsGenerating(false);
     }
-  }, [isGenerating, order, totalAmount, paymentState]);
+  }, [isGenerating, order, displayTotal, paymentState]);
 
   const showPrices = printMode === "NOTA";
   const headerTitle =
@@ -291,11 +318,8 @@ export function NotaPreview({
 
   // --- RENDER CONTENT ---
   const modalContent = (
-    <div className="nota-preview-overlay" onClick={onClose}>
-      <div
-        className="nota-preview-container"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="nota-preview-overlay" ref={overlayRef}>
+      <div className="nota-preview-container">
         {/* === AREA PRINT === */}
         <div
           className="nota-content"
@@ -425,7 +449,7 @@ export function NotaPreview({
                 null;
 
               return (
-                <div key={idx} className="nota-item">
+                <div key={item.id || idx} className="nota-item">
                   <div className="nota-item-title">
                     {item.qty}x {item.productName}
                   </div>
@@ -512,12 +536,31 @@ export function NotaPreview({
 
           {showPrices ? (
             <div className="nota-summary">
+              {/* Always render Subtotal */}
+              <div className="nota-row">
+                <span>Subtotal</span>
+                <span>{formatRupiah(subtotal)}</span>
+              </div>
+
+              {/* FAIL-SAFE DISCOUNT RENDER */}
+              {discount > 0 && (
+                <div className="nota-row" style={{ color: "#f43f5e" }}>
+                  <span>POTONGAN / DISKON</span>
+                  <span>- {formatRupiah(discount)}</span>
+                </div>
+              )}
+
+              <div
+                className="receipt-divider"
+                style={{ margin: "5px 0" }}
+              ></div>
+
               <div
                 className="nota-total-row"
                 style={{ fontWeight: "bold", fontSize: "13px" }}
               >
                 <span>TOTAL</span>
-                <span>{formatRupiah(totalAmount)}</span>
+                <span>{formatRupiah(displayTotal)}</span>
               </div>
               <div className="nota-row">
                 <span>Bayar ({mode})</span>
@@ -566,7 +609,7 @@ export function NotaPreview({
                   ) {
                     return sum;
                   }
-                  return sum + (parseInt(item.qty) || 0);
+                  return sum + (Number.parseInt(item.qty) || 0);
                 }, 0)}{" "}
                 Pcs
               </p>

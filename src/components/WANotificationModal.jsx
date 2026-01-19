@@ -27,12 +27,44 @@ export function WANotificationModal({
   // Generate initial message when modal opens
   useEffect(() => {
     if (isOpen && order) {
-      // Defer state updates to avoid sync setState in effect warning
+      // Defer state updates
       queueMicrotask(() => {
-        const initialMessage =
-          actionType === "DELIVER"
-            ? generateDeliveryMessage(order)
-            : generateCompletionMessage(order);
+        let initialMessage = "";
+
+        // Calculate dynamic values
+        const remaining =
+          order.remainingAmount ?? order.totalAmount - (order.paidAmount || 0);
+        const isLunas = remaining <= 0;
+
+        if (actionType === "DELIVER") {
+          if (isLunas) {
+            // STANDARD MESSAGE (Paid)
+            initialMessage = generateDeliveryMessage(order);
+          } else {
+            // DEBT REMINDER MESSAGE (Tempo/Unpaid)
+            // Calculate Due Date (Default +7 days) - Bisa disesuaikan logic-nya
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 7);
+            const dateStr = dueDate.toLocaleDateString("id-ID", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            });
+
+            initialMessage =
+              `Halo ${order.customerName},\n\n` +
+              `Pesanan Anda *${order.orderNumber}* SUDAH DITERIMA/DIAMBIL.\n\n` +
+              `Status: *BELUM LUNAS (TEMPO)*\n` +
+              `Sisa Tagihan: *${formatRupiah(remaining)}*\n` +
+              `Jatuh Tempo: *${dateStr}*\n\n` +
+              `Mohon diselesaikan sebelum tanggal tersebut.\n` +
+              `Terima kasih. 🙏`;
+          }
+        } else {
+          // COMPLETE (Ready for pickup)
+          initialMessage = generateCompletionMessage(order);
+        }
+
         setMessage(initialMessage);
 
         // Check if phone is valid

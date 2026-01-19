@@ -5,7 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // DEBUG LOGGING
 console.log("🔌 Initializing Supabase Client...");
-console.log("   URL:", supabaseUrl ? supabaseUrl : "MISSING ❌");
+console.log("   URL:", supabaseUrl || "MISSING ❌");
 console.log(
   "   KEY:",
   supabaseAnonKey ? supabaseAnonKey.substring(0, 10) + "..." : "MISSING ❌",

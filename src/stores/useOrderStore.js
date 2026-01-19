@@ -6,6 +6,43 @@
 import { create } from "zustand";
 import db from "../data/db/schema";
 import { Order } from "../data/models/Order";
+import { updateSupabaseOrder } from "./supabaseUploadHelper"; // Import Helper
+
+// HELPER: Convert DB Schema (Snake) to App Schema (Camel)
+// This ensures ALL UI components (Board, Dashboard, Tables) work without changes.
+const normalizeOrder = (dbOrder) => {
+  if (!dbOrder) return null;
+  return {
+    ...dbOrder,
+    // Header Mapping
+    id: dbOrder.id,
+    orderNumber: dbOrder.order_number || dbOrder.orderNumber, // Fallback
+    customerName: dbOrder.customer_name || dbOrder.customerName,
+    customerPhone: dbOrder.customer_phone || dbOrder.customerPhone,
+    totalAmount: dbOrder.total_amount || dbOrder.totalAmount || 0,
+    dpAmount: dbOrder.dp_amount || 0, // If you have this column
+    paidAmount: dbOrder.paid_amount || dbOrder.paidAmount || 0,
+    remainingAmount: dbOrder.remaining_amount || dbOrder.remainingAmount || 0,
+    paymentStatus: dbOrder.payment_status || dbOrder.paymentStatus,
+    productionStatus: dbOrder.production_status || dbOrder.productionStatus,
+    paymentMethod: dbOrder.payment_method || dbOrder.paymentMethod,
+    isTempo: dbOrder.is_tempo,
+    createdAt: dbOrder.created_at || dbOrder.createdAt,
+
+    // Item Mapping (Nested)
+    items: (dbOrder.items || []).map((item) => ({
+      ...item,
+      id: item.id,
+      productId: item.product_id || item.productId,
+      productName: item.product_name || item.productName,
+      name: item.product_name || item.name, // UI often uses 'name'
+      qty: item.quantity || item.qty,
+      price: item.price,
+      totalPrice: item.subtotal || item.totalPrice,
+      metadata: item.metadata,
+    })),
+  };
+};
 
 export const useOrderStore = create((set, get) => ({
   // State
@@ -48,67 +85,78 @@ export const useOrderStore = create((set, get) => ({
   loadOrders: async ({ page = 1, limit = 20, status = "ALL" } = {}) => {
     set({ loading: true, error: null });
     try {
-      // Hard limit to prevent browser crash
-      const safeLimit = limit > 100 ? 100 : limit;
+      const safeLimit = Math.min(limit, 100);
       const offset = (page - 1) * safeLimit;
+      const { supabase } = await import("../services/supabaseClient");
 
-      let orderObjects = [];
-      let totalCount = 0;
-
-      // CHECK CONNECTION (Simple check for now)
-      // In a real app, use a dedicated hook or navigator.onLine + checking Supabase ping
-      const isOnline = navigator.onLine;
-
-      if (isOnline) {
-        // === ONLINE MODE: FETCH FROM SUPABASE ===
-        const { importSupabase } = await import("../services/supabaseClient"); // Lazy load
-        const supabase = importSupabase?.supabase; // Assuming exported as supabase
-
-        if (supabase) {
-          let query = supabase.from("orders").select("*", { count: "exact" });
-
-          if (status !== "ALL") {
-            query = query.eq("payment_status", status); // Mapping might be needed depending on DB schema snake_case
-          }
-
-          const { data, count, error } = await query
-            .range(offset, offset + safeLimit - 1)
-            .order("created_at", { ascending: false });
-
-          if (error) throw error;
-
-          orderObjects = data.map((o) => Order.fromDB(o)); // Ensure Model compatibility
-          totalCount = count;
-        }
-      }
-
-      // === FALLBACK / OFFLINE MODE: FETCH FROM DEXIE ===
-      // If offline or if Supabase fetch failed/skipped
-      if (orderObjects.length === 0) {
-        console.log("⚠️ Fetching from Local DB (Offline/Fallback)");
-        let collection = db.orders.orderBy("createdAt").reverse();
+      // 1. FETCH FROM SUPABASE
+      if (navigator.onLine && supabase) {
+        let query = supabase
+          .from("orders")
+          .select("*, items:order_items(*)", { count: "exact" }); // Join items
 
         if (status !== "ALL") {
-          collection = db.orders
-            .where("paymentStatus")
-            .equals(status)
-            .reverse();
+          // Map UI status "UNPAID" to DB column 'payment_status'
+          query = query.eq("payment_status", status);
         }
 
-        totalCount = await collection.count();
-        const data = await collection.offset(offset).limit(safeLimit).toArray();
-        orderObjects = data.map((o) => Order.fromDB(o));
-      }
+        const { data, count, error } = await query
+          .range(offset, offset + safeLimit - 1)
+          .order("created_at", { ascending: false });
 
-      set({
-        orders: orderObjects,
-        filteredOrders: orderObjects,
-        totalOrders: totalCount,
-        totalPages: Math.ceil(totalCount / safeLimit),
-        currentPage: page,
-        pageSize: safeLimit,
-        loading: false,
-      });
+        if (error) throw error;
+
+        // 2. NORMALIZE DATA (THE GLOBAL FIX)
+        const appOrders = data.map(normalizeOrder);
+
+        set({
+          orders: appOrders,
+          filteredOrders: appOrders,
+          totalOrders: count,
+          totalPages: Math.ceil(count / safeLimit),
+          currentPage: page,
+          pageSize: safeLimit,
+          loading: false,
+        });
+      } else {
+        // Fallback to local DB (Logic remains same, assuming local DB is already CamelCase)
+        const { orders } = get();
+        // Basic fetch from local if offline - simplified for now as per user instruction to prioritize loadOrders fix
+        // ... (Keep existing Dexie logic if needed, but usually redundant if simple fetch)
+        // === FALLBACK / OFFLINE MODE: FETCH FROM DEXIE ===
+        // If offline or if Supabase fetch failed/skipped
+        let orderObjects = [];
+        let totalCount = 0;
+        if (orders.length === 0) {
+          // Only fetch if empty to avoid overwrite loop? No, this fn sets orders.
+          console.log("⚠️ Fetching from Local DB (Offline/Fallback)");
+          let collection = db.orders.orderBy("createdAt").reverse();
+
+          if (status !== "ALL") {
+            collection = db.orders
+              .where("paymentStatus")
+              .equals(status)
+              .reverse();
+          }
+
+          totalCount = await collection.count();
+          const data = await collection
+            .offset(offset)
+            .limit(safeLimit)
+            .toArray();
+          orderObjects = data.map((o) => Order.fromDB(o));
+
+          set({
+            orders: orderObjects,
+            filteredOrders: orderObjects,
+            totalOrders: totalCount,
+            totalPages: Math.ceil(totalCount / safeLimit),
+            currentPage: page,
+            pageSize: safeLimit,
+            loading: false,
+          });
+        }
+      }
     } catch (error) {
       console.error(error);
       set({ error: error.message, loading: false });
@@ -120,7 +168,7 @@ export const useOrderStore = create((set, get) => ({
     set({ loading: true, error: null, currentPage: page, pageSize });
     try {
       // Get total count first
-      let query = db.orders.orderBy("createdAt").reverse();
+      // let query = db.orders.orderBy("createdAt").reverse(); // Unused variable removed
 
       // Apply filter if not ALL
       if (filter !== "ALL") {
@@ -183,7 +231,7 @@ export const useOrderStore = create((set, get) => ({
       let ordersToSum = await db.orders.toArray();
 
       // Apply date filter if provided
-      if (dateRange && dateRange.start && dateRange.end) {
+      if (dateRange?.start && dateRange.end) {
         ordersToSum = ordersToSum.filter((o) => {
           const orderDate = new Date(o.createdAt);
           return orderDate >= dateRange.start && orderDate <= dateRange.end;
@@ -269,12 +317,9 @@ export const useOrderStore = create((set, get) => ({
       const results = await db.orders
         .filter(
           (order) =>
-            (order.customerName &&
-              order.customerName.toLowerCase().includes(lowerQuery)) ||
-            (order.orderNumber &&
-              order.orderNumber.toLowerCase().includes(lowerQuery)) ||
-            (order.customerSnapshot?.name &&
-              order.customerSnapshot.name.toLowerCase().includes(lowerQuery)),
+            order.customerName?.toLowerCase().includes(lowerQuery) ||
+            order.orderNumber?.toLowerCase().includes(lowerQuery) ||
+            order.customerSnapshot?.name?.toLowerCase().includes(lowerQuery),
         )
         .limit(50)
         .toArray();
@@ -332,7 +377,9 @@ export const useOrderStore = create((set, get) => ({
     const { MACHINE_ID } = await import("../core/constants");
 
     const today = new Date();
-    const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, ""); // "20260109"
+    const datePrefix = today.toISOString().slice(0, 10).replaceAll("-", ""); // "20260109"
+
+    // Get last order for this machine and date
 
     // Get last order for this machine and date
     const allOrders = await db.orders.toArray();
@@ -354,7 +401,7 @@ export const useOrderStore = create((set, get) => ({
     let maxSequence = 0;
     todayOrders.forEach((order) => {
       const parts = order.orderNumber.split("-");
-      const sequence = parseInt(parts[3], 10);
+      const sequence = Number.parseInt(parts[3], 10);
       if (sequence > maxSequence) {
         maxSequence = sequence;
       }
@@ -366,139 +413,72 @@ export const useOrderStore = create((set, get) => ({
     return `JGL-${MACHINE_ID}-${datePrefix}-${paddedSequence}`;
   },
 
-  createOrder: async (orderData) => {
-    set({ loading: true, error: null });
+  createOrder: async (payload) => {
+    set({ isLoading: true, error: null });
 
     try {
-      // VALIDATION 1: Customer Snapshot (MANDATORY)
-      if (
-        !orderData.customerSnapshot ||
-        !orderData.customerSnapshot.name ||
-        orderData.customerSnapshot.name.trim() === ""
-      ) {
+      console.log("📦 OrderStore received payload:", payload);
+
+      const { items, ...orderHeader } = payload;
+
+      // 1. VALIDATION
+      if (!orderHeader.customer_name)
         throw new Error("ORDER REJECTED: Nama customer wajib diisi");
+
+      const { supabase } = await import("../services/supabaseClient");
+
+      // 2. INSERT HEADER (WRITE)
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .insert([orderHeader])
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      // 3. INSERT ITEMS (WRITE)
+      if (items && items.length > 0) {
+        const itemsWithOrderId = items.map((item) => ({
+          ...item,
+          order_id: orderData.id,
+        }));
+
+        const { error: itemsError } = await supabase
+          .from("order_items")
+          .insert(itemsWithOrderId);
+
+        if (itemsError) throw itemsError;
       }
 
-      // VALIDATION 2: Metadata - Created By (MANDATORY)
-      if (!orderData.meta || !orderData.meta.createdBy) {
-        throw new Error("ORDER REJECTED: CS/Kasir tidak terdeteksi");
-      }
+      console.log("✅ Transaction Saved. Fetching single fresh row...");
 
-      // STEP 1: Generate Order Number (ATOMIC)
-      // Note: We use the hybrid generator we defined earlier
-      const orderNumber = await get()._generateOrderNumber();
-      console.log("✅ Generated order number:", orderNumber);
+      // 4. EFFICIENT SYNC (READ = 1 Row)
+      // Only fetch the specific ID we just created.
+      // This gets the auto-generated timestamps and joined items efficiently.
+      const { data: fullOrder, error: fetchError } = await supabase
+        .from("orders")
+        .select("*, items:order_items(*)")
+        .eq("id", orderData.id)
+        .single();
 
-      // STEP 2: Create Order Object (Local Model)
-      const order = new Order({
-        ...orderData,
-        orderNumber,
-        createdAt: new Date().toISOString(),
-        // [SOP V2.0] FLAG TEMPO - Bypass payment gate
-        isTempo: orderData.isTempo || false,
-      });
+      if (fetchError) throw fetchError;
 
-      order.updatePaymentStatus();
-
-      // Prepare Plain Object for Storage
-      const orderDoc = order.toJSON();
-      let isSynced = false;
-
-      // STEP 3: CLOUD SYNC (Supabase)
-      // "Hybrid Cloud: Cloud First, Local Cache"
-      if (navigator.onLine) {
-        try {
-          const { importSupabase } = await import("../services/supabaseClient");
-          const supabase = importSupabase?.supabase;
-
-          if (supabase) {
-            // A. Prepare Order Payload (Snake Case for DB)
-            const supabaseOrder = {
-              id: orderDoc.id,
-              order_number: orderDoc.orderNumber,
-              customer_id: orderDoc.customerId || null,
-              customer_name: orderDoc.customerSnapshot?.name, // Flatted for search
-              customer_snapshot: orderDoc.customerSnapshot,
-              production_status: orderDoc.productionStatus,
-              payment_status: orderDoc.paymentStatus,
-              total_amount: orderDoc.totalAmount,
-              paid_amount: orderDoc.paidAmount,
-              remaining_amount: orderDoc.remainingAmount,
-              discount: orderDoc.discount || 0,
-              final_amount:
-                orderDoc.finalAmount ||
-                orderDoc.totalAmount - (orderDoc.discount || 0),
-              dp_amount: orderDoc.dpAmount || 0,
-              notes: orderDoc.notes,
-              meta: orderDoc.meta,
-              created_at: orderDoc.createdAt,
-            };
-
-            // B. Insert Order
-            const { error: orderError } = await supabase
-              .from("orders")
-              .insert(supabaseOrder);
-            if (orderError) throw orderError;
-
-            // C. Insert Items
-            if (orderDoc.items && orderDoc.items.length > 0) {
-              const supabaseItems = orderDoc.items.map((item) => ({
-                order_id: orderDoc.id,
-                product_id: item.productId,
-                product_name: item.productName,
-                description: item.description,
-                category_id: item.categoryId,
-                pricing_type: item.pricingType,
-                input_mode: item.inputMode,
-                qty: item.qty,
-                unit_price: item.unitPrice,
-                total_price: item.totalPrice,
-                // Map 'bom' or 'specs' to specs_snapshot
-                specs_snapshot: item.specsSnapshot || item.specs || null,
-                meta: item.meta,
-              }));
-
-              const { error: itemsError } = await supabase
-                .from("order_items")
-                .insert(supabaseItems);
-              if (itemsError) throw itemsError;
-            }
-            isSynced = true;
-            console.log("☁️ Uploaded to Supabase successfully!");
-          }
-        } catch (cloudError) {
-          console.error(
-            "⚠️ Cloud Sync Failed (Saving Local Only):",
-            cloudError,
-          );
-          console.error(
-            "   Details:",
-            cloudError.message,
-            cloudError.details,
-            cloudError.hint,
-          );
-          isSynced = false;
-          // Don't throw, proceed to local save
-        }
-      }
-
-      // STEP 4: Save to IndexedDB (Local Cache)
-      // Always save locally, with sync status
-      const localDoc = { ...orderDoc, synced: isSynced };
-      await db.orders.put(localDoc);
+      // 5. NORMALIZE & LOCAL UPDATE (Zero Network Cost for List Refresh)
+      // Use the helper defined at the top of the file
+      const normalizedOrder = normalizeOrder(fullOrder);
 
       set((state) => ({
-        orders: [...state.orders, order],
-        filteredOrders: get().applyFilter([...state.orders, order]),
+        // Prepend the new order to the existing list immediately
+        orders: [normalizedOrder, ...state.orders],
+        // Update summary counters manually if needed, or leave for background sync
         loading: false,
       }));
 
-      console.log("✅ Order saved locally (Synced: " + isSynced + ")");
-      return order;
-    } catch (error) {
-      console.error("❌ Order creation failed:", error);
-      set({ error: error.message, loading: false });
-      throw error;
+      return normalizedOrder;
+    } catch (err) {
+      console.error("❌ Order creation failed:", err);
+      set({ error: err.message, isLoading: false });
+      throw err;
     }
   },
 
@@ -506,6 +486,11 @@ export const useOrderStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       await db.orders.update(id, updates);
+
+      // SYNC TO SUPABASE (REAL-TIME UPDATE)
+      if (navigator.onLine) {
+        updateSupabaseOrder(id, updates); // Fire and forget (don't await to keep UI fast)
+      }
 
       set((state) => {
         const updatedOrders = state.orders.map((order) => {
@@ -529,7 +514,7 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  addPayment: async (orderId, amount) => {
+  addPayment: async (orderId, amount, receivedBy = null) => {
     set({ loading: true, error: null });
     try {
       const order = get().orders.find((o) => o.id === orderId);
@@ -543,6 +528,11 @@ export const useOrderStore = create((set, get) => ({
         dpAmount:
           order.dpAmount || (newPaidAmount < order.totalAmount ? amount : 0),
       };
+
+      // Update receiver if provided
+      if (receivedBy) {
+        updates.receivedBy = receivedBy;
+      }
 
       // Update payment status
       if (newPaidAmount >= order.totalAmount) {

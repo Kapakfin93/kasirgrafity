@@ -11,13 +11,66 @@ import { useEmployeeStore } from "../../stores/useEmployeeStore";
 import { useAttendanceStore } from "../../stores/useAttendanceStore";
 import { useExpenseStore } from "../../stores/useExpenseStore";
 import { usePermissions } from "../../hooks/usePermissions";
-import { supabase } from "../../services/supabaseClient";
+
 import { formatRupiah } from "../../core/formatters";
 import { getDateRange } from "../../utils/dateHelpers";
 import { StatsCard } from "./StatsCard";
 import { RecentOrders } from "./RecentOrders";
 import { TodayAttendance } from "./TodayAttendance";
 import { TopProducts } from "./TopProducts";
+
+// Helper to reduce complexity of nested loops
+// Separated from strict nesting to flatten structure
+const calculateFinancials = (orders) => {
+  let accSales = 0;
+  let accDiscount = 0;
+  let accCollected = 0;
+  let accOutstanding = 0;
+  let accPrint = 0;
+  let accFinish = 0;
+  let accTempoReceivables = 0;
+  let accBadDebt = 0;
+
+  orders.forEach((order) => {
+    accSales += order.finalAmount || 0;
+    accDiscount += order.discount || 0;
+    accCollected += order.paidAmount || 0;
+    accOutstanding += order.remainingAmount || 0;
+
+    // SPLIT OUTSTANDING: TEMPO (Golden) vs BAD DEBT (Red)
+    if (order.remainingAmount > 0) {
+      if (order.isTempo) {
+        accTempoReceivables += order.remainingAmount;
+      } else {
+        accBadDebt += order.remainingAmount;
+      }
+    }
+
+    if (order.items) {
+      order.items.forEach((item) => {
+        const finishingTotal =
+          (item.finishings || []).reduce((sum, f) => sum + (f.price || 0), 0) *
+          (item.qty || 1);
+        accFinish += finishingTotal;
+
+        const itemSubtotal = item.subtotal || item.totalPrice || 0;
+        const basePrint = itemSubtotal - finishingTotal;
+        accPrint += basePrint;
+      });
+    }
+  });
+
+  return {
+    accSales,
+    accDiscount,
+    accCollected,
+    accOutstanding,
+    accTempoReceivables,
+    accBadDebt,
+    accPrint,
+    accFinish,
+  };
+};
 
 export function OwnerDashboard() {
   const navigate = useNavigate();
@@ -27,7 +80,7 @@ export function OwnerDashboard() {
   const { orders, loadOrders } = useOrderStore();
   const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
   const { todayAttendances, loadTodayAttendances } = useAttendanceStore();
-  const { expenses, loadExpenses, getTotalExpenses } = useExpenseStore();
+  const { expenses, loadExpenses } = useExpenseStore();
 
   useEffect(() => {
     loadOrders();
@@ -35,6 +88,98 @@ export function OwnerDashboard() {
     loadTodayAttendances();
     loadExpenses();
   }, [loadOrders, loadEmployees, loadTodayAttendances, loadExpenses]);
+
+  // === REFACTORED: CLIENT-SIDE STATS CALCULATION (Local First) ===
+  const stats = React.useMemo(() => {
+    const { start, end } = getDateRange(period);
+
+    // 1. Filter Orders by Period
+    const filteredOrders = orders.filter((o) => {
+      const date = new Date(o.createdAt);
+      return date >= start && date <= end && o.productionStatus !== "CANCELLED";
+    });
+
+    const cancelledInPeriod = orders.filter((o) => {
+      const date = new Date(o.cancelledAt || o.createdAt);
+      return date >= start && date <= end && o.productionStatus === "CANCELLED";
+    });
+
+    // 2. Filter Expenses by Period
+    const filteredExpenses = expenses.filter((e) => {
+      const date = new Date(e.date);
+      return date >= start && date <= end;
+    });
+
+    // 3. Calculate Financials using Helper to reduce nesting
+    const {
+      accSales,
+      accDiscount,
+      accCollected,
+      accOutstanding,
+      accTempoReceivables,
+      accBadDebt,
+      accPrint,
+      accFinish,
+    } = calculateFinancials(filteredOrders);
+
+    // Status Counts
+    const countPending = orders.filter(
+      (o) => o.productionStatus === "PENDING",
+    ).length;
+    const countInProgress = orders.filter(
+      (o) => o.productionStatus === "IN_PROGRESS",
+    ).length;
+    const countReady = orders.filter(
+      (o) => o.productionStatus === "READY",
+    ).length;
+    const countDelivered = orders.filter(
+      (o) => o.productionStatus === "DELIVERED",
+    ).length;
+
+    const totalExpenses = filteredExpenses.reduce(
+      (sum, e) => sum + (e.amount || 0),
+      0,
+    );
+    const netProfit = accSales - totalExpenses;
+    const lostRevenue = cancelledInPeriod.reduce(
+      (sum, o) => sum + (o.totalAmount || 0),
+      0,
+    );
+
+    const unpaidCount = filteredOrders.filter(
+      (o) => o.paymentStatus === "UNPAID",
+    ).length;
+    const dpCount = filteredOrders.filter(
+      (o) => o.paymentStatus === "DP",
+    ).length;
+    const paidCount = filteredOrders.filter(
+      (o) => o.paymentStatus === "PAID",
+    ).length;
+
+    return {
+      totalSales: accSales,
+      totalDiscount: accDiscount,
+      totalCollected: accCollected,
+      totalOutstanding: accOutstanding,
+      totalTempoReceivables: accTempoReceivables,
+      totalBadDebt: accBadDebt,
+      totalExpenses: totalExpenses,
+      netProfit: netProfit,
+      totalOrders: filteredOrders.length,
+      unpaidCount,
+      paidCount,
+      dpCount,
+      pendingOrders: countPending,
+      inProgressOrders: countInProgress,
+      readyOrders: countReady,
+      deliveredOrders: countDelivered,
+      totalLostRevenue: lostRevenue,
+      totalRevenuePrint: accPrint,
+      totalRevenueFinish: accFinish,
+      totalEmployees: employees.length,
+      presentToday: todayAttendances.length,
+    };
+  }, [orders, expenses, period, employees, todayAttendances]);
 
   if (!isOwner) {
     return (
@@ -44,80 +189,6 @@ export function OwnerDashboard() {
       </div>
     );
   }
-
-  // === REFACTORED: SERVER-SIDE STATS CALCULATION (RPC) ===
-  const [stats, setStats] = useState({
-    totalSales: 0,
-    totalDiscount: 0,
-    totalCollected: 0,
-    totalOutstanding: 0,
-    netProfit: 0,
-    totalOrders: 0,
-    unpaidCount: 0,
-    paidCount: 0,
-    dpCount: 0,
-    pendingOrders: 0,
-    inProgressOrders: 0,
-    readyOrders: 0,
-    deliveredOrders: 0,
-    totalLostRevenue: 0,
-    totalRevenuePrint: 0, // Not yet in RPC, placeholder
-    totalRevenueFinish: 0, // Not yet in RPC, placeholder
-  });
-
-  // Fetch stats from Supabase RPC
-  const fetchStats = async () => {
-    try {
-      const { start, end } = getDateRange(period);
-
-      // 1. Call RPC for Financials
-      const { data: rpcData, error } = await supabase.rpc(
-        "get_dashboard_summary",
-        {
-          start_date: start.toISOString(),
-          end_date: end.toISOString(),
-        },
-      );
-
-      if (error) throw error;
-
-      // 2. Fetch Operational Counts (Lightweight Count Queries)
-      // We can optimize this later with another RPC if needed
-      const { count: pending } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("production_status", "PENDING");
-      const { count: inProgress } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("production_status", "IN_PROGRESS");
-      const { count: ready } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("production_status", "READY");
-
-      // Note: For now, we mix RPC data with some placeholders because the RPC
-      // defined in the prompt only covers financial totals.
-      // Ideally we'd expand the RPC to return all these counts.
-
-      setStats((prev) => ({
-        ...prev,
-        ...rpcData, // totalSales, totalDiscount, netProfit, etc.
-        pendingOrders: pending || 0,
-        inProgressOrders: inProgress || 0,
-        readyOrders: ready || 0,
-        // approximate others or fetch if critical
-      }));
-    } catch (err) {
-      console.error("Failed to fetch dashboard stats via RPC:", err);
-      // Fallback to local store if offline?
-      // For now, we assume this dashboard is 'Online Mode' optimized as requested.
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-  }, [period]);
 
   // Keep legacy local data for specific lists (Recent Orders) if needed,
   // but avoid heavy calculations.
@@ -209,8 +280,26 @@ export function OwnerDashboard() {
           icon="💵"
           title="Uang Terkumpul"
           value={formatRupiah(stats.totalCollected)}
-          subtitle={`Piutang: ${formatRupiah(stats.totalOutstanding)}`}
+          subtitle={`Cash In Hand`}
           color="#3b82f6"
+        />
+
+        {/* TIER 1.5: SPLIT DEBT */}
+        <StatsCard
+          icon="⚠️"
+          title="Kurang Bayar"
+          value={formatRupiah(stats.totalBadDebt)}
+          subtitle="Harus ditagih (Umum)"
+          color="#ef4444"
+        />
+
+        {/* GOLDEN CARD: INVOICE BERJALAN (TEMPO/VIP) */}
+        <StatsCard
+          icon="⭐"
+          title="Invoice Berjalan"
+          value={formatRupiah(stats.totalTempoReceivables)}
+          subtitle="Piutang VIP / Korporat"
+          color="#eab308"
         />
 
         {/* NEW: Total Discount Card */}
@@ -275,17 +364,20 @@ export function OwnerDashboard() {
                   letterSpacing: "0.5px",
                 }}
               >
-                Omset Bahan (Print)
+                Omset Bahan (Gross)
               </div>
               <div
                 style={{
                   fontSize: "24px",
-                  fontWeight: "900",
-                  color: "#06b6d4",
-                  marginTop: "4px",
+                  fontWeight: "800",
+                  color: "#22d3ee",
+                  textShadow: "0 0 10px rgba(34, 211, 238, 0.5)",
                 }}
               >
                 {formatRupiah(stats.totalRevenuePrint)}
+              </div>
+              <div style={{ fontSize: "10px", color: "#94a3b8" }}>
+                *Sebelum Diskon
               </div>
             </div>
           </div>
@@ -489,46 +581,52 @@ export function OwnerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {cancelledOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td className="text-muted">
-                      {new Date(
-                        order.cancelledAt || order.createdAt,
-                      ).toLocaleString("id-ID")}
-                    </td>
-                    <td className="text-bold">
-                      {order.orderNumber || `#${String(order.id).slice(0, 8)}`}
-                    </td>
-                    <td>
-                      {order.customerSnapshot?.name ||
-                        order.customerName ||
-                        "-"}
-                    </td>
-                    <td>
-                      <span className="reason-badge">
-                        "{order.cancelReason || "Tidak ada alasan"}"
+                {cancelledOrders.map((order) => {
+                  let financialStatus;
+                  if (order.financialAction === "REFUND") {
+                    financialStatus = (
+                      <span className="badge badge-refund">
+                        💸 DIKEMBALIKAN
                       </span>
-                    </td>
-                    <td className="text-center">
-                      {order.financialAction === "REFUND" ? (
-                        <span className="badge badge-refund">
-                          💸 DIKEMBALIKAN
+                    );
+                  } else if (order.financialAction === "FORFEIT") {
+                    financialStatus = (
+                      <span className="badge badge-forfeit">💰 MASUK KAS</span>
+                    );
+                  } else {
+                    financialStatus = "-";
+                  }
+
+                  return (
+                    <tr key={order.id}>
+                      <td className="text-muted">
+                        {new Date(
+                          order.cancelledAt || order.createdAt,
+                        ).toLocaleString("id-ID")}
+                      </td>
+                      <td className="text-bold">
+                        {order.orderNumber ||
+                          `#${String(order.id).slice(0, 8)}`}
+                      </td>
+                      <td>
+                        {order.customerSnapshot?.name ||
+                          order.customerName ||
+                          "-"}
+                      </td>
+                      <td>
+                        <span className="reason-badge">
+                          "{order.cancelReason || "Tidak ada alasan"}"
                         </span>
-                      ) : order.financialAction === "FORFEIT" ? (
-                        <span className="badge badge-forfeit">
-                          💰 MASUK KAS
-                        </span>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td
-                      className={`text-right ${order.totalAmount > 0 ? "text-danger text-bold" : ""}`}
-                    >
-                      {formatRupiah(order.totalAmount || 0)}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="text-center">{financialStatus}</td>
+                      <td
+                        className={`text-right ${order.totalAmount > 0 ? "text-danger text-bold" : ""}`}
+                      >
+                        {formatRupiah(order.totalAmount || 0)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
