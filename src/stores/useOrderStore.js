@@ -590,22 +590,79 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
+  // === GANTI FUNGSI updateOrder YANG LAMA DENGAN INI ===
+
   updateOrder: async (id, updates) => {
     set({ loading: true, error: null });
     try {
-      await db.orders.update(id, updates);
+      const { supabase } = await import("../services/supabaseClient"); // Pastikan import ini ada atau gunakan db lokal jika perlu
 
-      // SYNC TO SUPABASE (REAL-TIME UPDATE)
-      if (navigator.onLine) {
-        updateSupabaseOrder(id, updates); // Fire and forget (don't await to keep UI fast)
+      // 1. UPDATE KE DATABASE (SUPABASE)
+      // Kita update langsung ke server
+      // Perlu convert camelCase keys (UI) ke snake_case (DB) jika updates berisi field camelCase
+      // Tapi biasanya updates disini simple seperti { productionStatus: 'READY' }
+
+      // Helper map simpel untuk field umum yang sering diupdate
+      const dbUpdates = {};
+      if (updates.productionStatus)
+        dbUpdates.production_status = updates.productionStatus;
+      if (updates.paymentStatus)
+        dbUpdates.payment_status = updates.paymentStatus;
+      if (updates.paidAmount !== undefined)
+        dbUpdates.paid_amount = updates.paidAmount;
+      if (updates.remainingAmount !== undefined)
+        dbUpdates.remaining_amount = updates.remainingAmount;
+      if (updates.dpAmount !== undefined)
+        dbUpdates.dp_amount = updates.dpAmount;
+      if (updates.completedAt) dbUpdates.completed_at = updates.completedAt;
+      if (updates.deliveredAt) dbUpdates.delivered_at = updates.deliveredAt;
+      if (updates.cancelReason) dbUpdates.cancel_reason = updates.cancelReason;
+      if (updates.cancelledAt) dbUpdates.cancelled_at = updates.cancelledAt;
+      if (updates.financialAction)
+        dbUpdates.financial_action = updates.financialAction;
+      if (updates.receivedBy) dbUpdates.received_by = updates.receivedBy;
+      if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
+
+      // Jika ada field lain yang tidak dimap, masukkan juga (fallback)
+      Object.keys(updates).forEach((key) => {
+        // Jika key belum ada di dbUpdates dan bukan camelCase yang sudah dihandle
+        if (
+          ![
+            "productionStatus",
+            "paymentStatus",
+            "paidAmount",
+            "remainingAmount",
+            "dpAmount",
+            "completedAt",
+            "deliveredAt",
+            "cancelReason",
+            "cancelledAt",
+            "financialAction",
+            "receivedBy",
+            "assignedTo",
+          ].includes(key)
+        ) {
+          // Asumsi key sudah snake_case atau sama
+          dbUpdates[key] = updates[key];
+        }
+      });
+
+      // EKSEKUSI UPDATE KE DB
+      if (navigator.onLine && Object.keys(dbUpdates).length > 0) {
+        await supabase.from("orders").update(dbUpdates).eq("id", id);
       }
 
+      // Update Local DB (Dexie) jika perlu
+      // await db.orders.update(id, updates);
+
+      // 2. UPDATE STATE (UI)
+      // Di sini kita tidak perlu .toJSON() lagi karena state kita sudah Plain Object
       set((state) => {
         const updatedOrders = state.orders.map((order) => {
           if (order.id === id) {
-            const updated = Order.fromDB({ ...order.toJSON(), ...updates });
-            updated.updatePaymentStatus();
-            return updated;
+            // GABUNGKAN DATA LAMA (PLAIN) DENGAN UPDATE BARU
+            // Kita update local state langsung agar UI responsif
+            return { ...order, ...updates };
           }
           return order;
         });
@@ -617,6 +674,7 @@ export const useOrderStore = create((set, get) => ({
         };
       });
     } catch (error) {
+      console.error("Update Error:", error);
       set({ error: error.message, loading: false });
       throw error;
     }
