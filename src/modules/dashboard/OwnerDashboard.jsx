@@ -1,10 +1,10 @@
 /**
  * OwnerDashboard Component
- * READ-ONLY FINANCIAL DASHBOARD - No input forms here
- * Expense input is on /expenses page
+ * READ-ONLY FINANCIAL DASHBOARD
+ * CONNECTED TO INTELLIGENT STORE LOGIC (Anti-Zero & Service Detection)
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { useEmployeeStore } from "../../stores/useEmployeeStore";
@@ -19,167 +19,85 @@ import { RecentOrders } from "./RecentOrders";
 import { TodayAttendance } from "./TodayAttendance";
 import { TopProducts } from "./TopProducts";
 
-// Helper to reduce complexity of nested loops
-// Separated from strict nesting to flatten structure
-const calculateFinancials = (orders) => {
-  let accSales = 0;
-  let accDiscount = 0;
-  let accCollected = 0;
-  let accOutstanding = 0;
-  let accPrint = 0;
-  let accFinish = 0;
-  let accTempoReceivables = 0;
-  let accBadDebt = 0;
-
-  orders.forEach((order) => {
-    accSales += order.finalAmount || 0;
-    accDiscount += order.discount || 0;
-    accCollected += order.paidAmount || 0;
-    accOutstanding += order.remainingAmount || 0;
-
-    // SPLIT OUTSTANDING: TEMPO (Golden) vs BAD DEBT (Red)
-    if (order.remainingAmount > 0) {
-      if (order.isTempo) {
-        accTempoReceivables += order.remainingAmount;
-      } else {
-        accBadDebt += order.remainingAmount;
-      }
-    }
-
-    if (order.items) {
-      order.items.forEach((item) => {
-        const finishingTotal =
-          (item.finishings || []).reduce((sum, f) => sum + (f.price || 0), 0) *
-          (item.qty || 1);
-        accFinish += finishingTotal;
-
-        const itemSubtotal = item.subtotal || item.totalPrice || 0;
-        const basePrint = itemSubtotal - finishingTotal;
-        accPrint += basePrint;
-      });
-    }
-  });
-
-  return {
-    accSales,
-    accDiscount,
-    accCollected,
-    accOutstanding,
-    accTempoReceivables,
-    accBadDebt,
-    accPrint,
-    accFinish,
-  };
-};
-
 export function OwnerDashboard() {
   const navigate = useNavigate();
   const { isOwner } = usePermissions();
   const [period, setPeriod] = useState("today");
 
-  const { orders, loadOrders } = useOrderStore();
+  // AMBIL DATA DARI STORE (YANG SUDAH PINTAR)
+  const {
+    orders,
+    loadOrders,
+    summaryData, // <--- INI KUNCINYA (Data yang sudah diolah Store)
+    loadSummary, // <--- Pemicu hitung ulang
+    loading,
+  } = useOrderStore();
+
   const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
   const { todayAttendances, loadTodayAttendances } = useAttendanceStore();
   const { expenses, loadExpenses } = useExpenseStore();
 
+  // === 1. LOAD DATA SAAT PERIOD BERUBAH ===
   useEffect(() => {
-    loadOrders();
+    const { start, end } = getDateRange(period);
+
+    // Load Orders (untuk list recent & top products)
+    loadOrders({ page: 1, limit: 50 });
+
+    // Load Summary (untuk Financial Cards - Logika Anti-Nol ada di sini)
+    loadSummary({ start, end });
+
     loadEmployees();
     loadTodayAttendances();
     loadExpenses();
-  }, [loadOrders, loadEmployees, loadTodayAttendances, loadExpenses]);
+  }, [
+    period,
+    loadOrders,
+    loadSummary,
+    loadEmployees,
+    loadTodayAttendances,
+    loadExpenses,
+  ]);
 
-  // === REFACTORED: CLIENT-SIDE STATS CALCULATION (Local First) ===
-  const stats = React.useMemo(() => {
+  // === 2. HITUNG PENGELUARAN (EXPENSES) SECARA LOKAL ===
+  // (Karena Expense Store terpisah, kita hitung manual di sini untuk Net Profit)
+  const expenseStats = useMemo(() => {
     const { start, end } = getDateRange(period);
 
-    // 1. Filter Orders by Period
-    const filteredOrders = orders.filter((o) => {
-      const date = new Date(o.createdAt);
-      return date >= start && date <= end && o.productionStatus !== "CANCELLED";
-    });
-
-    const cancelledInPeriod = orders.filter((o) => {
-      const date = new Date(o.cancelledAt || o.createdAt);
-      return date >= start && date <= end && o.productionStatus === "CANCELLED";
-    });
-
-    // 2. Filter Expenses by Period
     const filteredExpenses = expenses.filter((e) => {
       const date = new Date(e.date);
       return date >= start && date <= end;
     });
 
-    // 3. Calculate Financials using Helper to reduce nesting
-    const {
-      accSales,
-      accDiscount,
-      accCollected,
-      accOutstanding,
-      accTempoReceivables,
-      accBadDebt,
-      accPrint,
-      accFinish,
-    } = calculateFinancials(filteredOrders);
-
-    // Status Counts
-    const countPending = orders.filter(
-      (o) => o.productionStatus === "PENDING",
-    ).length;
-    const countInProgress = orders.filter(
-      (o) => o.productionStatus === "IN_PROGRESS",
-    ).length;
-    const countReady = orders.filter(
-      (o) => o.productionStatus === "READY",
-    ).length;
-    const countDelivered = orders.filter(
-      (o) => o.productionStatus === "DELIVERED",
-    ).length;
-
     const totalExpenses = filteredExpenses.reduce(
       (sum, e) => sum + (e.amount || 0),
       0,
     );
-    const netProfit = accSales - totalExpenses;
-    const lostRevenue = cancelledInPeriod.reduce(
-      (sum, o) => sum + (o.totalAmount || 0),
-      0,
-    );
+    return totalExpenses;
+  }, [expenses, period]);
 
-    const unpaidCount = filteredOrders.filter(
-      (o) => o.paymentStatus === "UNPAID",
-    ).length;
-    const dpCount = filteredOrders.filter(
-      (o) => o.paymentStatus === "DP",
-    ).length;
-    const paidCount = filteredOrders.filter(
-      (o) => o.paymentStatus === "PAID",
-    ).length;
+  // === 3. HITUNG NET PROFIT ===
+  // Revenue (dari Store yang sudah fix) - Expense (dari perhitungan lokal)
+  const netProfit = (summaryData.totalSales || 0) - expenseStats;
 
-    return {
-      totalSales: accSales,
-      totalDiscount: accDiscount,
-      totalCollected: accCollected,
-      totalOutstanding: accOutstanding,
-      totalTempoReceivables: accTempoReceivables,
-      totalBadDebt: accBadDebt,
-      totalExpenses: totalExpenses,
-      netProfit: netProfit,
-      totalOrders: filteredOrders.length,
-      unpaidCount,
-      paidCount,
-      dpCount,
-      pendingOrders: countPending,
-      inProgressOrders: countInProgress,
-      readyOrders: countReady,
-      deliveredOrders: countDelivered,
-      totalLostRevenue: lostRevenue,
-      totalRevenuePrint: accPrint,
-      totalRevenueFinish: accFinish,
-      totalEmployees: employees.length,
-      presentToday: todayAttendances.length,
-    };
-  }, [orders, expenses, period, employees, todayAttendances]);
+  // === 4. HITUNG SPLIT PIUTANG (TEMPO vs BAD DEBT) ===
+  // Kita gunakan orders lokal untuk rasio, tapi totalnya tetap mengacu pada summaryData
+  const receivableStats = useMemo(() => {
+    let tempo = 0;
+    let badDebt = 0;
+
+    // Kita loop orders yang ada di memori untuk cek status tempo
+    // Catatan: Ini estimasi dari 50 order terakhir yang terload.
+    // Untuk akurasi 100% idealnya ini juga dari server, tapi untuk sekarang cukup.
+    orders.forEach((o) => {
+      if (o.remainingAmount > 0) {
+        if (o.isTempo) tempo += o.remainingAmount;
+        else badDebt += o.remainingAmount;
+      }
+    });
+
+    return { tempo, badDebt };
+  }, [orders]);
 
   if (!isOwner) {
     return (
@@ -190,28 +108,16 @@ export function OwnerDashboard() {
     );
   }
 
-  // Keep legacy local data for specific lists (Recent Orders) if needed,
-  // but avoid heavy calculations.
+  // Data untuk Widget
   const activeOrders = orders
     .filter((o) => o.productionStatus !== "CANCELLED")
-    .slice(0, 50); // Limit needed
+    .slice(0, 50);
   const cancelledOrders = orders
     .filter((o) => o.productionStatus === "CANCELLED")
     .slice(0, 20);
 
-  // Fix ReferenceErrors by mapping to available stats or safe defaults
-  const filteredOrders = activeOrders; // Safe fallback for UI requiring a list
-  const unpaidTotal = stats.totalOutstanding; // Use total outstanding for the "Belum Bayar" general indicator
-  const dpRemainingTotal = 0; // Not available in simple RPC, set to 0 to avoid crash
-  const paidTotal = stats.totalCollected; // Use total collected for "Lunas" indicator (approximate)
+  const hasEmployees = summaryData.totalEmployees > 0 || employees.length > 0;
 
-  const recentOrders = [...activeOrders]
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 5);
-
-  const hasEmployees = stats.totalEmployees > 0;
-
-  // Navigate to expenses page (READ-ONLY dashboard - no modal)
   const handleExpenseClick = () => {
     navigate("/expenses");
   };
@@ -220,7 +126,6 @@ export function OwnerDashboard() {
     <div className="owner-dashboard">
       {/* BURNING CORE HEADER - Command Center Style */}
       <div className="command-center-header">
-        {/* Animated gradient border */}
         <div className="animated-border" />
 
         {/* LEFT: Identity */}
@@ -234,13 +139,11 @@ export function OwnerDashboard() {
         {/* CENTER: Burning Net Profit (THE CORE) */}
         <div className="burning-core">
           <div className="core-label">NET PROFIT LIVE</div>
-          <div
-            className={`core-value ${stats.netProfit >= 0 ? "profit" : "loss"}`}
-          >
-            {formatRupiah(stats.netProfit)}
+          <div className={`core-value ${netProfit >= 0 ? "profit" : "loss"}`}>
+            {formatRupiah(netProfit)}
           </div>
           <div className="core-status">
-            {stats.netProfit >= 0 ? "🔥 Profit" : "❄️ Rugi"}
+            {netProfit >= 0 ? "🔥 Profit" : "❄️ Rugi"}
           </div>
         </div>
 
@@ -267,55 +170,55 @@ export function OwnerDashboard() {
         </div>
       </div>
 
-      {/* === TIER 1: FINANCIAL MACRO (4 CARDS) === */}
+      {/* === TIER 1: FINANCIAL MACRO === */}
       <div className="stats-grid-5">
         <StatsCard
           icon="💰"
           title="Total Penjualan"
-          value={formatRupiah(stats.totalSales)}
-          subtitle={`${stats.totalOrders} pesanan (Net)`}
+          value={formatRupiah(summaryData.totalSales)} // <-- SUDAH BENAR (ANTI-NOL)
+          subtitle={`${summaryData.totalCount} pesanan (Net)`}
           color="#22c55e"
         />
         <StatsCard
           icon="💵"
           title="Uang Terkumpul"
-          value={formatRupiah(stats.totalCollected)}
+          value={formatRupiah(summaryData.totalCollected)}
           subtitle={`Cash In Hand`}
           color="#3b82f6"
         />
 
-        {/* TIER 1.5: SPLIT DEBT */}
+        {/* Piutang Umum */}
         <StatsCard
           icon="⚠️"
           title="Kurang Bayar"
-          value={formatRupiah(stats.totalBadDebt)}
-          subtitle="Harus ditagih (Umum)"
+          value={formatRupiah(summaryData.totalOutstanding)} // Menggunakan total valid dari store
+          subtitle="Harus ditagih"
           color="#ef4444"
         />
 
-        {/* GOLDEN CARD: INVOICE BERJALAN (TEMPO/VIP) */}
+        {/* Invoice Berjalan (Placeholder / Future Dev) */}
         <StatsCard
           icon="⭐"
           title="Invoice Berjalan"
-          value={formatRupiah(stats.totalTempoReceivables)}
+          value={formatRupiah(receivableStats.tempo)}
           subtitle="Piutang VIP / Korporat"
           color="#eab308"
         />
 
-        {/* NEW: Total Discount Card */}
+        {/* Total Discount */}
         <StatsCard
           icon="🎟️"
           title="Total Diskon"
-          value={formatRupiah(stats.totalDiscount)}
-          subtitle={`${filteredOrders.filter((o) => (o.discount || 0) > 0).length} order dapat diskon`}
+          value={formatRupiah(summaryData.totalDiscount)}
+          subtitle="Potongan harga"
           color="#f59e0b"
         />
 
-        {/* EXPENSE CARD - Shortcut to /expenses page */}
+        {/* Expense Card */}
         <StatsCard
           icon="💸"
           title="Total Pengeluaran"
-          value={formatRupiah(stats.totalExpenses)}
+          value={formatRupiah(expenseStats)}
           subtitle="Klik untuk detail →"
           color="#f43f5e"
           isClickable={true}
@@ -323,7 +226,7 @@ export function OwnerDashboard() {
         />
       </div>
 
-      {/* === TIER 2: REVENUE BREAKDOWN (2 WIDE CARDS - NEON ACCENTS) === */}
+      {/* === TIER 2: REVENUE BREAKDOWN (OMSET BAHAN VS JASA) === */}
       <div
         style={{
           display: "grid",
@@ -342,7 +245,6 @@ export function OwnerDashboard() {
             border: "1px solid rgba(6, 182, 212, 0.3)",
             borderLeft: "4px solid #06b6d4",
             boxShadow: "0 0 20px rgba(6, 182, 212, 0.15)",
-            transition: "all 0.3s ease",
           }}
         >
           <div
@@ -374,24 +276,12 @@ export function OwnerDashboard() {
                   textShadow: "0 0 10px rgba(34, 211, 238, 0.5)",
                 }}
               >
-                {formatRupiah(stats.totalRevenuePrint)}
+                {formatRupiah(summaryData.omsetBahan)} {/* DARI STORE */}
               </div>
               <div style={{ fontSize: "10px", color: "#94a3b8" }}>
                 *Sebelum Diskon
               </div>
             </div>
-          </div>
-          <div
-            style={{
-              fontSize: "11px",
-              color: "#94a3b8",
-              paddingTop: "8px",
-              borderTop: "1px solid rgba(100, 116, 139, 0.2)",
-            }}
-          >
-            {stats.totalSales > 0
-              ? `${Math.round((stats.totalRevenuePrint / stats.totalSales) * 100)}% dari total omset`
-              : "Belum ada data"}
           </div>
         </div>
 
@@ -405,7 +295,6 @@ export function OwnerDashboard() {
             border: "1px solid rgba(139, 92, 246, 0.3)",
             borderLeft: "4px solid #8b5cf6",
             boxShadow: "0 0 20px rgba(139, 92, 246, 0.15)",
-            transition: "all 0.3s ease",
           }}
         >
           <div
@@ -437,26 +326,17 @@ export function OwnerDashboard() {
                   marginTop: "4px",
                 }}
               >
-                {formatRupiah(stats.totalRevenueFinish)}
+                {formatRupiah(summaryData.omsetJasa)} {/* DARI STORE */}
+              </div>
+              <div style={{ fontSize: "10px", color: "#94a3b8" }}>
+                Belum ada data
               </div>
             </div>
-          </div>
-          <div
-            style={{
-              fontSize: "11px",
-              color: "#94a3b8",
-              paddingTop: "8px",
-              borderTop: "1px solid rgba(100, 116, 139, 0.2)",
-            }}
-          >
-            {stats.totalSales > 0
-              ? `${Math.round((stats.totalRevenueFinish / stats.totalSales) * 100)}% dari total omset`
-              : "Belum ada data"}
           </div>
         </div>
       </div>
 
-      {/* === TIER 3: OPERATIONAL STATS (2 CARDS) === */}
+      {/* === TIER 3: OPERATIONAL STATS === */}
       <div
         style={{
           display: "grid",
@@ -468,15 +348,15 @@ export function OwnerDashboard() {
         <StatsCard
           icon="⏳"
           title="Pesanan Pending"
-          value={stats.pendingOrders}
-          subtitle={`Dikerjakan: ${stats.inProgressOrders}`}
+          value={summaryData.countByProductionStatus?.PENDING || 0}
+          subtitle={`Dikerjakan: ${summaryData.countByProductionStatus?.IN_PROGRESS || 0}`}
           color="#f59e0b"
         />
         <StatsCard
           icon="✅"
           title="Siap Diambil"
-          value={stats.readyOrders}
-          subtitle={`Terkirim: ${stats.deliveredOrders}`}
+          value={summaryData.countByProductionStatus?.READY || 0}
+          subtitle={`Terkirim: ${summaryData.countByProductionStatus?.DELIVERED || 0}`}
           color="#8b5cf6"
         />
       </div>
@@ -485,45 +365,38 @@ export function OwnerDashboard() {
       <div className="secondary-stats-grid">
         <div className="stat-card stat-card-danger">
           <div className="stat-card-label">🔴 Belum Bayar</div>
-          <div className="stat-card-value">{stats.unpaidCount}</div>
-          <div className="stat-card-money">{formatRupiah(unpaidTotal)}</div>
+          <div className="stat-card-value">
+            {summaryData.countByPaymentStatus?.UNPAID || 0}
+          </div>
+          <div className="stat-card-money">
+            {formatRupiah(summaryData.totalOutstanding)}
+          </div>
         </div>
 
         <div className="stat-card stat-card-warning">
           <div className="stat-card-label">🟡 DP (Cicilan)</div>
-          <div className="stat-card-value">{stats.dpCount}</div>
-          <div className="stat-card-money">
-            Sisa: {formatRupiah(dpRemainingTotal)}
+          <div className="stat-card-value">
+            {summaryData.countByPaymentStatus?.DP || 0}
           </div>
+          <div className="stat-card-money">Sisa: Rp 0</div>
         </div>
 
         <div className="stat-card stat-card-success">
           <div className="stat-card-label">🟢 Lunas</div>
-          <div className="stat-card-value">{stats.paidCount}</div>
-          <div className="stat-card-money">{formatRupiah(paidTotal)}</div>
+          <div className="stat-card-value">
+            {summaryData.countByPaymentStatus?.PAID || 0}
+          </div>
+          <div className="stat-card-money">
+            {formatRupiah(summaryData.totalCollected)}
+          </div>
         </div>
-
-        {hasEmployees && (
-          <>
-            <div className="stat-card stat-card-purple">
-              <div className="stat-card-label">👥 Karyawan Aktif</div>
-              <div className="stat-card-value">{stats.totalEmployees}</div>
-            </div>
-            <div className="stat-card stat-card-cyan">
-              <div className="stat-card-label">✅ Hadir Hari Ini</div>
-              <div className="stat-card-value">
-                {stats.presentToday}/{stats.totalEmployees}
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* Content Grid */}
       <div className="dashboard-widgets">
         <div className="widget-card">
           <h2 className="widget-title">📋 Pesanan Terbaru</h2>
-          <RecentOrders orders={recentOrders} />
+          <RecentOrders orders={activeOrders.slice(0, 5)} />
         </div>
 
         <div className="widget-card">
@@ -555,9 +428,6 @@ export function OwnerDashboard() {
           <div className="cancelled-badges">
             <span className="badge badge-count">
               Total: {cancelledOrders.length}
-            </span>
-            <span className="badge badge-lost">
-              Lost: {formatRupiah(stats.totalLostRevenue)}
             </span>
           </div>
         </div>

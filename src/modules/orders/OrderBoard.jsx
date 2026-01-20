@@ -1,22 +1,17 @@
 /**
- * OrderBoard Component
- * Production tracking board - PAGINATED VERSION
- * Role: PRODUCTION (can view & update status)
+ * OrderBoard Component (OPTIMIZED v2)
+ * Production tracking board with Server-Side Filtering
+ * Fixes: Pagination Logic, Dashboard Sync, & Dead Code Removal
  */
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
-import { ORDER_STATUS, PAYMENT_STATUS } from "../../core/constants";
-import { formatRupiah } from "../../core/formatters";
-import { formatDateTime } from "../../utils/dateHelpers";
 import { OrderCard } from "./OrderCard";
 
 export function OrderBoard() {
   const {
     orders,
-    filteredOrders,
-    currentFilter,
     loading,
     error,
     // Pagination state
@@ -24,48 +19,99 @@ export function OrderBoard() {
     totalPages,
     totalOrders,
     searchQuery: storeSearchQuery,
-    // Pagination actions
-    loadOrders, // FIX: Supabase-based loader with items_snapshot
-    loadOrdersPaginated,
+    // Actions
+    loadOrders,
     searchOrders,
-    setFilterAndReload,
-    nextPage,
-    prevPage,
-    goToPage,
-    // Summary for counts
+    loadSummary, // PENTING: Untuk update Dashboard Owner
     summaryData,
-    loadSummary,
   } = useOrderStore();
 
   const permissions = usePermissions();
   const canViewOrders = permissions.canViewOrders();
-  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL | PENDING | IN_PROGRESS | READY
+
+  // STATE LOKAL UNTUK FILTER (Server-Side Trigger)
+  const [paymentFilter, setPaymentFilter] = useState("ALL");
+  const [productionFilter, setProductionFilter] = useState("ALL");
   const [localSearchQuery, setLocalSearchQuery] = useState("");
 
-  // Load paginated orders on mount - USING SUPABASE (not Dexie)
+  // === 1. DATA LOADING & FILTERING ENGINE ===
+  // Setiap kali Page, Filter, atau Search berubah, kita minta data BARU ke Server
   useEffect(() => {
-    loadOrders({ page: 1, limit: 20, status: "ALL" }); // FIX: Use Supabase loader
-    loadSummary(); // For status counts
-  }, [loadOrders, loadSummary]);
+    // Jika sedang searching, jangan load paginated biasa (biarkan fungsi searchOrders yg kerja)
+    if (storeSearchQuery) return;
 
-  // Debounced search
+    loadOrders({
+      page: currentPage,
+      limit: 20,
+      paymentStatus: paymentFilter,
+      productionStatus: productionFilter,
+    });
+
+    // REFRESH DASHBOARD JUGA (Agar Net Profit Owner Update!)
+    loadSummary();
+  }, [
+    currentPage,
+    paymentFilter,
+    productionFilter,
+    loadOrders,
+    loadSummary,
+    storeSearchQuery,
+  ]);
+
+  // === 2. SEARCH HANDLER (Debounce) ===
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localSearchQuery !== storeSearchQuery) {
         searchOrders(localSearchQuery);
       }
-    }, 300); // 300ms debounce
+    }, 500); // 500ms delay agar tidak spam server
 
     return () => clearTimeout(timer);
   }, [localSearchQuery, storeSearchQuery, searchOrders]);
 
-  // Handle payment filter change
-  const handlePaymentFilter = useCallback(
-    (status) => {
-      setFilterAndReload(status);
-    },
-    [setFilterAndReload],
-  );
+  // === 3. FILTER HANDLERS ===
+  const handlePaymentFilter = (status) => {
+    setPaymentFilter(status);
+    // Reset ke halaman 1 setiap ganti filter
+    if (currentPage !== 1)
+      loadOrders({
+        page: 1,
+        paymentStatus: status,
+        productionStatus: productionFilter,
+      });
+  };
+
+  const handleProductionFilter = (status) => {
+    setProductionFilter(status);
+    // Reset ke halaman 1 setiap ganti filter
+    if (currentPage !== 1)
+      loadOrders({
+        page: 1,
+        paymentStatus: paymentFilter,
+        productionStatus: status,
+      });
+  };
+
+  // === 4. PAGINATION HANDLERS ===
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      loadOrders({
+        page: currentPage + 1,
+        paymentStatus: paymentFilter,
+        productionStatus: productionFilter,
+      });
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      loadOrders({
+        page: currentPage - 1,
+        paymentStatus: paymentFilter,
+        productionStatus: productionFilter,
+      });
+    }
+  };
 
   // Check permissions
   if (!canViewOrders) {
@@ -77,15 +123,7 @@ export function OrderBoard() {
     );
   }
 
-  // Filter by production status (client-side since already paginated)
-  const displayOrders = filteredOrders.filter((order) => {
-    if (statusFilter !== "ALL" && order.productionStatus !== statusFilter) {
-      return false;
-    }
-    return true;
-  });
-
-  // Get counts from summary data
+  // Get counts for UI Badges (Optional, from summary)
   const counts = {
     PENDING: summaryData?.countByProductionStatus?.PENDING || 0,
     IN_PROGRESS: summaryData?.countByProductionStatus?.IN_PROGRESS || 0,
@@ -112,7 +150,7 @@ export function OrderBoard() {
         <div className="board-search">
           <input
             type="text"
-            placeholder="🔍 Cari pesanan... (nama customer, ID)"
+            placeholder="🔍 Cari pesanan... (nama, ID)"
             value={localSearchQuery}
             onChange={(e) => setLocalSearchQuery(e.target.value)}
             className="search-input"
@@ -120,66 +158,56 @@ export function OrderBoard() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters Area */}
       <div className="board-filters">
-        {/* Payment Status Filter */}
+        {/* Payment Filter */}
         <div className="filter-group">
           <label>Status Pembayaran:</label>
           <div className="filter-buttons">
-            <button
-              className={`filter-btn ${currentFilter === "ALL" ? "active" : ""}`}
-              onClick={() => handlePaymentFilter("ALL")}
-            >
-              Semua
-            </button>
-            <button
-              className={`filter-btn unpaid ${currentFilter === "UNPAID" ? "active" : ""}`}
-              onClick={() => handlePaymentFilter("UNPAID")}
-            >
-              Belum Bayar
-            </button>
-            <button
-              className={`filter-btn dp ${currentFilter === "DP" ? "active" : ""}`}
-              onClick={() => handlePaymentFilter("DP")}
-            >
-              DP
-            </button>
-            <button
-              className={`filter-btn paid ${currentFilter === "PAID" ? "active" : ""}`}
-              onClick={() => handlePaymentFilter("PAID")}
-            >
-              Lunas
-            </button>
+            {["ALL", "UNPAID", "DP", "PAID"].map((status) => (
+              <button
+                key={status}
+                className={`filter-btn ${status.toLowerCase()} ${paymentFilter === status ? "active" : ""}`}
+                onClick={() => handlePaymentFilter(status)}
+              >
+                {status === "ALL"
+                  ? "Semua"
+                  : status === "UNPAID"
+                    ? "Belum Bayar"
+                    : status}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Production Status Filter */}
+        {/* Production Filter */}
         <div className="filter-group">
           <label>Status Produksi:</label>
           <div className="filter-buttons">
             <button
-              className={`filter-btn ${statusFilter === "ALL" ? "active" : ""}`}
-              onClick={() => setStatusFilter("ALL")}
+              className={`filter-btn ${productionFilter === "ALL" ? "active" : ""}`}
+              onClick={() => handleProductionFilter("ALL")}
             >
               Semua
             </button>
             <button
-              className={`filter-btn pending ${statusFilter === "PENDING" ? "active" : ""}`}
-              onClick={() => setStatusFilter("PENDING")}
+              className={`filter-btn pending ${productionFilter === "PENDING" ? "active" : ""}`}
+              onClick={() => handleProductionFilter("PENDING")}
             >
-              Pending ({counts.PENDING})
+              Pending {productionFilter === "ALL" && `(${counts.PENDING})`}
             </button>
             <button
-              className={`filter-btn progress ${statusFilter === "IN_PROGRESS" ? "active" : ""}`}
-              onClick={() => setStatusFilter("IN_PROGRESS")}
+              className={`filter-btn progress ${productionFilter === "IN_PROGRESS" ? "active" : ""}`}
+              onClick={() => handleProductionFilter("IN_PROGRESS")}
             >
-              Dikerjakan ({counts.IN_PROGRESS})
+              Dikerjakan{" "}
+              {productionFilter === "ALL" && `(${counts.IN_PROGRESS})`}
             </button>
             <button
-              className={`filter-btn ready ${statusFilter === "READY" ? "active" : ""}`}
-              onClick={() => setStatusFilter("READY")}
+              className={`filter-btn ready ${productionFilter === "READY" ? "active" : ""}`}
+              onClick={() => handleProductionFilter("READY")}
             >
-              Siap ({counts.READY})
+              Siap {productionFilter === "ALL" && `(${counts.READY})`}
             </button>
           </div>
         </div>
@@ -191,128 +219,74 @@ export function OrderBoard() {
 
       {/* Order Cards Grid */}
       <div className="board-grid">
-        {!loading && displayOrders.length === 0 && (
+        {!loading && orders.length === 0 && (
           <div className="board-empty">
-            <p>📭 Tidak ada pesanan untuk ditampilkan.</p>
+            <p>📭 Tidak ada pesanan untuk filter ini.</p>
             {localSearchQuery && <p>Coba ubah kata kunci pencarian.</p>}
           </div>
         )}
 
-        {displayOrders.map((order) => (
+        {orders.map((order) => (
           <OrderCard key={order.id} order={order} />
         ))}
       </div>
 
       {/* === PAGINATION CONTROLS === */}
-      {totalPages > 1 && !storeSearchQuery && (
+      {/* Tampilkan pagination jika bukan mode search DAN total halaman > 1 */}
+      {!storeSearchQuery && totalPages > 1 && (
         <div
           className="pagination-controls"
           style={{
             display: "flex",
             justifyContent: "center",
-            alignItems: "center",
             gap: "16px",
             padding: "24px",
             marginTop: "16px",
-            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            background: "#f8fafc",
             borderRadius: "12px",
             border: "1px solid #e2e8f0",
           }}
         >
           <button
-            onClick={prevPage}
+            onClick={handlePrevPage}
             disabled={currentPage === 1 || loading}
             style={{
-              padding: "10px 20px",
+              padding: "8px 16px",
               borderRadius: "8px",
               border: "none",
-              background:
-                currentPage === 1
-                  ? "#e2e8f0"
-                  : "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+              background: currentPage === 1 ? "#e2e8f0" : "#3b82f6",
               color: currentPage === 1 ? "#94a3b8" : "white",
-              fontWeight: "bold",
               cursor: currentPage === 1 ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              boxShadow:
-                currentPage === 1
-                  ? "none"
-                  : "0 2px 8px rgba(59, 130, 246, 0.3)",
             }}
           >
             ← Prev
           </button>
 
-          <div
+          <span
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "8px",
+              fontWeight: "bold",
+              color: "#64748b",
             }}
           >
-            <span style={{ color: "#64748b" }}>Page</span>
-            <span
-              style={{
-                background: "white",
-                padding: "8px 16px",
-                borderRadius: "8px",
-                fontWeight: "bold",
-                color: "#1e293b",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              {currentPage}
-            </span>
-            <span style={{ color: "#64748b" }}>of</span>
-            <span
-              style={{
-                fontWeight: "bold",
-                color: "#1e293b",
-              }}
-            >
-              {totalPages}
-            </span>
-          </div>
+            Page {currentPage} of {totalPages}
+          </span>
 
           <button
-            onClick={nextPage}
+            onClick={handleNextPage}
             disabled={currentPage === totalPages || loading}
             style={{
-              padding: "10px 20px",
+              padding: "8px 16px",
               borderRadius: "8px",
               border: "none",
-              background:
-                currentPage === totalPages
-                  ? "#e2e8f0"
-                  : "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+              background: currentPage === totalPages ? "#e2e8f0" : "#3b82f6",
               color: currentPage === totalPages ? "#94a3b8" : "white",
-              fontWeight: "bold",
               cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              boxShadow:
-                currentPage === totalPages
-                  ? "none"
-                  : "0 2px 8px rgba(59, 130, 246, 0.3)",
             }}
           >
             Next →
           </button>
-        </div>
-      )}
-
-      {/* Page info */}
-      {totalOrders > 0 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "12px",
-            color: "#64748b",
-            fontSize: "14px",
-          }}
-        >
-          Menampilkan {(currentPage - 1) * 20 + 1}-
-          {Math.min(currentPage * 20, totalOrders)} dari{" "}
-          {totalOrders.toLocaleString()} pesanan
         </div>
       )}
     </div>
