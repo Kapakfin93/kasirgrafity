@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import { useReactToPrint } from "react-to-print"; // <--- 1. IMPORT PENTING
 import { useTransaction, TRANSACTION_STAGES } from "../../hooks/useTransaction";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { useAuthStore } from "../../stores/useAuthStore";
@@ -8,6 +9,7 @@ import { PaymentModal } from "./PaymentModal";
 import { NotaPreview } from "./NotaPreview";
 import ProductConfigModal from "./ProductConfigModal";
 import ProductCard from "./ProductCard";
+import { ReceiptTemplate } from "./ReceiptTemplate"; // <--- 2. IMPORT TEMPLATE STRUK
 
 /**
  * Workspace - Modern POS Interface
@@ -31,7 +33,7 @@ export function Workspace() {
     transactionStage,
     setTransactionStage,
     resetTransaction,
-    calculateItemPrice, // Stateless calculator for modal
+    calculateItemPrice,
     // Priority System
     targetDate,
     setTargetDate,
@@ -46,51 +48,44 @@ export function Workspace() {
   const { createOrder } = useOrderStore();
   const { currentUser } = useAuthStore();
 
+  // --- SETUP PRINTER THERMAL ---
+  const componentRef = useRef(); // Pengait ke kertas struk
+
+  const handleThermalPrint = useReactToPrint({
+    content: () => componentRef.current,
+    documentTitle: "Struk_Belanja_Joglo",
+    onAfterPrint: () => console.log("🖨️ Cetak Struk Berhasil!"),
+  });
+  // -----------------------------
+
   const [showNotaPreview, setShowNotaPreview] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null); // Modal state
-  const [gridMode, setGridMode] = useState("normal"); // Grid size
-  const [isTempo, setIsTempo] = useState(false); // [SOP V2.0] TEMPO/VIP mode
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false); // NEW: Payment modal state
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [gridMode, setGridMode] = useState("normal");
+  const [isTempo, setIsTempo] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
     console.log("=== PROSES PEMBAYARAN BUTTON CLICKED ===");
-    console.log("Current User:", currentUser);
-    console.log("Customer Snapshot:", customerSnapshot);
-    console.log("Items:", items);
-    console.log("Payment State:", paymentState);
-    console.log("isTempo:", isTempo);
-
     try {
-      // [SOP V2.0] Pass isTempo to confirmPayment for validation bypass
       const success = confirmPayment(isTempo);
-      if (!success) {
-        console.log("❌ confirmPayment returned false");
-        return;
-      }
+      if (!success) return;
 
-      console.log("✅ confirmPayment success, calling finalizeOrder...");
-      // [SOP V2.0] Pass isTempo flag to finalizeOrder
       const order = await finalizeOrder(createOrder, currentUser, isTempo);
-      console.log("✅ Order created:", order);
-
       setLastOrder(order);
       setTransactionStage(TRANSACTION_STAGES.POST_PAYMENT);
-      setShowNotaPreview(true);
 
-      // Reset isTempo for next transaction
+      // OPSI: Langsung cetak struk otomatis setelah bayar?
+      // Jika mau otomatis, uncomment baris di bawah ini:
+      // setTimeout(() => handleThermalPrint(), 500);
+
+      setShowNotaPreview(true); // Tetap buka preview nota besar (opsional)
       setIsTempo(false);
     } catch (error) {
       console.error("❌ FULL ERROR:", error);
       alert(`GAGAL PROSES PEMBAYARAN:\n\n${error.message}`);
     }
-  };
-
-  // Open print preview modal
-  const handlePrint = () => {
-    console.log("🖨️ Opening NotaPreview for printing...");
-    setShowNotaPreview(true);
   };
 
   const handleCloseNota = () => setShowNotaPreview(false);
@@ -101,18 +96,29 @@ export function Workspace() {
     resetTransaction();
   };
 
-  // Product click -> open modal
   const handleProductClick = (product) => {
     setSelectedProduct(product);
   };
 
-  // Modal submit -> add to cart
   const handleAddFromModal = (itemData) => {
     addItemToCart(itemData);
     setSelectedProduct(null);
   };
 
   const isLocked = transactionStage === TRANSACTION_STAGES.POST_PAYMENT;
+
+  // DATA UNTUK STRUK (Bisa dari order terakhir ATAU keranjang aktif)
+  const receiptData = lastOrder || {
+    orderNumber: "DRAFT", // Belum ada nomor
+    customerName: customerSnapshot?.name || "Umum",
+    receivedBy: currentUser?.name || "Kasir",
+    items: items,
+    totalAmount: calculateTotal(),
+    discountAmount: discount || 0,
+    paidAmount: paymentState.amountPaid || 0,
+    remainingAmount: calculateTotal() - (paymentState.amountPaid || 0),
+    finalAmount: calculateTotal(),
+  };
 
   const getModeButton = (mode) => ({
     padding: "8px 12px",
@@ -197,79 +203,34 @@ export function Workspace() {
             borderBottom: "1px solid rgba(255,255,255,0.05)",
           }}
         >
-          {/* Category Tabs - ALWAYS WRAP (Show All) */}
+          {/* Category Tabs */}
           <div
             style={{
               display: "flex",
               flex: 1,
-              flexWrap: "wrap", // ALWAYS wrap - no scroll
-              justifyContent: "center", // Center aligned
-              gap:
-                gridMode === "compact"
-                  ? "6px"
-                  : gridMode === "large"
-                    ? "12px"
-                    : "8px",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: gridMode === "compact" ? "6px" : "8px",
               padding: "4px 0",
             }}
           >
             {categories.map((cat) => {
               const isActive = currentCategory?.id === cat.id;
-
-              // Dynamic sizing based on gridMode
-              const getPadding = () => {
-                switch (gridMode) {
-                  case "compact":
-                    return "8px 14px";
-                  case "large":
-                    return "16px 32px";
-                  default:
-                    return "12px 22px";
-                }
-              };
-
-              const getFontSize = () => {
-                switch (gridMode) {
-                  case "compact":
-                    return "11px";
-                  case "large":
-                    return "16px";
-                  default:
-                    return "13px";
-                }
-              };
-
-              const getBorderWidth = () => {
-                switch (gridMode) {
-                  case "compact":
-                    return "2px";
-                  case "large":
-                    return "3px";
-                  default:
-                    return "2px";
-                }
-              };
-
               return (
                 <button
                   key={cat.id}
                   onClick={() => selectCategory(cat.id)}
                   disabled={isLocked}
                   style={{
-                    flexShrink: gridMode === "compact" ? 1 : 0,
-                    whiteSpace: "nowrap",
-                    padding: getPadding(),
+                    padding: "12px 22px",
                     borderRadius: "10px",
-                    border: `${getBorderWidth()} solid ${
-                      isActive ? "#06b6d4" : "#334155"
-                    }`,
+                    border: `2px solid ${isActive ? "#06b6d4" : "#334155"}`,
                     background: isActive
                       ? "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)"
                       : "transparent",
                     color: isActive ? "#0f172a" : "#94a3b8",
-                    fontSize: getFontSize(),
+                    fontSize: "13px",
                     fontWeight: "800",
-                    letterSpacing: "0.08em",
                     textTransform: "uppercase",
                     cursor: isLocked ? "not-allowed" : "pointer",
                     transition: "all 0.2s ease",
@@ -277,20 +238,6 @@ export function Workspace() {
                     boxShadow: isActive
                       ? "0 0 20px rgba(6, 182, 212, 0.5)"
                       : "none",
-                    zIndex: isActive ? 10 : 1,
-                    opacity: isLocked ? 0.5 : 1,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isLocked && !isActive) {
-                      e.currentTarget.style.borderColor = "#64748b";
-                      e.currentTarget.style.color = "white";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.borderColor = "#334155";
-                      e.currentTarget.style.color = "#94a3b8";
-                    }
                   }}
                 >
                   {cat.name}
@@ -333,7 +280,7 @@ export function Workspace() {
           </div>
         </div>
 
-        {/* Product Grid - FULL SCREEN */}
+        {/* Product Grid */}
         <div
           style={{
             flex: 1,
@@ -369,12 +316,7 @@ export function Workspace() {
                     : gridMode === "large"
                       ? "repeat(2, 1fr)"
                       : "repeat(3, 1fr)",
-                gap:
-                  gridMode === "compact"
-                    ? "8px"
-                    : gridMode === "large"
-                      ? "16px"
-                      : "12px",
+                gap: "12px",
                 padding: "4px",
               }}
             >
@@ -399,7 +341,7 @@ export function Workspace() {
         totalAmount={calculateTotal()}
         paymentState={paymentState}
         isLocked={isLocked}
-        onPrint={handlePrint}
+        onPrint={handleThermalPrint} // <--- SEKARANG TOMBOL PRINT DI PANEL KANAN AKAN MENCETAK STRUK
         onReset={handleNewTransaction}
         customerSnapshot={customerSnapshot}
         onOpenPaymentModal={() => setIsPaymentModalOpen(true)}
@@ -440,7 +382,7 @@ export function Workspace() {
         calculatePreview={calculateItemPrice}
       />
 
-      {/* Nota Preview - works with lastOrder OR current cart */}
+      {/* Nota Preview (Modal Besar) */}
       {showNotaPreview && (items.length > 0 || lastOrder) && (
         <NotaPreview
           items={lastOrder?.items || items}
@@ -457,6 +399,12 @@ export function Workspace() {
           onReset={handleNewTransaction}
         />
       )}
+
+      {/* --- KOMPONEN RAHASIA (STRUK THERMAL) --- */}
+      {/* Ini tidak terlihat di layar, tapi inilah yang dicetak oleh printer */}
+      <div style={{ display: "none" }}>
+        <ReceiptTemplate ref={componentRef} order={receiptData} />
+      </div>
     </div>
   );
 }
