@@ -8,38 +8,114 @@ import db from "../data/db/schema";
 import { Order } from "../data/models/Order";
 import { updateSupabaseOrder } from "./supabaseUploadHelper"; // Import Helper
 
-// HELPER: Convert DB Schema (Snake) to App Schema (Camel)
-// This ensures ALL UI components (Board, Dashboard, Tables) work without changes.
+// === 1. FINAL NORMALIZER (PENYELARAS TOTAL) ===
 const normalizeOrder = (dbOrder) => {
   if (!dbOrder) return null;
+
+  // A. PARSE SNAPSHOT (DATA BELANJAAN)
+  let rawItems = [];
+  if (dbOrder.items_snapshot) {
+    if (Array.isArray(dbOrder.items_snapshot)) {
+      rawItems = dbOrder.items_snapshot;
+    } else if (typeof dbOrder.items_snapshot === "object") {
+      rawItems = [dbOrder.items_snapshot];
+    } else if (typeof dbOrder.items_snapshot === "string") {
+      try {
+        rawItems = JSON.parse(dbOrder.items_snapshot);
+      } catch {
+        rawItems = [];
+      }
+    }
+  }
+  // Fallback ke relasi item jika snapshot kosong
+  if ((!rawItems || rawItems.length === 0) && dbOrder.items) {
+    rawItems = dbOrder.items;
+  }
+
+  // B. DESCRIPTION BUILDER (PENCANTIK NOTA)
+  // Merangkai detail teknis (Panjang x Lebar, Bahan) jadi kalimat siap cetak
+  const buildDescription = (item) => {
+    const meta = item.meta || item.metadata || {};
+    const parts = [];
+
+    // 1. Dimensi (Misal: "3x1m")
+    const dims =
+      meta.custom_dimensions ||
+      meta.dimensions ||
+      (meta.specs_json ? meta.specs_json : null);
+    if (dims && (dims.length || dims.width || dims.h || dims.w)) {
+      const l = dims.length || dims.h || 0;
+      const w = dims.width || dims.w || 0;
+      if (l > 0 && w > 0) parts.push(`${l}x${w}m`);
+    }
+
+    // 2. Bahan / Varian
+    const variant =
+      meta.variantLabel ||
+      meta.variant_label ||
+      (meta.specs_json ? meta.specs_json.variantLabel : null);
+    if (variant) parts.push(variant);
+
+    // 3. Finishing
+    const finish =
+      meta.finishing ||
+      (meta.specs_json ? meta.specs_json.finishing_list : null);
+    if (Array.isArray(finish) && finish.length > 0) {
+      parts.push(`Fin: ${finish.join(", ")}`);
+    } else if (typeof finish === "string" && finish) {
+      parts.push(`Fin: ${finish}`);
+    }
+
+    return parts.join(" | "); // Gabung jadi satu baris
+  };
+
+  // C. EXPLICIT MAPPING (JEMBATAN HULU-HILIR)
   return {
-    ...dbOrder,
-    // Header Mapping
+    // Identity
     id: dbOrder.id,
-    orderNumber: dbOrder.order_number || dbOrder.orderNumber, // Fallback
-    customerName: dbOrder.customer_name || dbOrder.customerName,
-    customerPhone: dbOrder.customer_phone || dbOrder.customerPhone,
-    totalAmount: dbOrder.total_amount || dbOrder.totalAmount || 0,
-    dpAmount: dbOrder.dp_amount || 0, // If you have this column
-    paidAmount: dbOrder.paid_amount || dbOrder.paidAmount || 0,
-    remainingAmount: dbOrder.remaining_amount || dbOrder.remainingAmount || 0,
-    paymentStatus: dbOrder.payment_status || dbOrder.paymentStatus,
-    productionStatus: dbOrder.production_status || dbOrder.productionStatus,
-    paymentMethod: dbOrder.payment_method || dbOrder.paymentMethod,
-    isTempo: dbOrder.is_tempo,
+    orderNumber: dbOrder.order_number || dbOrder.orderNumber || "-",
+
+    // FIX 1: AUTO-FILL DEFAULT NAME
+    customerName:
+      dbOrder.customer_name && dbOrder.customer_name.trim() !== ""
+        ? dbOrder.customer_name
+        : "PELANGGAN UMUM",
+
+    customerPhone: dbOrder.customer_phone || "-",
+
+    // FIX 2: FORCE NUMBER FORMAT (Agar Dashboard tidak Rp 0)
+    totalAmount: Number(dbOrder.total_amount || dbOrder.totalAmount || 0),
+    paidAmount: Number(dbOrder.paid_amount || dbOrder.paidAmount || 0),
+    remainingAmount: Number(
+      dbOrder.remaining_amount || dbOrder.remainingAmount || 0,
+    ),
+    discountAmount: Number(
+      dbOrder.discount_amount || dbOrder.discountAmount || 0,
+    ),
+
+    // FIX 3: STRICT STATUS MAPPING (Agar Order Board Muncul)
+    productionStatus:
+      dbOrder.production_status || dbOrder.productionStatus || "PENDING",
+    paymentStatus: dbOrder.payment_status || dbOrder.paymentStatus || "UNPAID",
+    paymentMethod: dbOrder.payment_method || dbOrder.paymentMethod || "TUNAI",
+    isTempo: Boolean(dbOrder.is_tempo || dbOrder.isTempo),
+
     createdAt: dbOrder.created_at || dbOrder.createdAt,
 
-    // Item Mapping (Nested)
-    items: (dbOrder.items || []).map((item) => ({
-      ...item,
-      id: item.id,
+    // Items Mapping
+    items: rawItems.map((item) => ({
+      id: item.id || Math.random().toString(36).substr(2, 9),
       productId: item.product_id || item.productId,
-      productName: item.product_name || item.productName,
-      name: item.product_name || item.name, // UI often uses 'name'
-      qty: item.quantity || item.qty,
-      price: item.price,
-      totalPrice: item.subtotal || item.totalPrice,
-      metadata: item.metadata,
+      productName: item.product_name || item.productName || item.name || "Item",
+      qty: Number(item.quantity || item.qty || 0),
+      price: Number(item.price || item.unit_price || 0),
+      totalPrice: Number(item.subtotal || item.total_price || 0),
+      notes: item.notes || "",
+
+      // FIX 4: DESCRIPTION TERISI
+      description: buildDescription(item),
+
+      meta: item.meta || item.metadata || {},
     })),
   };
 };
@@ -91,9 +167,14 @@ export const useOrderStore = create((set, get) => ({
 
       // 1. FETCH FROM SUPABASE
       if (navigator.onLine && supabase) {
-        let query = supabase
-          .from("orders")
-          .select("*, items:order_items(*)", { count: "exact" }); // Join items
+        let query = supabase.from("orders").select(
+          `
+            *,
+            items_snapshot,
+            items:order_items(*)
+          `,
+          { count: "exact" },
+        ); // FIX #1: Explicitly request items_snapshot
 
         if (status !== "ALL") {
           // Map UI status "UNPAID" to DB column 'payment_status'
@@ -106,8 +187,15 @@ export const useOrderStore = create((set, get) => ({
 
         if (error) throw error;
 
+        // FIX #3: DEBUG LOGGING
+        console.log("📥 RAW DATA FROM SUPABASE:", data[0]);
+        console.log("📦 items_snapshot present?", !!data[0]?.items_snapshot);
+        console.log("📊 items_snapshot type:", typeof data[0]?.items_snapshot);
+        console.log("📋 items_snapshot content:", data[0]?.items_snapshot);
+
         // 2. NORMALIZE DATA (THE GLOBAL FIX)
         const appOrders = data.map(normalizeOrder);
+        console.log("✅ NORMALIZED ORDER:", appOrders[0]);
 
         set({
           orders: appOrders,
@@ -427,16 +515,25 @@ export const useOrderStore = create((set, get) => ({
 
       const { supabase } = await import("../services/supabaseClient");
 
-      // 2. INSERT HEADER (WRITE)
+      // 2. PREPARE PAYLOAD WITH SNAPSHOT (THE FUNDAMENTAL FIX)
+      // We inject the items array directly into the header as a JSON snapshot.
+      // This ensures the Order Board has data even without joining tables.
+      const orderPayload = {
+        ...orderHeader,
+        items_snapshot: items, // <--- MENGISI KEKOSONGAN (NULL)
+      };
+
+      // 3. INSERT HEADER (WRITE)
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
-        .insert([orderHeader])
+        .insert([orderPayload]) // Use the payload with snapshot
         .select()
         .single();
 
       if (orderError) throw orderError;
 
-      // 3. INSERT ITEMS (WRITE)
+      // 4. INSERT ITEMS (WRITE - RELATIONAL)
+      // We still keep this for analytics/reporting
       if (items && items.length > 0) {
         const itemsWithOrderId = items.map((item) => ({
           ...item,
@@ -450,27 +547,38 @@ export const useOrderStore = create((set, get) => ({
         if (itemsError) throw itemsError;
       }
 
-      console.log("✅ Transaction Saved. Fetching single fresh row...");
+      console.log(
+        "✅ Transaction Saved. Snapshot Secured. Fetching fresh row...",
+      );
 
-      // 4. EFFICIENT SYNC (READ = 1 Row)
-      // Only fetch the specific ID we just created.
-      // This gets the auto-generated timestamps and joined items efficiently.
+      // 5. EFFICIENT SYNC
       const { data: fullOrder, error: fetchError } = await supabase
         .from("orders")
-        .select("*, items:order_items(*)")
+        .select(
+          `
+          *,
+          items_snapshot,
+          items:order_items(*)
+        `,
+        ) // FIX #2: Explicitly request items_snapshot
         .eq("id", orderData.id)
         .single();
 
       if (fetchError) throw fetchError;
 
-      // 5. NORMALIZE & LOCAL UPDATE (Zero Network Cost for List Refresh)
-      // Use the helper defined at the top of the file
+      // FIX #3: DEBUG LOGGING FOR NEW ORDER
+      console.log("📥 CREATED ORDER RAW:", fullOrder);
+      console.log(
+        "📦 items_snapshot in new order?",
+        !!fullOrder?.items_snapshot,
+      );
+
+      // 6. NORMALIZE & UPDATE
       const normalizedOrder = normalizeOrder(fullOrder);
+      console.log("✅ NORMALIZED NEW ORDER:", normalizedOrder);
 
       set((state) => ({
-        // Prepend the new order to the existing list immediately
         orders: [normalizedOrder, ...state.orders],
-        // Update summary counters manually if needed, or leave for background sync
         loading: false,
       }));
 

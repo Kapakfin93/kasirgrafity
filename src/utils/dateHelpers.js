@@ -1,30 +1,37 @@
-import { format, isValid, parseISO } from "date-fns";
-import { id } from "date-fns/locale"; // Ensure Indonesian locale is used
+import {
+  format,
+  isValid,
+  parseISO,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  subDays,
+  differenceInHours,
+  isAfter,
+  addMinutes,
+} from "date-fns";
+import { id } from "date-fns/locale";
+
+// ==========================================
+// 1. ROBUST FORMATTERS (Anti-Crash)
+// ==========================================
 
 export const formatDateTime = (
   dateString,
   formatStr = "dd MMM yyyy, HH:mm",
 ) => {
-  // 1. Guard Clause: Handle null/undefined
   if (!dateString) return "-";
-
   try {
-    // 2. Normalize Input: Force string parsing or Date object
     const date =
       typeof dateString === "string"
         ? parseISO(dateString)
         : new Date(dateString);
-
-    // 3. Check Validity: Is it a real date?
-    if (!isValid(date)) {
-      console.warn("Invalid date detected:", dateString);
-      return "-"; // Return Safe Fallback instead of Crashing
-    }
-
-    // 4. Format Safely
+    if (!isValid(date)) return "-";
     return format(date, formatStr, { locale: id });
   } catch (error) {
-    console.error("Date formatting error:", error);
     return "Error Date";
   }
 };
@@ -37,7 +44,6 @@ export const formatTime = (dateString) => {
   return formatDateTime(dateString, "HH:mm");
 };
 
-// Helper relative time (e.g., "2 jam yang lalu")
 export const formatRelativeTime = (dateString) => {
   if (!dateString) return "-";
   try {
@@ -47,7 +53,6 @@ export const formatRelativeTime = (dateString) => {
         : new Date(dateString);
     if (!isValid(date)) return "-";
 
-    // Simple manual implementation or use formatDistanceToNow
     const now = new Date();
     const diffInSeconds = Math.floor((now - date) / 1000);
 
@@ -59,5 +64,82 @@ export const formatRelativeTime = (dateString) => {
     return format(date, "dd MMM yyyy", { locale: id });
   } catch (e) {
     return "-";
+  }
+};
+
+// ==========================================
+// 2. ATTENDANCE HELPERS (Absensi)
+// ==========================================
+
+export const calculateWorkHours = (checkInTime, checkOutTime) => {
+  if (!checkInTime || !checkOutTime) return 0;
+  try {
+    const start =
+      typeof checkInTime === "string"
+        ? parseISO(checkInTime)
+        : new Date(checkInTime);
+    const end =
+      typeof checkOutTime === "string"
+        ? parseISO(checkOutTime)
+        : new Date(checkOutTime);
+    if (!isValid(start) || !isValid(end)) return 0;
+    const diff = (end - start) / (1000 * 60 * 60);
+    return diff > 0 ? Number(diff.toFixed(1)) : 0;
+  } catch (error) {
+    return 0;
+  }
+};
+
+export const getCurrentShift = () => {
+  const hour = new Date().getHours();
+  // Shift Pagi: 07:00 - 19:00 (Example)
+  return hour >= 7 && hour < 19 ? "PAGI" : "MALAM";
+};
+
+export const isLateCheckIn = (
+  checkInTime,
+  shiftStartStr = "08:00",
+  gracePeriodMins = 15,
+) => {
+  if (!checkInTime) return false;
+  try {
+    const checkIn =
+      typeof checkInTime === "string"
+        ? parseISO(checkInTime)
+        : new Date(checkInTime);
+    const [sh, sm] = shiftStartStr.split(":").map(Number);
+
+    // Create shift start date object for today
+    const shiftStart = new Date(checkIn);
+    shiftStart.setHours(sh, sm, 0, 0);
+
+    const lateLimit = addMinutes(shiftStart, gracePeriodMins);
+    return isAfter(checkIn, lateLimit);
+  } catch (e) {
+    return false;
+  }
+};
+
+// ==========================================
+// 3. DASHBOARD HELPERS (Owner)
+// ==========================================
+
+export const getDateRange = (rangeKey) => {
+  const now = new Date();
+  switch (rangeKey) {
+    case "today":
+      return { start: startOfDay(now), end: endOfDay(now) };
+    case "yesterday":
+      const yest = subDays(now, 1);
+      return { start: startOfDay(yest), end: endOfDay(yest) };
+    case "week":
+      return {
+        start: startOfWeek(now, { weekStartsOn: 1 }),
+        end: endOfDay(now),
+      }; // Monday start
+    case "month":
+      return { start: startOfMonth(now), end: endOfDay(now) };
+    default:
+      return { start: startOfDay(now), end: endOfDay(now) };
   }
 };
