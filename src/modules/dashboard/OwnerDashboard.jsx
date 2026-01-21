@@ -18,11 +18,13 @@ import { StatsCard } from "./StatsCard";
 import { RecentOrders } from "./RecentOrders";
 import { TodayAttendance } from "./TodayAttendance";
 import { TopProducts } from "./TopProducts";
+import { HistoryModal } from "../pos/HistoryModal"; // Import History Modal
 
 export function OwnerDashboard() {
   const navigate = useNavigate();
   const { isOwner } = usePermissions();
   const [period, setPeriod] = useState("today");
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false); // History Modal State
 
   // AMBIL DATA DARI STORE (YANG SUDAH PINTAR)
   const {
@@ -76,11 +78,28 @@ export function OwnerDashboard() {
     return totalExpenses;
   }, [expenses, period]);
 
-  // === 3. HITUNG NET PROFIT ===
-  // Revenue (dari Store yang sudah fix) - Expense (dari perhitungan lokal)
-  const netProfit = (summaryData.totalSales || 0) - expenseStats;
+  // === 3. SAFE DATA MAPPING (HANDLE NULL/UNDEFINED) ===
+  // Mapping variabel untuk kompatibilitas dengan JSX yang sudah ada
+  const safeData = summaryData || {};
 
-  // === 4. HITUNG SPLIT PIUTANG (TEMPO vs BAD DEBT) ===
+  // Mapping sesuai permintaan: totalSales ← totalRevenue (prioritas) atau totalSales (existing)
+  const totalSales = safeData.totalRevenue || safeData.totalSales || 0;
+
+  // Mapping: totalTransactions ← totalCount
+  const totalTransactions = safeData.totalCount || 0;
+
+  // Mapping data lainnya dengan fallback aman
+  const totalCollected = safeData.totalCollected || 0;
+  const totalOutstanding = safeData.totalOutstanding || 0;
+  const totalDiscount = safeData.totalDiscount || 0;
+  const omsetBahan = safeData.omsetBahan || 0;
+  const omsetJasa = safeData.omsetJasa || 0;
+
+  // === 4. HITUNG NET PROFIT ===
+  // Revenue (dari Store yang sudah fix) - Expense (dari perhitungan lokal)
+  const netProfit = totalSales - expenseStats;
+
+  // === 5. HITUNG SPLIT PIUTANG (TEMPO vs BAD DEBT) ===
   // Kita gunakan orders lokal untuk rasio, tapi totalnya tetap mengacu pada summaryData
   const receivableStats = useMemo(() => {
     let tempo = 0;
@@ -116,7 +135,7 @@ export function OwnerDashboard() {
     .filter((o) => o.productionStatus === "CANCELLED")
     .slice(0, 20);
 
-  const hasEmployees = summaryData.totalEmployees > 0 || employees.length > 0;
+  const hasEmployees = employees.length > 0;
 
   const handleExpenseClick = () => {
     navigate("/expenses");
@@ -129,11 +148,47 @@ export function OwnerDashboard() {
         <div className="animated-border" />
 
         {/* LEFT: Identity */}
-        <div className="header-identity">
+        <div
+          className="header-identity"
+          style={{ display: "flex", gap: "12px", alignItems: "center" }}
+        >
           <span className="header-icon">📈</span>
           <div>
             <h1 className="header-title">Dashboard Owner</h1>
           </div>
+
+          {/* History Button - Added beside title */}
+          <button
+            onClick={() => setIsHistoryOpen(true)}
+            style={{
+              padding: "8px 16px",
+              background: "linear-gradient(135deg, #8b5cf6, #a78bfa)",
+              border: "1px solid rgba(139, 92, 246, 0.3)",
+              borderRadius: "8px",
+              color: "white",
+              fontSize: "13px",
+              fontWeight: "700",
+              cursor: "pointer",
+              boxShadow: "0 0 15px rgba(139, 92, 246, 0.3)",
+              transition: "all 0.2s ease",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow =
+                "0 0 20px rgba(139, 92, 246, 0.5)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow =
+                "0 0 15px rgba(139, 92, 246, 0.3)";
+            }}
+          >
+            <span>📜</span>
+            <span>Lihat Detail</span>
+          </button>
         </div>
 
         {/* CENTER: Burning Net Profit (THE CORE) */}
@@ -175,14 +230,14 @@ export function OwnerDashboard() {
         <StatsCard
           icon="💰"
           title="Total Penjualan"
-          value={formatRupiah(summaryData.totalSales)} // <-- SUDAH BENAR (ANTI-NOL)
-          subtitle={`${summaryData.totalCount} pesanan (Net)`}
+          value={formatRupiah(totalSales)} // Menggunakan mapped variable
+          subtitle={`${totalTransactions} pesanan (Net)`} // Menggunakan mapped variable
           color="#22c55e"
         />
         <StatsCard
           icon="💵"
           title="Uang Terkumpul"
-          value={formatRupiah(summaryData.totalCollected)}
+          value={formatRupiah(totalCollected)} // Menggunakan mapped variable
           subtitle={`Cash In Hand`}
           color="#3b82f6"
         />
@@ -191,7 +246,7 @@ export function OwnerDashboard() {
         <StatsCard
           icon="⚠️"
           title="Kurang Bayar"
-          value={formatRupiah(summaryData.totalOutstanding)} // Menggunakan total valid dari store
+          value={formatRupiah(totalOutstanding)} // Menggunakan mapped variable
           subtitle="Harus ditagih"
           color="#ef4444"
         />
@@ -209,7 +264,7 @@ export function OwnerDashboard() {
         <StatsCard
           icon="🎟️"
           title="Total Diskon"
-          value={formatRupiah(summaryData.totalDiscount)}
+          value={formatRupiah(totalDiscount)} // Menggunakan mapped variable
           subtitle="Potongan harga"
           color="#f59e0b"
         />
@@ -276,7 +331,7 @@ export function OwnerDashboard() {
                   textShadow: "0 0 10px rgba(34, 211, 238, 0.5)",
                 }}
               >
-                {formatRupiah(summaryData.omsetBahan)} {/* DARI STORE */}
+                {formatRupiah(omsetBahan)} {/* Menggunakan mapped variable */}
               </div>
               <div style={{ fontSize: "10px", color: "#94a3b8" }}>
                 *Sebelum Diskon
@@ -326,7 +381,7 @@ export function OwnerDashboard() {
                   marginTop: "4px",
                 }}
               >
-                {formatRupiah(summaryData.omsetJasa)} {/* DARI STORE */}
+                {formatRupiah(omsetJasa)} {/* Menggunakan mapped variable */}
               </div>
               <div style={{ fontSize: "10px", color: "#94a3b8" }}>
                 Belum ada data
@@ -502,6 +557,12 @@ export function OwnerDashboard() {
           </div>
         )}
       </div>
+
+      {/* History Modal */}
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
     </div>
   );
 }
