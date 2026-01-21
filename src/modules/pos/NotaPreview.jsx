@@ -450,9 +450,43 @@ export function NotaPreview({
 
               return (
                 <div key={item.id || idx} className="nota-item">
+                  {/* PRODUCT NAME - Main Title */}
                   <div className="nota-item-title">
                     {item.qty}x {item.productName}
                   </div>
+
+                  {/* VARIANT LABEL - Material/Type (if exists) */}
+                  {item.variantLabel && (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: "600",
+                        paddingLeft: "10px",
+                        color: "#333",
+                        marginTop: "2px",
+                      }}
+                    >
+                      📦 {item.variantLabel}
+                    </div>
+                  )}
+
+                  {/* VARIANT DESCRIPTION - Human readable (if exists) */}
+                  {item.variantDesc && (
+                    <div
+                      style={{
+                        fontSize: "9px",
+                        fontStyle: "italic",
+                        paddingLeft: "10px",
+                        color: "#666",
+                        marginTop: "1px",
+                        marginBottom: "3px",
+                      }}
+                    >
+                      {item.variantDesc}
+                    </div>
+                  )}
+
+                  {/* SPECS/DIMENSIONS - Technical details */}
                   {item.description && (
                     <div
                       className="nota-item-spec"

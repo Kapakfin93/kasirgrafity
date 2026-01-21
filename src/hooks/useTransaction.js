@@ -245,6 +245,9 @@ export function useTransaction() {
       selected_details: rawInput.selected_details || null,
       // FASE 2: Store pricing snapshot from UI (no modification)
       pricingSnapshot: pricingSnapshot || null,
+      // NOTA REVISION: Variant info for human-readable invoice
+      variantLabel: dimensions.variantLabel || rawInput.variantLabel || null,
+      variantDesc: dimensions.variantDesc || rawInput.variantDesc || null,
     };
 
     if (pricingType === "ADVANCED") {

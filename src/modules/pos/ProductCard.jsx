@@ -49,10 +49,10 @@ export const ProductCard = ({ product, onClick }) => {
           </div>
 
           {/* Smart Badges Info */}
-          <div className="flex flex-wrap gap-2 mb-6">
+          <div className="flex flex-wrap gap-2 mb-4">
             <Badge
               icon={<Scroll size={14} />}
-              text="4 Opsi Bahan"
+              text={`${product.variants?.length || 0} Opsi Bahan`}
               color="bg-slate-800 text-cyan-300 border-cyan-500/30"
             />
             <Badge
@@ -66,6 +66,67 @@ export const ProductCard = ({ product, onClick }) => {
               color="bg-purple-900/30 text-purple-400 border-purple-500/30"
             />
           </div>
+
+          {/* Material Preview - Show first 3 variants */}
+          {product.variants?.length > 0 && (
+            <div
+              style={{
+                marginBottom: "16px",
+                padding: "12px",
+                borderRadius: "12px",
+                background: "rgba(15, 23, 42, 0.6)",
+                border: "1px solid rgba(6, 182, 212, 0.15)",
+              }}
+            >
+              {product.variants.slice(0, 3).map((variant, idx) => (
+                <div
+                  key={variant.label || idx}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    marginBottom:
+                      idx < 2 && idx < product.variants.length - 1
+                        ? "8px"
+                        : "0",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: "600",
+                      color: "#67e8f9", // cyan-300
+                    }}
+                  >
+                    📦 {variant.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "#94a3b8", // slate-400
+                      lineHeight: "1.3",
+                    }}
+                  >
+                    {variant.desc ||
+                      variant.specs ||
+                      "Material cetak berkualitas"}
+                  </span>
+                </div>
+              ))}
+              {product.variants.length > 3 && (
+                <div
+                  style={{
+                    marginTop: "8px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#06b6d4", // cyan-500
+                    fontStyle: "italic",
+                  }}
+                >
+                  +{product.variants.length - 3} bahan lainnya
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action Button */}
           <div className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-center tracking-widest uppercase group-hover:scale-[1.02] transition-transform shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2">
@@ -122,41 +183,72 @@ export const ProductCard = ({ product, onClick }) => {
           </div>
         </div>
 
-        {/* Description */}
-        <p className="text-slate-400 text-sm mb-4 line-clamp-1">
+        {/* Description - Improved Contrast */}
+        <p
+          className="mb-4 line-clamp-2"
+          style={{
+            color: "#94a3b8",
+            fontSize: "14px",
+            lineHeight: "1.5",
+          }}
+        >
           {productDescription}
         </p>
 
-        {/* Variant Badges (Blended, Elegant) */}
+        {/* Variant Badges (Improved Readability with Descriptions) */}
         {visibleVariants.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2">
             {visibleVariants.map((variant, index) => (
               <div
                 key={index}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                className="flex flex-col px-3 py-2 rounded-lg"
                 style={{
-                  background: "rgba(255, 255, 255, 0.05)",
-                  color: "rgba(203, 213, 225, 0.9)",
-                  border: "1px solid rgba(148, 163, 184, 0.1)",
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(148, 163, 184, 0.15)",
                 }}
               >
-                <Package size={12} style={{ opacity: 0.6 }} />
-                <span className="line-clamp-1">
-                  {variant.label || variant.name}
-                </span>
+                {/* Variant Name - Prominent */}
+                <div className="flex items-center gap-2">
+                  <Package
+                    size={14}
+                    style={{ color: "#06b6d4", opacity: 0.9 }}
+                  />
+                  <span
+                    className="font-semibold"
+                    style={{
+                      color: "#e2e8f0",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {variant.label || variant.name}
+                  </span>
+                </div>
+                {/* Variant Description - Readable */}
+                {variant.desc && (
+                  <span
+                    className="mt-1 ml-6"
+                    style={{
+                      color: "#94a3b8",
+                      fontSize: "12px",
+                      lineHeight: "1.4",
+                    }}
+                  >
+                    {variant.desc}
+                  </span>
+                )}
               </div>
             ))}
 
             {remainingCount > 0 && (
               <div
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium"
                 style={{
                   background: "rgba(255, 255, 255, 0.03)",
-                  color: "rgba(148, 163, 184, 0.7)",
+                  color: "rgba(148, 163, 184, 0.8)",
                   border: "1px solid rgba(148, 163, 184, 0.08)",
                 }}
               >
-                +{remainingCount} lainnya
+                +{remainingCount} pilihan bahan lainnya
               </div>
             )}
           </div>

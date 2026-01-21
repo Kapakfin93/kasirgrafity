@@ -19,20 +19,28 @@ const A3_PRODUCTS = [
       ],
     },
     variants: [
-      { label: "Stiker Chromo", specs: "Label Makanan (Kertas)", price: 10000 },
+      {
+        label: "Stiker Chromo",
+        specs: "Label Makanan (Kertas)",
+        desc: "Stiker kertas murah untuk label makanan rumahan.",
+        price: 10000,
+      },
       {
         label: "Stiker Vinyl White",
         specs: "Tahan Air / Frozen",
+        desc: "Stiker tahan air, cocok untuk produk frozen & outdoor.",
         price: 15000,
       },
       {
         label: "Stiker Transparan",
         specs: "Bening / Tembus Pandang",
+        desc: "Stiker bening, tampil elegan untuk kemasan premium.",
         price: 15000,
       },
       {
         label: "Stiker Hologram",
         specs: "Efek Pelangi (Premium)",
+        desc: "Stiker hologram premium dengan efek pelangi anti palsu.",
         price: 25000,
       },
     ],
@@ -74,6 +82,7 @@ const A3_PRODUCTS = [
       {
         label: "Art Paper 150gr",
         specs: "Brosur / Flyer / Majalah",
+        desc: "Kertas glossy tipis, ideal untuk brosur & flyer.",
         price_list: {
           "1 Sisi (Muka 1)": 5000,
           "2 Sisi (Bolak-Balik)": 9000, // Custom Price (Not x2)
@@ -82,6 +91,7 @@ const A3_PRODUCTS = [
       {
         label: "Art Carton 260gr",
         specs: "Poster / Cover Menu / Kartu",
+        desc: "Kertas tebal glossy, cocok untuk poster & menu.",
         price_list: {
           "1 Sisi (Muka 1)": 7500,
           "2 Sisi (Bolak-Balik)": 13000,
@@ -90,6 +100,7 @@ const A3_PRODUCTS = [
       {
         label: "HVS 100gr",
         specs: "Teks / Bagan / Kop",
+        desc: "Kertas putih polos, untuk dokumen & teks cetak.",
         price_list: {
           "1 Sisi (Muka 1)": 3000,
           "2 Sisi (Bolak-Balik)": 5000,
@@ -98,6 +109,7 @@ const A3_PRODUCTS = [
       {
         label: "BC Tik / Manila",
         specs: "Sertifikat Standar (Doff)",
+        desc: "Kertas doff tebal, untuk sertifikat & piagam.",
         price_list: {
           "1 Sisi (Muka 1)": 6000,
           "2 Sisi (Bolak-Balik)": 10000,
@@ -106,6 +118,7 @@ const A3_PRODUCTS = [
       {
         label: "Jasmine (Glitter)",
         specs: "Sertifikat Mewah / Undangan",
+        desc: "Kertas glitter mewah, untuk undangan & sertifikat VIP.",
         price_list: {
           "1 Sisi (Muka 1)": 10000,
           "2 Sisi (Bolak-Balik)": 18000,
@@ -139,10 +152,30 @@ const A3_PRODUCTS = [
 
     // STEP 1: Material variants (PAPER price per sheet)
     variants: [
-      { label: "HVS 70gr", price: 200, specs: "Putih Standar" },
-      { label: "HVS 80gr", price: 250, specs: "Putih Tebal" },
-      { label: "Bookpaper 72gr", price: 300, specs: "Krem Novel" },
-      { label: "Art Paper 120gr", price: 500, specs: "Glossy" },
+      {
+        label: "HVS 70gr",
+        price: 200,
+        specs: "Putih Standar",
+        desc: "Kertas HVS tipis standar untuk dokumen biasa.",
+      },
+      {
+        label: "HVS 80gr",
+        price: 250,
+        specs: "Putih Tebal",
+        desc: "Kertas HVS tebal, lebih premium & tidak tembus.",
+      },
+      {
+        label: "Bookpaper 72gr",
+        price: 300,
+        specs: "Krem Novel",
+        desc: "Kertas krem nyaman di mata, cocok untuk novel.",
+      },
+      {
+        label: "Art Paper 120gr",
+        price: 500,
+        specs: "Glossy",
+        desc: "Kertas glossy, untuk majalah & buku foto.",
+      },
     ],
 
     // STEP 2: Print modes (INK/CLICK price per sheet, NO MULTIPLIER)
@@ -216,8 +249,18 @@ const A3_PRODUCTS = [
       ],
     },
     variants: [
-      { label: "Cetak 1 Sisi", specs: "Art Carton 260gr + Box", price: 35000 },
-      { label: "Cetak 2 Sisi", specs: "Art Carton 260gr + Box", price: 55000 },
+      {
+        label: "Cetak 1 Sisi",
+        specs: "Art Carton 260gr + Box",
+        desc: "Kartu nama 1 sisi, ekonomis untuk kontak dasar.",
+        price: 35000,
+      },
+      {
+        label: "Cetak 2 Sisi",
+        specs: "Art Carton 260gr + Box",
+        desc: "Kartu nama 2 sisi, lebih profesional & informatif.",
+        price: 55000,
+      },
     ],
     finishing_groups: [
       {
