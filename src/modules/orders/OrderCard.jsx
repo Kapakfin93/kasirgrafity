@@ -322,7 +322,7 @@ export function OrderCard({ order }) {
   let paymentBadgeLabel = "🔴 BELUM BAYAR";
   if (isLunas) {
     paymentBadgeLabel = "✅ LUNAS";
-  } else if (order.paymentStatus === "DP") {
+  } else if (order.paymentStatus === "PARTIAL") {
     paymentBadgeLabel = "⏳ DP";
   }
 
@@ -712,7 +712,7 @@ export function OrderCard({ order }) {
           totalAmount={order.totalAmount}
           paymentState={{
             amountPaid: order.paidAmount,
-            mode: order.paymentStatus === "PAID" ? "LUNAS" : "DP",
+            mode: order.paymentStatus === "PAID" ? "LUNAS" : "PARTIAL",
           }}
           order={order}
           type={printConfig.type}

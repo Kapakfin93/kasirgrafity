@@ -4,9 +4,6 @@ import {
   Ruler,
   Mountain,
   Scroll,
-  Image as ImageIcon,
-  Shirt,
-  Settings,
   CheckCircle2,
   ArrowRight,
 } from "lucide-react";
@@ -22,26 +19,6 @@ export const ProductCard = ({ product, onClick }) => {
       `[ProductCard] Rendering ${product.name}: isOutdoorHero=${isOutdoorHero}, CatID=${product.categoryId}`,
     );
   }
-
-  // --- CALCULATE DISPLAY PRICE FOR MATRIX PRODUCTS ---
-  const getDisplayPrice = () => {
-    // For MATRIX products, find minimum price from price_list
-    if (product.input_mode === "MATRIX" && product.variants?.length > 0) {
-      let minPrice = Infinity;
-      product.variants.forEach((variant) => {
-        if (variant.price_list) {
-          Object.values(variant.price_list).forEach((price) => {
-            if (price < minPrice) minPrice = price;
-          });
-        }
-      });
-      return minPrice === Infinity ? 0 : minPrice;
-    }
-    // For other products, use base_price
-    return product.base_price || 0;
-  };
-
-  const displayPrice = getDisplayPrice();
 
   // --- 2. HERO CARD LAYOUT (OUTDOOR / SPANDUK) ---
   if (isOutdoorHero) {
@@ -99,41 +76,102 @@ export const ProductCard = ({ product, onClick }) => {
     );
   }
 
-  // --- 3. STANDARD CARD LAYOUT (FOR OTHERS) ---
+  // --- 3. STANDARD CARD LAYOUT (ELEGANT & MINIMALIST - MATCHING SPANDUK STYLE) ---
+  const visibleVariants = product.variants?.slice(0, 4) || [];
+  const remainingCount =
+    (product.variants?.length || 0) - visibleVariants.length;
+  const productDescription = product.description || "Kategori Produk & Layanan";
+
   return (
     <div
       onClick={() => onClick(product)}
-      className="group relative flex flex-col justify-between overflow-hidden rounded-3xl bg-slate-900/50 border border-slate-700/50 p-5 hover:bg-slate-800 hover:border-cyan-500/50 hover:shadow-xl transition-all duration-300 cursor-pointer"
+      className="group relative overflow-hidden rounded-xl p-6 transition-all duration-300 ease-in-out cursor-pointer"
+      style={{
+        background: "linear-gradient(145deg, #0f172a, #1e293b)",
+        border: "1px solid rgba(148, 163, 184, 0.1)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.5)";
+        e.currentTarget.style.boxShadow = "0 0 15px rgba(6, 182, 212, 0.15)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "rgba(148, 163, 184, 0.1)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div
-          className={`p-3 rounded-2xl ${getIconColor(
-            product.categoryId,
-          )} bg-opacity-20`}
-        >
-          {getCategoryIcon(product.categoryId)}
-        </div>
-        <div className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-bold text-slate-400">
-          {product.input_mode}
-        </div>
-      </div>
+      {/* Subtle Background Glow */}
+      <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/5 rounded-full blur-3xl opacity-30"></div>
 
-      <div>
-        <h3 className="text-lg font-bold text-slate-100 leading-tight mb-1 line-clamp-2">
-          {product.name}
-        </h3>
-        <p className="text-slate-500 text-xs">{product.description}</p>
-      </div>
+      <div className="relative z-10">
+        {/* Header: Category Name */}
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xl font-bold text-white tracking-wide">
+            {product.name}
+          </h3>
 
-      {/* Standard Price Display */}
-      <div className="mt-4 pt-4 border-t border-slate-800">
-        <p className="text-xs text-slate-400 font-medium mb-1">Mulai dari</p>
-        <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400">
-          {formatCurrency(displayPrice)}
-          {product.input_mode === "LINEAR" && (
-            <span className="text-sm text-slate-500 font-normal">/m</span>
-          )}
+          {/* Input Mode Badge (Subtle) */}
+          <div
+            className="px-2.5 py-1 rounded-md text-xs font-semibold"
+            style={{
+              background: "rgba(255, 255, 255, 0.05)",
+              color: "rgba(148, 163, 184, 0.8)",
+              border: "1px solid rgba(148, 163, 184, 0.1)",
+            }}
+          >
+            {product.input_mode}
+          </div>
+        </div>
+
+        {/* Description */}
+        <p className="text-slate-400 text-sm mb-4 line-clamp-1">
+          {productDescription}
         </p>
+
+        {/* Variant Badges (Blended, Elegant) */}
+        {visibleVariants.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {visibleVariants.map((variant, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={{
+                  background: "rgba(255, 255, 255, 0.05)",
+                  color: "rgba(203, 213, 225, 0.9)",
+                  border: "1px solid rgba(148, 163, 184, 0.1)",
+                }}
+              >
+                <Package size={12} style={{ opacity: 0.6 }} />
+                <span className="line-clamp-1">
+                  {variant.label || variant.name}
+                </span>
+              </div>
+            ))}
+
+            {remainingCount > 0 && (
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={{
+                  background: "rgba(255, 255, 255, 0.03)",
+                  color: "rgba(148, 163, 184, 0.7)",
+                  border: "1px solid rgba(148, 163, 184, 0.08)",
+                }}
+              >
+                +{remainingCount} lainnya
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fallback if no variants */}
+        {visibleVariants.length === 0 && (
+          <div
+            className="flex items-center gap-2 text-xs"
+            style={{ color: "rgba(148, 163, 184, 0.6)" }}
+          >
+            <Package size={14} />
+            <span>Tersedia berbagai pilihan</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -149,43 +187,5 @@ const Badge = ({ icon, text, color }) => (
     <span>{text}</span>
   </div>
 );
-
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(amount);
-};
-
-const getCategoryIcon = (catId) => {
-  switch (catId) {
-    case "CAT_OUTDOOR":
-      return <Mountain size={24} className="text-emerald-400" />;
-    case "CAT_ROLLS":
-      return <Scroll size={24} className="text-cyan-400" />;
-    case "CAT_POSTER":
-      return <ImageIcon size={24} className="text-purple-400" />;
-    case "MERCHANDISE":
-      return <Shirt size={24} className="text-pink-400" />;
-    default:
-      return <Package size={24} className="text-slate-400" />;
-  }
-};
-
-const getIconColor = (catId) => {
-  switch (catId) {
-    case "CAT_OUTDOOR":
-      return "bg-emerald-500";
-    case "CAT_ROLLS":
-      return "bg-cyan-500";
-    case "CAT_POSTER":
-      return "bg-purple-500";
-    case "MERCHANDISE":
-      return "bg-pink-500";
-    default:
-      return "bg-slate-500";
-  }
-};
 
 export default ProductCard;

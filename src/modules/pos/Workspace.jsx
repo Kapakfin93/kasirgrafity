@@ -165,14 +165,20 @@ export function Workspace() {
           }}
         >
           <h1
+            className="neon-header-dramatic"
             style={{
-              fontSize: "22px",
-              fontWeight: "800",
-              background: "linear-gradient(90deg, #38bdf8, #a78bfa)",
+              fontSize: "26px",
+              fontWeight: "900",
+              background:
+                "linear-gradient(90deg, #06b6d4, #a78bfa, #3b82f6, #06b6d4)",
+              backgroundSize: "300% 300%",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
-              letterSpacing: "1px",
+              letterSpacing: "2px",
               margin: 0,
+              animation:
+                "neonHeartbeat 3s ease-in-out infinite, neonColorShift 6s ease-in-out infinite",
+              filter: "drop-shadow(0 0 20px rgba(6, 182, 212, 0.8))",
             }}
           >
             ⚡ JOGLO PRINTING

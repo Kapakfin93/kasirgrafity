@@ -164,7 +164,7 @@ export function OrderBoard() {
         <div className="filter-group">
           <label>Status Pembayaran:</label>
           <div className="filter-buttons">
-            {["ALL", "UNPAID", "DP", "PAID"].map((status) => (
+            {["ALL", "UNPAID", "PARTIAL", "PAID"].map((status) => (
               <button
                 key={status}
                 className={`filter-btn ${status.toLowerCase()} ${paymentFilter === status ? "active" : ""}`}
@@ -174,7 +174,9 @@ export function OrderBoard() {
                   ? "Semua"
                   : status === "UNPAID"
                     ? "Belum Bayar"
-                    : status}
+                    : status === "PARTIAL"
+                      ? "DP"
+                      : status}
               </button>
             ))}
           </div>

@@ -79,12 +79,28 @@ export function CustomerSelector({
             style={{
               width: "100%",
               padding: "10px",
-              background: "#1e293b",
-              border: "1px solid #334155",
+              background: "#0f172a",
+              border: "3px solid #06b6d4",
               borderRadius: "8px",
-              color: "white",
+              color: "#ffffff",
               fontSize: "14px",
               fontWeight: "bold",
+              boxShadow:
+                "0 0 20px rgba(6, 182, 212, 0.4), inset 0 0 10px rgba(6, 182, 212, 0.1)",
+              transition: "all 0.3s ease",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 0 30px rgba(6, 182, 212, 0.7), 0 0 60px rgba(6, 182, 212, 0.3), inset 0 0 20px rgba(6, 182, 212, 0.2)";
+              e.currentTarget.style.borderColor = "#22d3ee";
+              if ((customerSnapshot.name || "").length > 1) {
+                setShowSuggestions(true);
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 0 20px rgba(6, 182, 212, 0.4), inset 0 0 10px rgba(6, 182, 212, 0.1)";
+              e.currentTarget.style.borderColor = "#06b6d4";
             }}
           />
 
@@ -160,11 +176,24 @@ export function CustomerSelector({
           disabled={isLocked}
           style={{
             padding: "10px",
-            background: "#1e293b",
-            border: "1px solid #334155",
+            background: "#0f172a",
+            border: "3px solid #06b6d4",
             borderRadius: "8px",
-            color: "white",
+            color: "#ffffff",
             fontSize: "14px",
+            boxShadow:
+              "0 0 20px rgba(6, 182, 212, 0.4), inset 0 0 10px rgba(6, 182, 212, 0.1)",
+            transition: "all 0.3s ease",
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.boxShadow =
+              "0 0 30px rgba(6, 182, 212, 0.7), 0 0 60px rgba(6, 182, 212, 0.3), inset 0 0 20px rgba(6, 182, 212, 0.2)";
+            e.currentTarget.style.borderColor = "#22d3ee";
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.boxShadow =
+              "0 0 20px rgba(6, 182, 212, 0.4), inset 0 0 10px rgba(6, 182, 212, 0.1)";
+            e.currentTarget.style.borderColor = "#06b6d4";
           }}
         />
       </div>
