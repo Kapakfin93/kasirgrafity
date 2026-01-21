@@ -223,8 +223,21 @@ export const ProductCard = ({ product, onClick }) => {
                     {variant.label || variant.name}
                   </span>
                 </div>
-                {/* Variant Description - Readable */}
-                {variant.desc && (
+                {/* Variant Description OR Material Hint (for MATRIX) */}
+                {variant.price_list ? (
+                  // MATRIX Product: Show material options from price_list keys
+                  <span
+                    className="mt-1 ml-6"
+                    style={{
+                      color: "#67e8f9",
+                      fontSize: "11px",
+                      lineHeight: "1.4",
+                    }}
+                  >
+                    🎨 Bahan: {Object.keys(variant.price_list).join(" • ")}
+                  </span>
+                ) : variant.desc ? (
+                  // Non-MATRIX: Show regular description
                   <span
                     className="mt-1 ml-6"
                     style={{
@@ -235,7 +248,7 @@ export const ProductCard = ({ product, onClick }) => {
                   >
                     {variant.desc}
                   </span>
-                )}
+                ) : null}
               </div>
             ))}
 
