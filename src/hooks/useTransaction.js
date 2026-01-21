@@ -154,7 +154,7 @@ export function useTransaction() {
     }
   };
 
-  // ===== BUILD CART ITEM (STRICT VALIDATION) =====
+  // ===== BUILD CART ITEM (PRICE SNAPSHOT RECEIVER - FASE 2) =====
   const buildCartItem = (rawInput) => {
     const {
       product,
@@ -162,6 +162,8 @@ export function useTransaction() {
       dimensions = {},
       finishings = [],
       manualPrice,
+      finalTotal,
+      pricingSnapshot,
     } = rawInput;
 
     if (!product?.id)
@@ -173,25 +175,41 @@ export function useTransaction() {
     const pricingType =
       product.pricing_model || currentCategory?.logic_type || "MANUAL";
 
-    let calculatedPrice = 0;
+    // FASE 2: Accept finalTotal from UI (single source of truth)
+    let totalPrice = 0;
     let unitPrice = 0;
 
-    try {
-      const result = calculatePriceByLogic({
-        mode: pricingType,
-        product,
-        qty: safeQty,
-        dimensions,
-        finishings,
-        manualPrice,
-      });
-      calculatedPrice = result.subtotal;
-      unitPrice = result.unitPrice;
-    } catch (calcError) {
-      throw new Error(`Error kalkulasi harga - ${calcError.message}`);
+    if (finalTotal && finalTotal > 0) {
+      // NEW CONTRACT: Trust UI calculation
+      totalPrice = finalTotal;
+      unitPrice = Math.round(finalTotal / safeQty);
+    } else if (rawInput.totalPrice && rawInput.totalPrice > 0) {
+      // BACKWARD COMPATIBILITY: Legacy products (temporary)
+      totalPrice = rawInput.totalPrice;
+      unitPrice = rawInput.unitPrice || Math.round(totalPrice / safeQty);
+    } else {
+      // FALLBACK: Recalculate only if absolutely necessary (legacy flow)
+      console.warn(
+        "⚠️ buildCartItem: No finalTotal provided, recalculating...",
+      );
+      try {
+        const result = calculatePriceByLogic({
+          mode: pricingType,
+          product,
+          qty: safeQty,
+          dimensions,
+          finishings,
+          manualPrice,
+        });
+        totalPrice = result.subtotal;
+        unitPrice = result.unitPrice;
+      } catch (calcError) {
+        throw new Error(`Error kalkulasi harga - ${calcError.message}`);
+      }
     }
 
-    if (calculatedPrice <= 0) throw new Error(`Harga harus > 0`);
+    if (totalPrice <= 0)
+      throw new Error("CART ITEM REJECTED: Final price invalid or zero");
 
     // Description Builder
     const finishingNames = extractFinishingNames(finishings);
@@ -218,13 +236,15 @@ export function useTransaction() {
         price: f.price || 0,
       })),
       unitPrice: unitPrice,
-      totalPrice: calculatedPrice,
+      totalPrice: totalPrice,
       notes:
         rawInput.notes ||
         rawInput.selected_details?.notes ||
         dimensions.notes ||
         "",
       selected_details: rawInput.selected_details || null,
+      // FASE 2: Store pricing snapshot from UI (no modification)
+      pricingSnapshot: pricingSnapshot || null,
     };
 
     if (pricingType === "ADVANCED") {
@@ -265,6 +285,9 @@ export function useTransaction() {
               "",
             selected_details: preConfiguredItem.selected_details || null,
             detail_options: preConfiguredItem.detail_options,
+            // FASE 2: Pass through finalTotal and pricingSnapshot from UI
+            finalTotal: preConfiguredItem.finalTotal,
+            pricingSnapshot: preConfiguredItem.pricingSnapshot,
           };
         } else {
           // OLD Structure

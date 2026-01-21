@@ -452,33 +452,78 @@ export const useOrderStore = create((set, get) => ({
   },
 
   // ACTION BUTTONS HANDLERS (Pelunasan, Status, Cancel)
-  addPayment: async (orderId, amount, receivedBy = null) => {
+  // FASE 3.3: RPC-based payment recording
+  payOrder: async (
+    orderId,
+    amount,
+    receivedBy = "Kasir",
+    paymentMethod = "CASH",
+  ) => {
     set({ loading: true, error: null });
     try {
-      const order = get().orders.find((o) => o.id === orderId);
-      if (!order) throw new Error("Order not found");
-
-      const newPaid = order.paidAmount + amount;
-      const updates = {
-        paidAmount: newPaid,
-        dpAmount: order.dpAmount || (newPaid < order.totalAmount ? amount : 0),
-        receivedBy: receivedBy || order.receivedBy,
-      };
-
-      if (newPaid >= order.totalAmount) {
-        updates.paymentStatus = "PAID";
-        updates.remainingAmount = 0;
-      } else if (newPaid > 0) {
-        updates.paymentStatus = "DP";
-        updates.remainingAmount = order.totalAmount - newPaid;
+      // Client-side validation
+      if (!amount || amount <= 0) {
+        throw new Error("Payment amount must be greater than 0");
       }
 
-      await get().updateOrder(orderId, updates);
-      set({ loading: false });
+      if (!receivedBy || receivedBy.trim() === "") {
+        throw new Error("Received by (user name) is required");
+      }
+
+      const { supabase } = await import("../services/supabaseClient");
+
+      // Call RPC function for atomic payment recording
+      const { data, error: rpcError } = await supabase.rpc(
+        "add_payment_to_order",
+        {
+          p_order_id: orderId,
+          p_amount: amount,
+          p_user_name: receivedBy,
+          p_payment_method: paymentMethod,
+        },
+      );
+
+      if (rpcError) {
+        console.error("❌ Payment RPC Error:", rpcError);
+        throw new Error(`Payment failed: ${rpcError.message}`);
+      }
+
+      if (!data || !data.success) {
+        throw new Error("Payment recording failed");
+      }
+
+      console.log("✅ Payment recorded:", data);
+
+      // Refresh the order to get updated state
+      const { data: updatedOrder, error: fetchError } = await supabase
+        .from("orders")
+        .select(`*, items_snapshot, items:order_items(*)`)
+        .eq("id", orderId)
+        .single();
+
+      if (!fetchError && updatedOrder) {
+        const normalizedOrder = normalizeOrder(updatedOrder);
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.id === orderId ? normalizedOrder : o,
+          ),
+          loading: false,
+        }));
+      } else {
+        set({ loading: false });
+      }
+
+      return data;
     } catch (error) {
+      console.error("❌ Payment failed:", error);
       set({ error: error.message, loading: false });
       throw error;
     }
+  },
+
+  // Backward compatibility: Keep addPayment alias
+  addPayment: async (orderId, amount, receivedBy = null) => {
+    return get().payOrder(orderId, amount, receivedBy || "Kasir", "CASH");
   },
 
   updateProductionStatus: async (orderId, status, assignedTo = null) => {

@@ -234,11 +234,6 @@ export default function ProductConfigModal({
     }
 
     // Payload Construction
-    const productPriceToSend =
-      isArea || isLinear
-        ? currentBasePrice // Send RAW price for recalculation
-        : finalUnitPrice + finishingTotal;
-
     let variantLabel = "Standard";
     if (isMatrix)
       variantLabel = `${matrixSelection.step1} | ${matrixSelection.step2}`;
@@ -281,7 +276,6 @@ export default function ProductConfigModal({
     onAddToCart({
       product: {
         ...safeProduct,
-        price: productPriceToSend,
         pricing_model: inputMode,
       },
       qty,
@@ -310,11 +304,21 @@ export default function ProductConfigModal({
                   // UNIT and other types
                   variantLabel: selectedVariant?.label || "",
                 },
-      final_price: productPriceToSend,
       finishings: finishingsArray,
       selected_details: {
         variant: variantLabel,
         notes: notes,
+      },
+      // FASE 2: Send UI-calculated grandTotal as single source of truth
+      finalTotal: grandTotal,
+      pricingSnapshot: {
+        basePrice: currentBasePrice,
+        finalUnitPrice: finalUnitPrice,
+        finishingTotal: finishingTotal,
+        grandTotal: grandTotal,
+        qty: qty,
+        calculatedBy: "ProductConfigModal",
+        timestamp: new Date().toISOString(),
       },
     });
     onClose();
