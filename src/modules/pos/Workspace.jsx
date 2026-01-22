@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useReactToPrint } from "react-to-print"; // <--- 1. IMPORT PENTING
 import { useTransaction, TRANSACTION_STAGES } from "../../hooks/useTransaction";
 import { useOrderStore } from "../../stores/useOrderStore";
@@ -47,6 +47,44 @@ export function Workspace() {
 
   const { createOrder } = useOrderStore();
   const { currentUser } = useAuthStore();
+
+  // Web Order Prefill State
+  const [webOrderPrefill, setWebOrderPrefill] = useState(null);
+
+  // Read prefill from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const prefillData = sessionStorage.getItem("webOrderPrefill");
+      if (prefillData) {
+        const parsed = JSON.parse(prefillData);
+
+        // Check if stale (older than 5 minutes)
+        const age = Date.now() - (parsed.timestamp || 0);
+        if (age > 5 * 60 * 1000) {
+          sessionStorage.removeItem("webOrderPrefill");
+          return;
+        }
+
+        // Set prefill state
+        setWebOrderPrefill(parsed);
+
+        // Auto-fill customer data
+        if (parsed.customerName || parsed.customerPhone) {
+          updateCustomerSnapshot({
+            name: parsed.customerName || "",
+            whatsapp: parsed.customerPhone || "",
+            email: parsed.customerSnapshot?.email || "",
+          });
+        }
+
+        // Clear sessionStorage after reading
+        sessionStorage.removeItem("webOrderPrefill");
+      }
+    } catch (error) {
+      console.error("Failed to read prefill:", error);
+      sessionStorage.removeItem("webOrderPrefill");
+    }
+  }, []);
 
   // --- SETUP PRINTER THERMAL ---
   const componentRef = useRef(); // Pengait ke kertas struk
@@ -191,6 +229,71 @@ export function Workspace() {
             </div>
           )}
         </div>
+
+        {/* Web Order Banner */}
+        {webOrderPrefill && !isLocked && (
+          <div
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.1))",
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              borderRadius: "8px",
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flex: 1,
+              }}
+            >
+              <span style={{ fontSize: "20px" }}>🌐</span>
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    color: "#3b82f6",
+                    fontWeight: "700",
+                    fontSize: "13px",
+                  }}
+                >
+                  Order dari Web (Belum Disimpan)
+                </div>
+                <div
+                  style={{
+                    color: "#64748b",
+                    fontSize: "11px",
+                    marginTop: "2px",
+                  }}
+                >
+                  💡 Harga: Rp{" "}
+                  {webOrderPrefill.suggestedAmount?.toLocaleString() || "-"}{" "}
+                  (saran dari web)
+                  {webOrderPrefill.fileRef && " • 📎 File tersedia"}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setWebOrderPrefill(null)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#64748b",
+                cursor: "pointer",
+                fontSize: "18px",
+                padding: "4px 8px",
+              }}
+              title="Tutup banner"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Customer Selector */}
         <CustomerSelector
