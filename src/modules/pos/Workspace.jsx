@@ -48,6 +48,10 @@ export function Workspace() {
   const { createOrder } = useOrderStore();
   const { profile } = useAuth();
 
+  // CS Name State (per-transaction)
+  const [csName, setCsName] = useState("");
+  const [csNameError, setCsNameError] = useState("");
+
   // Web Order Prefill State
   const [webOrderPrefill, setWebOrderPrefill] = useState(null);
 
@@ -103,16 +107,42 @@ export function Workspace() {
   const [isTempo, setIsTempo] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
+  // Validate CS Name
+  const validateCsName = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return "Nama CS wajib diisi";
+    if (trimmed.length < 2) return "Nama CS minimal 2 karakter";
+    if (/^\d+$/.test(trimmed)) return "Nama CS tidak boleh hanya angka";
+    if (trimmed.length > 20) return "Nama CS maksimal 20 karakter";
+    return "";
+  };
+
+  const handleCsNameChange = (e) => {
+    const value = e.target.value;
+    setCsName(value);
+    const error = validateCsName(value);
+    setCsNameError(error);
+  };
+
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
     console.log("=== PROSES PEMBAYARAN BUTTON CLICKED ===");
+
+    // Validate CS name before proceeding
+    const csError = validateCsName(csName);
+    if (csError) {
+      setCsNameError(csError);
+      alert(`Tidak bisa checkout: ${csError}`);
+      return;
+    }
+
     try {
       const success = confirmPayment(isTempo);
       if (!success) return;
 
-      // Use admin profile for order
-      const adminUser = profile ? { name: profile.name } : { name: "Admin" };
-      const order = await finalizeOrder(createOrder, adminUser, isTempo);
+      // Use CS name from input field
+      const csUser = { name: csName.trim() };
+      const order = await finalizeOrder(createOrder, csUser, isTempo);
       setLastOrder(order);
       setTransactionStage(TRANSACTION_STAGES.POST_PAYMENT);
 
@@ -133,6 +163,8 @@ export function Workspace() {
   const handleNewTransaction = () => {
     setShowNotaPreview(false);
     setLastOrder(null);
+    setCsName("");
+    setCsNameError("");
     resetTransaction();
   };
 
@@ -151,7 +183,7 @@ export function Workspace() {
   const receiptData = lastOrder || {
     orderNumber: "DRAFT", // Belum ada nomor
     customerName: customerSnapshot?.name || "Umum",
-    receivedBy: profile?.name || "Admin",
+    receivedBy: csName.trim() || "CS",
     items: items,
     totalAmount: calculateTotal(),
     discountAmount: discount || 0,
@@ -231,6 +263,75 @@ export function Workspace() {
             </div>
           )}
         </div>
+
+        {/* CS Name Input Field */}
+        {!isLocked && (
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.9)",
+              border: csNameError
+                ? "1px solid rgba(239, 68, 68, 0.5)"
+                : "1px solid rgba(6, 182, 212, 0.2)",
+              borderRadius: "12px",
+              padding: "12px 16px",
+            }}
+          >
+            <label
+              style={{
+                display: "block",
+                color: "#94a3b8",
+                fontSize: "12px",
+                marginBottom: "6px",
+                fontWeight: "600",
+              }}
+            >
+              👤 Nama CS (Wajib)
+            </label>
+            <input
+              type="text"
+              value={csName}
+              onChange={handleCsNameChange}
+              placeholder="Masukkan nama CS..."
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "rgba(30, 41, 59, 0.8)",
+                border: csNameError
+                  ? "1px solid rgba(239, 68, 68, 0.5)"
+                  : "1px solid rgba(71, 85, 105, 0.5)",
+                borderRadius: "8px",
+                color: "white",
+                fontSize: "14px",
+                outline: "none",
+                transition: "all 0.2s",
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "rgba(6, 182, 212, 0.6)";
+                e.target.style.boxShadow = "0 0 0 3px rgba(6, 182, 212, 0.1)";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = csNameError
+                  ? "rgba(239, 68, 68, 0.5)"
+                  : "rgba(71, 85, 105, 0.5)";
+                e.target.style.boxShadow = "none";
+              }}
+            />
+            {csNameError && (
+              <div
+                style={{
+                  color: "#ef4444",
+                  fontSize: "11px",
+                  marginTop: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                ⚠️ {csNameError}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Web Order Banner */}
         {webOrderPrefill && !isLocked && (

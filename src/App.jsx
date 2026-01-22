@@ -7,6 +7,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ProtectedWithPIN } from "./components/ProtectedWithPIN";
 
 // Pages
 import { Login } from "./pages/Login";
@@ -47,12 +48,42 @@ function App() {
           >
             <Route index element={<Navigate to="/pos" replace />} />
 
-            {/* Admin Routes */}
-            <Route path="/dashboard" element={<OwnerDashboard />} />
+            {/* Admin Routes (PIN Protected) */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedWithPIN>
+                  <OwnerDashboard />
+                </ProtectedWithPIN>
+              }
+            />
+            <Route
+              path="/products"
+              element={
+                <ProtectedWithPIN>
+                  <ProductManager />
+                </ProtectedWithPIN>
+              }
+            />
+            <Route
+              path="/employees"
+              element={
+                <ProtectedWithPIN>
+                  <EmployeeList />
+                </ProtectedWithPIN>
+              }
+            />
+            <Route
+              path="/settings/data"
+              element={
+                <ProtectedWithPIN>
+                  <DataManagement />
+                </ProtectedWithPIN>
+              }
+            />
+
+            {/* Operational Routes (No PIN Required) */}
             <Route path="/expenses" element={<ExpensePage />} />
-            <Route path="/products" element={<ProductManager />} />
-            <Route path="/employees" element={<EmployeeList />} />
-            <Route path="/settings/data" element={<DataManagement />} />
             <Route path="/web-inbox" element={<WebInboxPanel />} />
 
             {/* POS Routes */}

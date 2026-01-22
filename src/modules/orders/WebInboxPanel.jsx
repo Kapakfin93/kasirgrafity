@@ -17,6 +17,13 @@ export function WebInboxPanel() {
   const [currentFilter, setCurrentFilter] = useState("NEW");
   const [statusCounts, setStatusCounts] = useState({});
   const [rejectModal, setRejectModal] = useState({ show: false, order: null });
+  const [csInputModal, setCsInputModal] = useState({
+    show: false,
+    action: null,
+    order: null,
+  });
+  const [csName, setCsName] = useState("");
+  const [csNameError, setCsNameError] = useState("");
 
   // Load orders on mount and filter change
   useEffect(() => {
@@ -131,7 +138,38 @@ JOGLO PRINTING`;
   };
 
   const handleReject = (order) => {
-    setRejectModal({ show: true, order });
+    setCsInputModal({ show: true, action: "reject", order });
+  };
+
+  const handleCsNameChange = (e) => {
+    const value = e.target.value;
+    setCsName(value);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setCsNameError("Nama CS wajib diisi");
+    } else if (trimmed.length < 2) {
+      setCsNameError("Nama CS minimal 2 karakter");
+    } else if (/^\d+$/.test(trimmed)) {
+      setCsNameError("Nama CS tidak boleh hanya angka");
+    } else if (trimmed.length > 20) {
+      setCsNameError("Nama CS maksimal 20 karakter");
+    } else {
+      setCsNameError("");
+    }
+  };
+
+  const proceedWithCsName = () => {
+    const trimmed = csName.trim();
+    if (!trimmed || csNameError) {
+      alert("Nama CS tidak valid");
+      return;
+    }
+
+    if (csInputModal.action === "reject") {
+      setCsInputModal({ show: false, action: null, order: null });
+      setRejectModal({ show: true, order: csInputModal.order });
+    }
+    // For future approve action if needed
   };
 
   const confirmReject = async () => {
@@ -148,7 +186,7 @@ JOGLO PRINTING`;
         .update({
           status: "REJECTED",
           reviewed_at: new Date().toISOString(),
-          reviewed_by: "Admin", // TODO: Get from current user
+          reviewed_by: csName.trim(),
           rejected_at: new Date().toISOString(),
           notes_internal: reason,
         })
@@ -158,6 +196,8 @@ JOGLO PRINTING`;
 
       alert("❌ Order direject");
       setRejectModal({ show: false, order: null });
+      setCsName("");
+      setCsNameError("");
       loadWebInbox();
       loadStatusCounts();
     } catch (error) {
@@ -173,7 +213,7 @@ JOGLO PRINTING`;
         .update({
           status: "APPROVED",
           reviewed_at: new Date().toISOString(),
-          reviewed_by: "Admin", // TODO: Get from current user
+          reviewed_by: csName.trim(),
           approved_at: new Date().toISOString(),
           notes_internal: `Order POS created: ${posOrderNumber}`,
         })
@@ -284,6 +324,106 @@ JOGLO PRINTING`;
           />
         ))}
       </div>
+
+      {/* CS Input Modal */}
+      {csInputModal.show && (
+        <div
+          className="modal-overlay"
+          onClick={() =>
+            setCsInputModal({ show: false, action: null, order: null })
+          }
+        >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>👤 Masukkan Nama CS</h3>
+            <p
+              style={{
+                color: "#94a3b8",
+                fontSize: "14px",
+                marginBottom: "16px",
+              }}
+            >
+              Siapa yang menangani order ini?
+            </p>
+
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: "600",
+              }}
+            >
+              Nama CS:
+            </label>
+            <input
+              type="text"
+              value={csName}
+              onChange={handleCsNameChange}
+              placeholder="Masukkan nama CS..."
+              autoFocus
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "rgba(30, 41, 59, 0.8)",
+                border: csNameError
+                  ? "1px solid rgba(239, 68, 68, 0.5)"
+                  : "1px solid rgba(71, 85, 105, 0.5)",
+                borderRadius: "8px",
+                color: "white",
+                fontSize: "14px",
+                outline: "none",
+              }}
+            />
+            {csNameError && (
+              <div
+                style={{
+                  color: "#ef4444",
+                  fontSize: "12px",
+                  marginTop: "4px",
+                }}
+              >
+                ⚠️ {csNameError}
+              </div>
+            )}
+
+            <div
+              style={{
+                marginTop: "16px",
+                display: "flex",
+                gap: "8px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setCsInputModal({ show: false, action: null, order: null });
+                  setCsName("");
+                  setCsNameError("");
+                }}
+                style={{ padding: "8px 16px" }}
+              >
+                Batal
+              </button>
+              <button
+                onClick={proceedWithCsName}
+                disabled={!!csNameError || !csName.trim()}
+                style={{
+                  padding: "8px 16px",
+                  background:
+                    csNameError || !csName.trim() ? "#64748b" : "#06b6d4",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor:
+                    csNameError || !csName.trim() ? "not-allowed" : "pointer",
+                  opacity: csNameError || !csName.trim() ? 0.5 : 1,
+                }}
+              >
+                Lanjutkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject Modal */}
       {rejectModal.show && (
