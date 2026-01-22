@@ -1,79 +1,72 @@
 /**
- * App.jsx - REFACTORED with Routing
- * Main application entry with navigation
+ * App.jsx - REFACTORED with Admin Auth
+ * Main application entry with Supabase Auth protection
  */
 
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from './stores/useAuthStore';
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 // Pages
-import { EmployeeLogin } from './modules/employees/EmployeeLogin';
-import { AttendanceBoard } from './modules/employees/AttendanceBoard';
-import { EmployeeList } from './modules/employees/EmployeeList';
-import { OrderBoard } from './modules/orders/OrderBoard';
-import { OwnerDashboard } from './modules/dashboard/OwnerDashboard';
-import { ProductManager } from './modules/products/ProductManager';
-import { DataManagement } from './modules/settings/DataManagement';
-import { Workspace } from './modules/pos/Workspace';
-import { ExpensePage } from './modules/expenses/ExpensePage';
-import { MainLayout } from './components/MainLayout';
+import { Login } from "./pages/Login";
+import { EmployeeLogin } from "./modules/employees/EmployeeLogin";
+import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
+import { EmployeeList } from "./modules/employees/EmployeeList";
+import { OrderBoard } from "./modules/orders/OrderBoard";
+import { OwnerDashboard } from "./modules/dashboard/OwnerDashboard";
+import { ProductManager } from "./modules/products/ProductManager";
+import { DataManagement } from "./modules/settings/DataManagement";
+import { Workspace } from "./modules/pos/Workspace";
+import { ExpensePage } from "./modules/expenses/ExpensePage";
+import { MainLayout } from "./components/MainLayout";
+import { WebInboxPanel } from "./modules/orders/WebInboxPanel";
 
-import './index.css';
+import "./index.css";
 
 function App() {
-  const { isAuthenticated, currentUser } = useAuthStore();
-
-  // If not authenticated, show login
-  if (!isAuthenticated) {
-    return <EmployeeLogin />;
-  }
-
-  // Determine default route based on role
-  const getDefaultRoute = () => {
-    if (!currentUser) return '/login';
-
-    switch (currentUser.role) {
-      case 'OWNER':
-        return '/dashboard';
-      case 'CASHIER':
-        return '/pos';
-      case 'PRODUCTION':
-        return '/orders';
-      default:
-        return '/login';
-    }
-  };
-
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/login" element={<EmployeeLogin />} />
-        <Route path="/attendance" element={<AttendanceBoard />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/login" element={<Login />} />
 
-        {/* Protected Routes with Layout */}
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<Navigate to={getDefaultRoute()} replace />} />
+          {/* Employee Routes (keep untouched) */}
+          <Route path="/employee-login" element={<EmployeeLogin />} />
+          <Route path="/attendance" element={<AttendanceBoard />} />
 
-          {/* Owner Routes */}
-          <Route path="/dashboard" element={<OwnerDashboard />} />
-          <Route path="/expenses" element={<ExpensePage />} />
-          <Route path="/products" element={<ProductManager />} />
-          <Route path="/employees" element={<EmployeeList />} />
-          <Route path="/settings/data" element={<DataManagement />} />
+          {/* Protected Routes with Layout */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/pos" replace />} />
 
-          {/* Cashier Routes */}
-          <Route path="/pos" element={<Workspace />} />
+            {/* Admin Routes */}
+            <Route path="/dashboard" element={<OwnerDashboard />} />
+            <Route path="/expenses" element={<ExpensePage />} />
+            <Route path="/products" element={<ProductManager />} />
+            <Route path="/employees" element={<EmployeeList />} />
+            <Route path="/settings/data" element={<DataManagement />} />
+            <Route path="/web-inbox" element={<WebInboxPanel />} />
 
-          {/* Production Routes */}
-          <Route path="/orders" element={<OrderBoard />} />
-        </Route>
+            {/* POS Routes */}
+            <Route path="/pos" element={<Workspace />} />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+            {/* Production Routes */}
+            <Route path="/orders" element={<OrderBoard />} />
+          </Route>
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

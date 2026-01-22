@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useReactToPrint } from "react-to-print"; // <--- 1. IMPORT PENTING
 import { useTransaction, TRANSACTION_STAGES } from "../../hooks/useTransaction";
 import { useOrderStore } from "../../stores/useOrderStore";
-import { useAuthStore } from "../../stores/useAuthStore";
+import { useAuth } from "../../context/AuthContext";
 import { CustomerSelector } from "./CustomerSelector";
 import { ReceiptSection } from "./ReceiptSection";
 import { PaymentModal } from "./PaymentModal";
@@ -46,7 +46,7 @@ export function Workspace() {
   } = useTransaction();
 
   const { createOrder } = useOrderStore();
-  const { currentUser } = useAuthStore();
+  const { profile } = useAuth();
 
   // Web Order Prefill State
   const [webOrderPrefill, setWebOrderPrefill] = useState(null);
@@ -110,7 +110,9 @@ export function Workspace() {
       const success = confirmPayment(isTempo);
       if (!success) return;
 
-      const order = await finalizeOrder(createOrder, currentUser, isTempo);
+      // Use admin profile for order
+      const adminUser = profile ? { name: profile.name } : { name: "Admin" };
+      const order = await finalizeOrder(createOrder, adminUser, isTempo);
       setLastOrder(order);
       setTransactionStage(TRANSACTION_STAGES.POST_PAYMENT);
 
@@ -149,7 +151,7 @@ export function Workspace() {
   const receiptData = lastOrder || {
     orderNumber: "DRAFT", // Belum ada nomor
     customerName: customerSnapshot?.name || "Umum",
-    receivedBy: currentUser?.name || "Kasir",
+    receivedBy: profile?.name || "Admin",
     items: items,
     totalAmount: calculateTotal(),
     discountAmount: discount || 0,
@@ -221,11 +223,11 @@ export function Workspace() {
           >
             ⚡ JOGLO PRINTING
           </h1>
-          {currentUser && (
+          {profile && (
             <div
               style={{ color: "#64748b", fontSize: "11px", marginTop: "2px" }}
             >
-              👤 {currentUser.name}
+              👤 {profile.name}
             </div>
           )}
         </div>
