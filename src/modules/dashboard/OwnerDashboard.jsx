@@ -19,12 +19,18 @@ import { RecentOrders } from "./RecentOrders";
 import { TodayAttendance } from "./TodayAttendance";
 import { TopProducts } from "./TopProducts";
 import { HistoryModal } from "../pos/HistoryModal"; // Import History Modal
+import { OwnerActionPanel } from "../../components/dashboard/OwnerActionPanel";
+import { getOwnerDailySnapshot } from "../../core/ownerDecisionEngine";
+import { resolveActionsFromSnapshot } from "../../core/ownerActionResolver";
 
 export function OwnerDashboard() {
   const navigate = useNavigate();
   const { isOwner } = usePermissions();
   const [period, setPeriod] = useState("today");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false); // History Modal State
+  const [isActionPanelOpen, setIsActionPanelOpen] = useState(false); // Action Panel Modal State
+  const [actions, setActions] = useState([]); // Resolved actions
+  const [actionsLoading, setActionsLoading] = useState(false);
 
   // AMBIL DATA DARI STORE (YANG SUDAH PINTAR)
   const {
@@ -52,6 +58,9 @@ export function OwnerDashboard() {
     loadEmployees();
     loadTodayAttendances();
     loadExpenses();
+
+    // Load actions for action panel
+    loadActions();
   }, [
     period,
     loadOrders,
@@ -60,6 +69,21 @@ export function OwnerDashboard() {
     loadTodayAttendances,
     loadExpenses,
   ]);
+
+  // Load actions from decision engine
+  const loadActions = async () => {
+    setActionsLoading(true);
+    try {
+      const snapshot = await getOwnerDailySnapshot();
+      const resolvedActions = resolveActionsFromSnapshot(snapshot);
+      setActions(resolvedActions);
+    } catch (error) {
+      console.error("Failed to load actions:", error);
+      setActions([]);
+    } finally {
+      setActionsLoading(false);
+    }
+  };
 
   // === 2. HITUNG PENGELUARAN (EXPENSES) SECARA LOKAL ===
   // (Karena Expense Store terpisah, kita hitung manual di sini untuk Net Profit)
@@ -242,14 +266,78 @@ export function OwnerDashboard() {
           color="#3b82f6"
         />
 
-        {/* Piutang Umum */}
-        <StatsCard
-          icon="⚠️"
-          title="Kurang Bayar"
-          value={formatRupiah(totalOutstanding)} // Menggunakan mapped variable
-          subtitle="Harus ditagih"
-          color="#ef4444"
-        />
+        {/* Piutang Umum with Action Badge */}
+        <div style={{ position: "relative" }}>
+          <StatsCard
+            icon="⚠️"
+            title="Kurang Bayar"
+            value={formatRupiah(totalOutstanding)} // Menggunakan mapped variable
+            subtitle={
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>Harus ditagih</span>
+                {actions.length > 0 && (
+                  <button
+                    onClick={() => setIsActionPanelOpen(true)}
+                    style={{
+                      padding: "4px 8px",
+                      background: "rgba(139, 92, 246, 0.2)",
+                      border: "1px solid rgba(139, 92, 246, 0.5)",
+                      borderRadius: "6px",
+                      color: "#a78bfa",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      transition: "all 0.2s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background =
+                        "rgba(139, 92, 246, 0.3)";
+                      e.currentTarget.style.transform = "scale(1.05)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background =
+                        "rgba(139, 92, 246, 0.2)";
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
+                  >
+                    🎯 {actions.length} Tindakan
+                  </button>
+                )}
+              </div>
+            }
+            color="#ef4444"
+          />
+          {/* Action count badge */}
+          {actions.length > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "8px",
+                right: "8px",
+                background: "linear-gradient(135deg, #8b5cf6, #a78bfa)",
+                color: "#fff",
+                borderRadius: "12px",
+                padding: "4px 8px",
+                fontSize: "11px",
+                fontWeight: "700",
+                boxShadow: "0 0 10px rgba(139, 92, 246, 0.5)",
+                animation: "pulse 2s infinite",
+              }}
+            >
+              {actions.length}
+            </div>
+          )}
+        </div>
 
         {/* Invoice Berjalan (Placeholder / Future Dev) */}
         <StatsCard
@@ -563,6 +651,72 @@ export function OwnerDashboard() {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
       />
+
+      {/* Action Panel Modal */}
+      {isActionPanelOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.7)",
+            backdropFilter: "blur(4px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={() => setIsActionPanelOpen(false)}
+        >
+          <div
+            style={{
+              maxWidth: "800px",
+              width: "100%",
+              maxHeight: "90vh",
+              overflow: "auto",
+              position: "relative",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setIsActionPanelOpen(false)}
+              style={{
+                position: "absolute",
+                top: "10px",
+                right: "10px",
+                background: "rgba(239, 68, 68, 0.2)",
+                border: "1px solid rgba(239, 68, 68, 0.5)",
+                borderRadius: "8px",
+                color: "#ef4444",
+                padding: "8px 12px",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: "700",
+                zIndex: 10000,
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239, 68, 68, 0.3)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+              }}
+            >
+              ✕ Tutup
+            </button>
+
+            {/* Action Panel */}
+            <OwnerActionPanel
+              actions={actions}
+              title="🎯 Tindakan yang Diperlukan"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

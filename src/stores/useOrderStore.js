@@ -571,5 +571,33 @@ export const useOrderStore = create((set, get) => ({
     get().loadOrders({ page: 1, limit: 20, paymentStatus: status });
   },
   applyFilter: (orders) => orders,
+
+  // === PAYMENT CONSISTENCY VALIDATION ===
+  // READ-ONLY: Detects discrepancies between orders and order_payments
+  getPaymentValidationReport: async (options = {}) => {
+    try {
+      const { getPaymentDiscrepancyReport } =
+        await import("../core/paymentValidator");
+      const report = await getPaymentDiscrepancyReport(options);
+      return report;
+    } catch (error) {
+      console.error("❌ Payment validation failed:", error);
+      return {
+        success: false,
+        error: error.message,
+        summary: null,
+        results: [],
+      };
+    }
+  },
+
+  // Get only problematic orders (convenience method)
+  getProblematicPayments: async () => {
+    const report = await get().getPaymentValidationReport({
+      onlyMismatches: true,
+    });
+    return report.results || [];
+  },
+
   clearError: () => set({ error: null }),
 }));
