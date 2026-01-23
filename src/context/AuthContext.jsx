@@ -1,20 +1,26 @@
 /**
- * AuthContext - Admin Auth Layer
- * Uses Supabase Auth for admin login
- * Parallel to employee system - DO NOT TOUCH employee auth
+ * AuthContext - FINAL STABLE VERSION
+ * Anti infinite loading
+ * Safe for PWA, StrictMode, slow network
  */
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { supabase } from "../services/supabaseClient";
 
-const AuthContext = createContext({});
+const AuthContext = createContext(null);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
     throw new Error("useAuth must be used within AuthProvider");
   }
-  return context;
+  return ctx;
 };
 
 export function AuthProvider({ children }) {
@@ -22,14 +28,42 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check session on mount
-  useEffect(() => {
-    checkSession();
+  const initializedRef = useRef(false);
 
-    // Listen for auth changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const initAuth = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.warn("Auth session error:", error.message);
+          return;
+        }
+
+        if (data?.session?.user && isMounted) {
+          setUser(data.session.user);
+          await loadProfile(data.session.user.id);
+        }
+      } catch (err) {
+        console.warn("Auth init failed:", err);
+      } finally {
+        if (isMounted) {
+          initializedRef.current = true;
+          setLoading(false);
+        }
+      }
+    };
+
+    initAuth();
+
+    // AUTH STATE CHANGE (AFTER INIT ONLY)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!initializedRef.current) return;
+
       if (session?.user) {
         setUser(session.user);
         await loadProfile(session.user.id);
@@ -37,31 +71,21 @@ export function AuthProvider({ children }) {
         setUser(null);
         setProfile(null);
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const checkSession = async () => {
-    try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error) throw error;
-
-      if (session?.user) {
-        setUser(session.user);
-        await loadProfile(session.user.id);
+    // FAILSAFE: loading tidak boleh lebih dari 2 detik
+    const failSafe = setTimeout(() => {
+      if (isMounted && loading) {
+        setLoading(false); // silent fallback
       }
-    } catch (error) {
-      console.error("Session check failed:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(failSafe);
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const loadProfile = async (userId) => {
     try {
@@ -71,51 +95,54 @@ export function AuthProvider({ children }) {
         .eq("id", userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.warn("Profile not found:", error.message);
+        setProfile(null);
+        return;
+      }
 
       setProfile(data);
-    } catch (error) {
-      console.error("Failed to load profile:", error);
+    } catch (err) {
+      console.warn("Load profile failed:", err);
       setProfile(null);
     }
   };
 
   const signIn = async (email, password) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
-
-      // Profile will be loaded by onAuthStateChange
       return { success: true };
-    } catch (error) {
-      console.error("Sign in failed:", error);
-      return { success: false, error: error.message };
+    } catch (err) {
+      return { success: false, error: err.message };
     }
   };
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-
+      await supabase.auth.signOut();
       setUser(null);
       setProfile(null);
-    } catch (error) {
-      console.error("Sign out failed:", error);
+    } catch (err) {
+      console.warn("Sign out failed:", err);
     }
   };
 
-  const value = {
-    user,
-    profile,
-    loading,
-    signIn,
-    signOut,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        signIn,
+        signOut,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }

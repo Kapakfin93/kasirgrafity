@@ -6,6 +6,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { CSProvider } from "./context/CSContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProtectedWithPIN } from "./components/ProtectedWithPIN";
 
@@ -28,75 +29,77 @@ import "./index.css";
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/login" element={<Login />} />
+      <CSProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
 
-          {/* Employee Routes (keep untouched) */}
-          <Route path="/employee-login" element={<EmployeeLogin />} />
-          <Route path="/attendance" element={<AttendanceBoard />} />
+            {/* Employee Routes (keep untouched) */}
+            <Route path="/employee-login" element={<EmployeeLogin />} />
+            <Route path="/attendance" element={<AttendanceBoard />} />
 
-          {/* Protected Routes with Layout */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <MainLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/pos" replace />} />
-
-            {/* Admin Routes (PIN Protected) */}
+            {/* Protected Routes with Layout */}
             <Route
-              path="/dashboard"
+              path="/"
               element={
-                <ProtectedWithPIN>
-                  <OwnerDashboard />
-                </ProtectedWithPIN>
+                <ProtectedRoute>
+                  <MainLayout />
+                </ProtectedRoute>
               }
-            />
-            <Route
-              path="/products"
-              element={
-                <ProtectedWithPIN>
-                  <ProductManager />
-                </ProtectedWithPIN>
-              }
-            />
-            <Route
-              path="/employees"
-              element={
-                <ProtectedWithPIN>
-                  <EmployeeList />
-                </ProtectedWithPIN>
-              }
-            />
-            <Route
-              path="/settings/data"
-              element={
-                <ProtectedWithPIN>
-                  <DataManagement />
-                </ProtectedWithPIN>
-              }
-            />
+            >
+              <Route index element={<Navigate to="/pos" replace />} />
 
-            {/* Operational Routes (No PIN Required) */}
-            <Route path="/expenses" element={<ExpensePage />} />
-            <Route path="/web-inbox" element={<WebInboxPanel />} />
+              {/* Admin Routes (PIN Protected) */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedWithPIN>
+                    <OwnerDashboard />
+                  </ProtectedWithPIN>
+                }
+              />
+              <Route
+                path="/products"
+                element={
+                  <ProtectedWithPIN>
+                    <ProductManager />
+                  </ProtectedWithPIN>
+                }
+              />
+              <Route
+                path="/employees"
+                element={
+                  <ProtectedWithPIN>
+                    <EmployeeList />
+                  </ProtectedWithPIN>
+                }
+              />
+              <Route
+                path="/settings/data"
+                element={
+                  <ProtectedWithPIN>
+                    <DataManagement />
+                  </ProtectedWithPIN>
+                }
+              />
 
-            {/* POS Routes */}
-            <Route path="/pos" element={<Workspace />} />
+              {/* Operational Routes (No PIN Required) */}
+              <Route path="/expenses" element={<ExpensePage />} />
+              <Route path="/web-inbox" element={<WebInboxPanel />} />
 
-            {/* Production Routes */}
-            <Route path="/orders" element={<OrderBoard />} />
-          </Route>
+              {/* POS Routes */}
+              <Route path="/pos" element={<Workspace />} />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+              {/* Production Routes */}
+              <Route path="/orders" element={<OrderBoard />} />
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </CSProvider>
     </AuthProvider>
   );
 }

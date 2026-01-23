@@ -3,6 +3,7 @@ import { useReactToPrint } from "react-to-print"; // <--- 1. IMPORT PENTING
 import { useTransaction, TRANSACTION_STAGES } from "../../hooks/useTransaction";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { useAuth } from "../../context/AuthContext";
+import { useCS } from "../../context/CSContext";
 import { CustomerSelector } from "./CustomerSelector";
 import { ReceiptSection } from "./ReceiptSection";
 import { PaymentModal } from "./PaymentModal";
@@ -47,9 +48,9 @@ export function Workspace() {
 
   const { createOrder } = useOrderStore();
   const { profile } = useAuth();
+  const { csName, locked, setCSName, lock, unlock } = useCS();
 
-  // CS Name State (per-transaction)
-  const [csName, setCsName] = useState("");
+  // CS Name Error State
   const [csNameError, setCsNameError] = useState("");
 
   // Web Order Prefill State
@@ -119,17 +120,34 @@ export function Workspace() {
 
   const handleCsNameChange = (e) => {
     const value = e.target.value;
-    setCsName(value);
+    setCSName(value);
     const error = validateCsName(value);
     setCsNameError(error);
+  };
+
+  const handleLockToggle = () => {
+    if (locked) {
+      unlock();
+    } else {
+      const error = validateCsName(csName);
+      if (error) {
+        setCsNameError(error);
+        alert(`Tidak bisa lock: ${error}`);
+        return;
+      }
+      lock();
+    }
   };
 
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
     console.log("=== PROSES PEMBAYARAN BUTTON CLICKED ===");
 
+    // Safe CS name handling
+    const safeCSName = (csName || "").trim();
+
     // Validate CS name before proceeding
-    const csError = validateCsName(csName);
+    const csError = validateCsName(safeCSName);
     if (csError) {
       setCsNameError(csError);
       alert(`Tidak bisa checkout: ${csError}`);
@@ -140,8 +158,8 @@ export function Workspace() {
       const success = confirmPayment(isTempo);
       if (!success) return;
 
-      // Use CS name from input field
-      const csUser = { name: csName.trim() };
+      // Use CS name from context
+      const csUser = { name: safeCSName };
       const order = await finalizeOrder(createOrder, csUser, isTempo);
       setLastOrder(order);
       setTransactionStage(TRANSACTION_STAGES.POST_PAYMENT);
@@ -163,7 +181,6 @@ export function Workspace() {
   const handleNewTransaction = () => {
     setShowNotaPreview(false);
     setLastOrder(null);
-    setCsName("");
     setCsNameError("");
     resetTransaction();
   };
@@ -180,10 +197,11 @@ export function Workspace() {
   const isLocked = transactionStage === TRANSACTION_STAGES.POST_PAYMENT;
 
   // DATA UNTUK STRUK (Bisa dari order terakhir ATAU keranjang aktif)
+  const safeCSName = (csName || "").trim();
   const receiptData = lastOrder || {
     orderNumber: "DRAFT", // Belum ada nomor
     customerName: customerSnapshot?.name || "Umum",
-    receivedBy: csName.trim() || "CS",
+    receivedBy: safeCSName || "CS",
     items: items,
     totalAmount: calculateTotal(),
     discountAmount: discount || 0,
@@ -264,50 +282,90 @@ export function Workspace() {
           )}
         </div>
 
-        {/* CS Name Input Field */}
+        {/* CS Name Input Field with Lock/Unlock */}
         {!isLocked && (
           <div
             style={{
               background: "rgba(15, 23, 42, 0.9)",
               border: csNameError
                 ? "1px solid rgba(239, 68, 68, 0.5)"
-                : "1px solid rgba(6, 182, 212, 0.2)",
+                : locked
+                  ? "1px solid rgba(34, 197, 94, 0.5)"
+                  : "1px solid rgba(6, 182, 212, 0.2)",
               borderRadius: "12px",
               padding: "12px 16px",
             }}
           >
-            <label
+            <div
               style={{
-                display: "block",
-                color: "#94a3b8",
-                fontSize: "12px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: "6px",
-                fontWeight: "600",
               }}
             >
-              👤 Nama CS (Wajib)
-            </label>
+              <label
+                style={{
+                  color: "#94a3b8",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                }}
+              >
+                👤 Nama CS (Wajib)
+              </label>
+              <button
+                onClick={handleLockToggle}
+                style={{
+                  background: locked
+                    ? "rgba(34, 197, 94, 0.2)"
+                    : "rgba(100, 116, 139, 0.2)",
+                  border: locked
+                    ? "1px solid rgba(34, 197, 94, 0.5)"
+                    : "1px solid rgba(100, 116, 139, 0.3)",
+                  borderRadius: "6px",
+                  padding: "4px 10px",
+                  color: locked ? "#22c55e" : "#94a3b8",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  transition: "all 0.2s",
+                }}
+                title={
+                  locked
+                    ? "Unlock untuk ubah CS"
+                    : "Lock CS untuk semua transaksi"
+                }
+              >
+                {locked ? "🔒 Locked" : "🔓 Unlock"}
+              </button>
+            </div>
             <input
               type="text"
-              value={csName}
+              value={csName || ""}
               onChange={handleCsNameChange}
               placeholder="Masukkan nama CS..."
+              disabled={locked}
               style={{
                 width: "100%",
                 padding: "10px 12px",
-                background: "rgba(30, 41, 59, 0.8)",
+                background: locked
+                  ? "rgba(30, 41, 59, 0.5)"
+                  : "rgba(30, 41, 59, 0.8)",
                 border: csNameError
                   ? "1px solid rgba(239, 68, 68, 0.5)"
                   : "1px solid rgba(71, 85, 105, 0.5)",
                 borderRadius: "8px",
-                color: "white",
+                color: locked ? "#22c55e" : "white",
                 fontSize: "14px",
                 outline: "none",
                 transition: "all 0.2s",
+                cursor: locked ? "not-allowed" : "text",
               }}
               onFocus={(e) => {
-                e.target.style.borderColor = "rgba(6, 182, 212, 0.6)";
-                e.target.style.boxShadow = "0 0 0 3px rgba(6, 182, 212, 0.1)";
+                if (!locked) {
+                  e.target.style.borderColor = "rgba(6, 182, 212, 0.6)";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(6, 182, 212, 0.1)";
+                }
               }}
               onBlur={(e) => {
                 e.target.style.borderColor = csNameError
@@ -328,6 +386,20 @@ export function Workspace() {
                 }}
               >
                 ⚠️ {csNameError}
+              </div>
+            )}
+            {locked && csName && (
+              <div
+                style={{
+                  color: "#22c55e",
+                  fontSize: "11px",
+                  marginTop: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                ✓ CS terkunci - semua transaksi pakai nama ini
               </div>
             )}
           </div>

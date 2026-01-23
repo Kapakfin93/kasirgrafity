@@ -356,3 +356,69 @@ export const largeFormatProducts = [
     ],
   },
 ];
+
+// Supabase migration function
+import { supabase } from "../../services/supabaseClient.js";
+
+export async function runLargeFormatReconstruction() {
+  console.log("🔧 LARGE FORMAT RECONSTRUCTION STARTING...");
+
+  try {
+    // 1. Ensure categories exist
+    const categoriesToInsert = [
+      {
+        id: "CAT_OUTDOOR",
+        name: "Cetak Outdoor (Area)",
+        description: "Spanduk, Banner - Harga per meter persegi",
+        icon: "🏞️",
+        display_order: 1,
+      },
+      {
+        id: "CAT_ROLLS",
+        name: "Cetak Roll (Linear)",
+        description: "Kain, Stiker, DTF - Harga per meter panjang",
+        icon: "📏",
+        display_order: 2,
+      },
+      {
+        id: "CAT_POSTER",
+        name: "Poster & Media Cetak",
+        description: "Poster berbagai ukuran - Harga per lembar",
+        icon: "🖼️",
+        display_order: 3,
+      },
+    ];
+
+    for (const cat of categoriesToInsert) {
+      const { error } = await supabase.from("categories").upsert(cat, {
+        onConflict: "id",
+        ignoreDuplicates: false,
+      });
+
+      if (error && error.code !== "23505") {
+        console.error(`❌ Failed to insert category ${cat.id}:`, error);
+      }
+    }
+
+    console.log("✅ Categories ensured");
+
+    // 2. Insert products
+    for (const product of largeFormatProducts) {
+      const { error } = await supabase.from("products").upsert(product, {
+        onConflict: "code",
+        ignoreDuplicates: false,
+      });
+
+      if (error && error.code !== "23505") {
+        console.error(`❌ Failed to insert product ${product.id}:`, error);
+      }
+    }
+
+    console.log(
+      `✅ LARGE FORMAT RECONSTRUCTION COMPLETE (${largeFormatProducts.length} products)`,
+    );
+  } catch (error) {
+    console.error("❌ LARGE FORMAT RECONSTRUCTION ERROR:", error);
+    throw error;
+  }
+}

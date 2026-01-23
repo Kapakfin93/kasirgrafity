@@ -276,7 +276,7 @@ const A3_PRODUCTS = [
   },
 ];
 
-export async function runA3Reconstruction() {
+export async function runDigitalA3Reconstruction() {
   console.log("🖨️ DIGITAL A3+ RECONSTRUCTION STARTING...");
   try {
     // ✅ HARDCODED Category ID (Case-sensitive, exact match)

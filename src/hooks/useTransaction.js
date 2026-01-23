@@ -481,23 +481,34 @@ export function useTransaction() {
       customerSnapshot.phone || customerSnapshot.whatsapp || "-";
 
     try {
-      const customerData = {
-        name: customerSnapshot.name,
-        phone: phoneToSave,
-        address: customerSnapshot.address || "-",
-        ...(customerSnapshot.id ? { id: customerSnapshot.id } : {}),
-      };
+      // Only insert if new customer (no existing ID)
+      if (!customerSnapshot.id) {
+        const customerData = {
+          name: customerSnapshot.name,
+          phone: phoneToSave,
+          address: customerSnapshot.address || "-",
+        };
 
-      const { data: savedCustomer, error: custError } = await supabase
-        .from("customers")
-        .upsert(customerData)
-        .select()
-        .single();
+        const { data: savedCustomer, error: custError } = await supabase
+          .from("customers")
+          .insert(customerData)
+          .select()
+          .single();
 
-      if (!custError && savedCustomer) {
-        finalCustomerId = savedCustomer.id;
-        console.log("✅ Pelanggan tersimpan:", savedCustomer);
-        addCustomerToCache(savedCustomer);
+        if (!custError && savedCustomer) {
+          finalCustomerId = savedCustomer.id;
+          console.log("✅ Pelanggan baru tersimpan:", savedCustomer);
+          addCustomerToCache(savedCustomer);
+        } else {
+          console.warn(
+            "⚠️ Customer insert failed, proceeding without ID:",
+            custError,
+          );
+        }
+      } else {
+        // Existing customer, use provided ID
+        finalCustomerId = customerSnapshot.id;
+        console.log("✅ Menggunakan pelanggan lama:", customerSnapshot.name);
       }
     } catch (err) {
       console.error("Error Customer Processing:", err);

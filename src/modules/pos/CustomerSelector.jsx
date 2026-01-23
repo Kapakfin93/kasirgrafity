@@ -68,14 +68,9 @@ export function CustomerSelector({
           <input
             type="text"
             placeholder="Nama Pelanggan / No HP..."
-            // PERBAIKAN DI SINI: Tambah || ""
             value={customerSnapshot.name || ""}
             onChange={handleNameChange}
             disabled={isLocked}
-            onFocus={() =>
-              (customerSnapshot.name || "").length > 1 &&
-              setShowSuggestions(true)
-            }
             style={{
               width: "100%",
               padding: "10px",
@@ -103,7 +98,6 @@ export function CustomerSelector({
               e.currentTarget.style.borderColor = "#06b6d4";
             }}
           />
-
           {/* DROPDOWN SARAN */}
           {showSuggestions && suggestions.length > 0 && !isLocked && (
             <div

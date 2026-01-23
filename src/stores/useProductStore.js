@@ -10,10 +10,6 @@ import db from "../data/db/schema";
 import { Category } from "../data/models/Category";
 import { Product } from "../data/models/Product";
 import { Finishing } from "../data/models/Finishing";
-import {
-  seedMasterData,
-  checkAndCleanupDuplicates,
-} from "../data/db/seedMasterData";
 
 // Expected category count (for duplicate detection)
 const EXPECTED_CATEGORY_COUNT = 4; // Updated after Phase 2 migration (4 pillars)
@@ -26,8 +22,8 @@ export const useProductStore = create((set, get) => ({
   isInitialized: false,
 
   /**
-   * Initialize: Load master data from DB (or seed if empty)
-   * GEN 2 UPDATE: Migration handles seeding now, not this store
+   * Initialize: Load master data from DB
+   * Categories are created by Dexie.js seeders (not Supabase migrations)
    */
   initialize: async () => {
     if (get().isInitialized) return get().categories;
@@ -35,12 +31,7 @@ export const useProductStore = create((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      // GEN 2: Migration creates categories, skip old seeder
-      // The migration in main.jsx creates the 4 new pillar categories
-      // await checkAndCleanupDuplicates(EXPECTED_CATEGORY_COUNT); // DISABLED
-      // await seedMasterData(); // DISABLED - Migration handles this
-
-      // Fetch categories from DB (created by migration)
+      // Fetch categories from DB (created by Dexie.js seeders)
       const categories = await get().fetchMasterData();
 
       set({ isInitialized: true, loading: false });
