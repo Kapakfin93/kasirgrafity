@@ -25,6 +25,8 @@ export function PaymentModal({
   isTempo,
   setIsTempo,
   items = [], // NEW: For order preview
+  productionPriority = "STANDARD",
+  setProductionPriority,
 }) {
   const inputRef = useRef(null);
 
@@ -395,113 +397,265 @@ export function PaymentModal({
               )}
             </div>
 
-            {/* Deadline Picker */}
+            {/* === ENHANCED DEADLINE & PRIORITY SECTION === */}
             {targetDate && setTargetDate && (
               <div
                 style={{
-                  padding: "14px",
-                  background: "rgba(30, 41, 59, 0.5)",
-                  borderRadius: "10px",
-                  border: "1px solid #334155",
+                  padding: "16px",
+                  background: "rgba(59, 130, 246, 0.08)",
+                  borderRadius: "12px",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  marginBottom: "16px",
                 }}
               >
-                <label
+                {/* Section Header */}
+                <div
                   style={{
-                    display: "block",
-                    fontSize: "10px",
-                    fontWeight: "700",
-                    color: "#64748b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginBottom: "12px",
                   }}
                 >
-                  ⏰ Estimasi Selesai
-                </label>
+                  <span style={{ fontSize: "20px" }}>📅</span>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: "13px",
+                      fontWeight: "800",
+                      color: "#3b82f6",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                    }}
+                  >
+                    Estimasi Selesai Produksi
+                  </h3>
+                </div>
+
+                {/* Production Priority Selector */}
+                {setProductionPriority && (
+                  <div style={{ marginBottom: "12px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "10px",
+                        fontWeight: "700",
+                        color: "#64748b",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      ⚡ Prioritas Produksi (Label Saja)
+                    </label>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        onClick={() => setProductionPriority("STANDARD")}
+                        style={{
+                          flex: 1,
+                          padding: "8px",
+                          borderRadius: "6px",
+                          border:
+                            productionPriority === "STANDARD"
+                              ? "2px solid #10b981"
+                              : "1px solid #475569",
+                          background:
+                            productionPriority === "STANDARD"
+                              ? "rgba(16, 185, 129, 0.15)"
+                              : "transparent",
+                          color:
+                            productionPriority === "STANDARD"
+                              ? "#10b981"
+                              : "#94a3b8",
+                          fontSize: "10px",
+                          fontWeight: "700",
+                          cursor: "pointer",
+                        }}
+                      >
+                        STANDARD
+                      </button>
+                      <button
+                        onClick={() => setProductionPriority("EXPRESS")}
+                        style={{
+                          flex: 1,
+                          padding: "8px",
+                          borderRadius: "6px",
+                          border:
+                            productionPriority === "EXPRESS"
+                              ? "2px solid #f59e0b"
+                              : "1px solid #475569",
+                          background:
+                            productionPriority === "EXPRESS"
+                              ? "rgba(245, 158, 11, 0.15)"
+                              : "transparent",
+                          color:
+                            productionPriority === "EXPRESS"
+                              ? "#f59e0b"
+                              : "#94a3b8",
+                          fontSize: "10px",
+                          fontWeight: "700",
+                          cursor: "pointer",
+                        }}
+                      >
+                        EXPRESS
+                      </button>
+                      <button
+                        onClick={() => setProductionPriority("URGENT")}
+                        style={{
+                          flex: 1,
+                          padding: "8px",
+                          borderRadius: "6px",
+                          border:
+                            productionPriority === "URGENT"
+                              ? "2px solid #f43f5e"
+                              : "1px solid #475569",
+                          background:
+                            productionPriority === "URGENT"
+                              ? "rgba(244, 63, 94, 0.15)"
+                              : "transparent",
+                          color:
+                            productionPriority === "URGENT"
+                              ? "#f43f5e"
+                              : "#94a3b8",
+                          fontSize: "10px",
+                          fontWeight: "700",
+                          cursor: "pointer",
+                        }}
+                      >
+                        URGENT
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Date Shortcuts */}
                 <div
-                  style={{ display: "flex", gap: "6px", marginBottom: "8px" }}
+                  style={{ display: "flex", gap: "6px", marginBottom: "10px" }}
                 >
                   <button
-                    onClick={setPriorityStandard}
+                    onClick={() => {
+                      const now = new Date();
+                      now.setHours(now.getHours() + 6);
+                      setTargetDate(now.toISOString().slice(0, 16));
+                    }}
                     style={{
                       flex: 1,
                       padding: "7px",
                       borderRadius: "6px",
-                      border: "1px solid #10b981",
-                      background: "transparent",
-                      color: "#10b981",
+                      border: "1px solid #64748b",
+                      background: "rgba(100, 116, 139, 0.1)",
+                      color: "#cbd5e1",
                       fontSize: "9px",
                       fontWeight: "700",
                       cursor: "pointer",
                     }}
                   >
-                    STANDAR
+                    HARI INI
                   </button>
                   <button
-                    onClick={setPriorityExpress}
+                    onClick={() => {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      tomorrow.setHours(10, 0, 0, 0);
+                      setTargetDate(tomorrow.toISOString().slice(0, 16));
+                    }}
                     style={{
                       flex: 1,
                       padding: "7px",
                       borderRadius: "6px",
-                      border: "1px solid #f59e0b",
-                      background: "transparent",
-                      color: "#f59e0b",
+                      border: "1px solid #64748b",
+                      background: "rgba(100, 116, 139, 0.1)",
+                      color: "#cbd5e1",
                       fontSize: "9px",
                       fontWeight: "700",
                       cursor: "pointer",
                     }}
                   >
-                    +
-                    {formatRupiah(PRIORITY_CONFIG.FEE_EXPRESS).replace(
-                      /Rp /g,
-                      "",
-                    )}
+                    BESOK
                   </button>
                   <button
-                    onClick={setPriorityUrgent}
+                    onClick={() => {
+                      const future = new Date();
+                      future.setDate(future.getDate() + 3);
+                      future.setHours(10, 0, 0, 0);
+                      setTargetDate(future.toISOString().slice(0, 16));
+                    }}
                     style={{
                       flex: 1,
                       padding: "7px",
                       borderRadius: "6px",
-                      border: "1px solid #f43f5e",
-                      background: "transparent",
-                      color: "#f43f5e",
+                      border: "1px solid #64748b",
+                      background: "rgba(100, 116, 139, 0.1)",
+                      color: "#cbd5e1",
                       fontSize: "9px",
                       fontWeight: "700",
                       cursor: "pointer",
                     }}
                   >
-                    +
-                    {formatRupiah(PRIORITY_CONFIG.FEE_URGENT).replace(
-                      /Rp /g,
-                      "",
-                    )}
+                    +3 HARI
+                  </button>
+                  <button
+                    onClick={() => {
+                      const future = new Date();
+                      future.setDate(future.getDate() + 7);
+                      future.setHours(10, 0, 0, 0);
+                      setTargetDate(future.toISOString().slice(0, 16));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "7px",
+                      borderRadius: "6px",
+                      border: "1px solid #64748b",
+                      background: "rgba(100, 116, 139, 0.1)",
+                      color: "#cbd5e1",
+                      fontSize: "9px",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                    }}
+                  >
+                    +7 HARI
                   </button>
                 </div>
+
+                {/* Date Time Picker */}
                 <input
                   type="datetime-local"
                   value={targetDate}
                   onChange={(e) => setTargetDate(e.target.value)}
                   style={{
                     width: "100%",
-                    padding: "8px",
-                    borderRadius: "6px",
+                    padding: "10px",
+                    borderRadius: "8px",
                     border: "1px solid #475569",
                     background: "rgba(15, 23, 42, 0.8)",
                     color: "#f1f5f9",
-                    fontSize: "11px",
+                    fontSize: "12px",
+                    fontWeight: "600",
                   }}
                 />
+
+                {/* Display Selected Date */}
                 {targetDate && (
-                  <p
+                  <div
                     style={{
-                      margin: "6px 0 0",
-                      color: "#94a3b8",
-                      fontSize: "10px",
+                      marginTop: "8px",
+                      padding: "8px",
+                      background: "rgba(59, 130, 246, 0.1)",
+                      borderRadius: "6px",
+                      border: "1px solid rgba(59, 130, 246, 0.2)",
                     }}
                   >
-                    📅 {formatIndonesianDate(targetDate)}
-                  </p>
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#3b82f6",
+                        fontSize: "11px",
+                        fontWeight: "600",
+                      }}
+                    >
+                      📅 {formatIndonesianDate(targetDate)}
+                    </p>
+                  </div>
                 )}
               </div>
             )}

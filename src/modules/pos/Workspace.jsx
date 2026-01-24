@@ -41,6 +41,8 @@ export function Workspace() {
     setPriorityStandard,
     setPriorityExpress,
     setPriorityUrgent,
+    productionPriority,
+    setProductionPriority,
     // Discount
     discount,
     setDiscount,
@@ -650,6 +652,8 @@ export function Workspace() {
         setPriorityStandard={setPriorityStandard}
         setPriorityExpress={setPriorityExpress}
         setPriorityUrgent={setPriorityUrgent}
+        productionPriority={productionPriority}
+        setProductionPriority={setProductionPriority}
         isTempo={isTempo}
         setIsTempo={setIsTempo}
         items={items}

@@ -92,6 +92,46 @@ export function useTransaction() {
   });
   const [discount, setDiscount] = useState(0);
 
+  // Production Service State (structured with safe defaults)
+  const [productionService, setProductionService] = useState({
+    priority: "STANDARD",
+    label: "Layanan Produksi Standard",
+    fee: 0,
+    estimate_date: null,
+    category: "PRODUCTION_PRIORITY",
+  });
+
+  // Production Service Priority Setter (NO items manipulation)
+  const setProductionPriority = (priority) => {
+    // Update structured state ONLY
+    const serviceConfig = {
+      STANDARD: {
+        priority: "STANDARD",
+        label: "Layanan Produksi Standard",
+        fee: 0,
+        estimate_date: null,
+        category: "PRODUCTION_PRIORITY",
+      },
+      EXPRESS: {
+        priority: "EXPRESS",
+        label: "Layanan Produksi Express",
+        fee: PRIORITY_CONFIG.FEE_EXPRESS,
+        estimate_date: null,
+        category: "PRODUCTION_PRIORITY",
+      },
+      URGENT: {
+        priority: "URGENT",
+        label: "Layanan Produksi Urgent",
+        fee: PRIORITY_CONFIG.FEE_URGENT,
+        estimate_date: null,
+        category: "PRODUCTION_PRIORITY",
+      },
+    };
+
+    setProductionService(serviceConfig[priority] || serviceConfig.STANDARD);
+    // DO NOT add to items[] - service fee is separate
+  };
+
   // 3. INITIALIZATION EFFECTS
   useEffect(() => {
     if (!isInitialized) {
@@ -415,15 +455,31 @@ export function useTransaction() {
     });
   };
 
-  // === CALCULATE TOTAL ===
+  // === CALCULATE TOTAL (WITH PRODUCTION SERVICE) ===
   const calculateTotal = () => {
-    const subtotal = tempItems.reduce(
+    // Items subtotal (print products ONLY)
+    const itemsSubtotal = tempItems.reduce(
       (sum, item) => sum + (item.totalPrice || 0),
       0,
     );
+
+    // Production service fee (ALWAYS exists, even if 0)
+    const serviceFee = productionService?.fee ?? 0;
+
+    // Total before discount
+    const subtotal = itemsSubtotal + serviceFee;
+
+    // Discount applied to total
     const safeDiscount = Math.min(discount, subtotal);
     const finalAmount = Math.max(0, subtotal - safeDiscount);
-    return { subtotal, discount: safeDiscount, finalAmount };
+
+    return {
+      itemsSubtotal, // Print products only
+      serviceFee, // Production service fee
+      subtotal, // Items + Service
+      discount: safeDiscount,
+      finalAmount, // (Items + Service) - Discount
+    };
   };
 
   // === PAYMENT & STAGE ===
@@ -533,6 +589,13 @@ export function useTransaction() {
       is_tempo: isTempo,
       source: "OFFLINE",
       target_date: targetDate,
+      production_service: {
+        priority: productionService?.priority || "STANDARD",
+        label: productionService?.label || "Layanan Produksi Standard",
+        fee: productionService?.fee ?? 0,
+        estimate_date: productionService?.estimate_date || null,
+        category: productionService?.category || "PRODUCTION_PRIORITY",
+      },
       created_at: new Date().toISOString(),
       items: tempItems.map((item, index) => {
         const safePrice = Number(item.unitPrice || item.price);
@@ -647,6 +710,9 @@ export function useTransaction() {
     setPriorityStandard,
     setPriorityExpress,
     setPriorityUrgent,
+    productionPriority: productionService?.priority || "STANDARD",
+    setProductionPriority,
+    productionService,
     transactionStage,
     setTransactionStage,
     validateStageTransition,
