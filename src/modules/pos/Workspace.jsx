@@ -200,16 +200,26 @@ export function Workspace() {
 
   // DATA UNTUK STRUK (Bisa dari order terakhir ATAU keranjang aktif)
   const safeCSName = (csName || "").trim();
+  const currentCalculation = calculateTotal();
+
   const receiptData = lastOrder || {
-    orderNumber: "DRAFT", // Belum ada nomor
-    customerName: customerSnapshot?.name || "Umum",
+    orderNumber: "PREVIEW / DRAFT",
+    customerName: customerSnapshot?.name || "Pelanggan Umum",
     receivedBy: safeCSName || "CS",
+    customerPhone: customerSnapshot?.phone || "-",
     items: items,
-    totalAmount: calculateTotal(),
+    totalAmount: currentCalculation.itemsSubtotal || 0,
     discountAmount: discount || 0,
+    finalAmount: currentCalculation.finalAmount || 0,
+    meta: {
+      production_service: {
+        fee: currentCalculation.serviceFee || 0,
+        label: "Layanan (Preview)",
+      },
+    },
     paidAmount: paymentState.amountPaid || 0,
-    remainingAmount: calculateTotal() - (paymentState.amountPaid || 0),
-    finalAmount: calculateTotal(),
+    remainingAmount:
+      (currentCalculation.finalAmount || 0) - (paymentState.amountPaid || 0),
   };
 
   const getModeButton = (mode) => ({

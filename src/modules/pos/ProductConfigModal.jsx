@@ -286,7 +286,8 @@ export default function ProductConfigModal({
               width: dimensions.width,
               area: areaCalculation.area,
               variantLabel: selectedVariant?.label || "",
-              variantDesc: selectedVariant?.desc || "",
+              variantDesc:
+                selectedVariant?.specs || selectedVariant?.desc || "",
             }
           : isMatrix
             ? {
@@ -296,7 +297,8 @@ export default function ProductConfigModal({
             : isBooklet
               ? {
                   variantLabel: selectedVariant?.label || "",
-                  variantDesc: selectedVariant?.desc || "",
+                  variantDesc:
+                    selectedVariant?.specs || selectedVariant?.desc || "",
                   printModeId: printMode?.id || "",
                   printModeLabel: printMode?.label || "",
                   sheetsPerBook: sheetsPerBook,
@@ -305,7 +307,8 @@ export default function ProductConfigModal({
               : {
                   // UNIT and other types
                   variantLabel: selectedVariant?.label || "",
-                  variantDesc: selectedVariant?.desc || "",
+                  variantDesc:
+                    selectedVariant?.specs || selectedVariant?.desc || "",
                 },
       finishings: finishingsArray,
       selected_details: {

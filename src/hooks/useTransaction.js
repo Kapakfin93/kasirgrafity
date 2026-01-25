@@ -75,6 +75,7 @@ export function useTransaction() {
   const [transactionStage, setTransactionStage] = useState(
     TRANSACTION_STAGES.CART,
   );
+  const [isSubmitting, setIsSubmitting] = useState(false); // Guard Double Submit
 
   // Customer Snapshot (Form UI)
   const [customerSnapshot, setCustomerSnapshot] = useState({
@@ -91,6 +92,8 @@ export function useTransaction() {
     return now.toISOString().slice(0, 16);
   });
   const [discount, setDiscount] = useState(0);
+  // NEW: Manual Estimate Date State to persist user selection
+  const [manualEstimateDate, setManualEstimateDate] = useState(null);
 
   // Production Service State (structured with safe defaults)
   const [productionService, setProductionService] = useState({
@@ -121,16 +124,27 @@ export function useTransaction() {
       },
       URGENT: {
         priority: "URGENT",
-        label: "Layanan Produksi Urgent",
-        fee: PRIORITY_CONFIG.FEE_URGENT,
-        estimate_date: null,
+        label: "Layanan Urgent / Ditunggu",
+        fee: PRIORITY_CONFIG.FEE_URGENT || 25000,
+        estimate_date: manualEstimateDate || null,
         category: "PRODUCTION_PRIORITY",
       },
     };
 
-    setProductionService(serviceConfig[priority] || serviceConfig.STANDARD);
-    // DO NOT add to items[] - service fee is separate
+    setProductionService((prev) => ({
+      ...(serviceConfig[priority] || serviceConfig.STANDARD),
+      // Keep existing estimate date if available, or use manual/target date
+      estimate_date: manualEstimateDate || targetDate || null,
+    }));
   };
+
+  // Sync manual date when targetDate changes from UI
+  useEffect(() => {
+    if (targetDate) {
+      setManualEstimateDate(targetDate);
+      setProductionService((prev) => ({ ...prev, estimate_date: targetDate }));
+    }
+  }, [targetDate]);
 
   // 3. INITIALIZATION EFFECTS
   useEffect(() => {
@@ -515,118 +529,137 @@ export function useTransaction() {
   // =================================================================
   // 🔥 FINALIZE ORDER (THE MASTER FUNCTION) 🔥
   // =================================================================
+  // =================================================================
+  // 🔥 FINALIZE ORDER (HARDENED) 🔥
+  // =================================================================
   const finalizeOrder = async (createOrderFn, currentUser, isTempo = false) => {
-    if (tempItems.length === 0) throw new Error("Keranjang kosong!");
-    if (!currentUser?.name)
-      throw new Error("CS/Kasir tidak terdeteksi. Silakan login kembali.");
-    if (!customerSnapshot.name || customerSnapshot.name.trim() === "")
-      throw new Error("Nama customer wajib diisi");
-
-    const { finalAmount, discount: safeDiscount } = calculateTotal();
-    const paidInput = Number.parseFloat(paymentState.amountPaid) || 0;
-    const paid = isTempo ? 0 : paidInput;
-
-    let paymentStatus = "UNPAID";
-    if (isTempo) paymentStatus = "UNPAID";
-    else if (paid >= finalAmount) paymentStatus = "PAID";
-    else if (paid > 0) paymentStatus = "PARTIAL";
-
-    // 2. 🔥 AUTO-SAVE CUSTOMER KE DATABASE & CACHE 🔥
-    let finalCustomerId = customerSnapshot.id;
-    const phoneToSave =
-      customerSnapshot.phone || customerSnapshot.whatsapp || "-";
+    // A. Guard Double Submit
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
     try {
-      // Only insert if new customer (no existing ID)
-      if (!customerSnapshot.id) {
-        const customerData = {
-          name: customerSnapshot.name,
-          phone: phoneToSave,
-          address: customerSnapshot.address || "-",
-        };
+      // B. Validasi WAJIB sebelum insert
+      if (tempItems.length === 0) throw new Error("Order kosong");
 
-        const { data: savedCustomer, error: custError } = await supabase
-          .from("customers")
-          .insert(customerData)
-          .select()
-          .single();
+      const { finalAmount, discount: safeDiscount } = calculateTotal();
 
-        if (!custError && savedCustomer) {
-          finalCustomerId = savedCustomer.id;
-          console.log("✅ Pelanggan baru tersimpan:", savedCustomer);
-          addCustomerToCache(savedCustomer);
+      if (finalAmount < 0) throw new Error("Total tidak valid (negatif)");
+      if (!currentUser?.name)
+        throw new Error("CS/Kasir tidak terdeteksi. Silakan login kembali.");
+      if (!customerSnapshot.name || customerSnapshot.name.trim() === "")
+        throw new Error("Nama customer wajib diisi");
+
+      const paidInput = Number.parseFloat(paymentState.amountPaid) || 0;
+      const paid = isTempo ? 0 : paidInput;
+
+      let paymentStatus = "UNPAID";
+      if (isTempo) paymentStatus = "UNPAID";
+      else if (paid >= finalAmount) paymentStatus = "PAID";
+      else if (paid > 0) paymentStatus = "PARTIAL";
+
+      // 2. 🔥 AUTO-SAVE CUSTOMER KE DATABASE & CACHE 🔥
+      let finalCustomerId = customerSnapshot.id;
+      const phoneToSave =
+        customerSnapshot.phone || customerSnapshot.whatsapp || "-";
+
+      // ... Customer insert logic remains same ...
+      try {
+        // Only insert if new customer (no existing ID)
+        if (!customerSnapshot.id) {
+          const customerData = {
+            name: customerSnapshot.name,
+            phone: phoneToSave,
+            address: customerSnapshot.address || "-",
+          };
+
+          const { data: savedCustomer, error: custError } = await supabase
+            .from("customers")
+            .insert(customerData)
+            .select()
+            .single();
+
+          if (!custError && savedCustomer) {
+            finalCustomerId = savedCustomer.id;
+            console.log("✅ Pelanggan baru tersimpan:", savedCustomer);
+            addCustomerToCache(savedCustomer);
+          } else {
+            console.warn(
+              "⚠️ Customer insert failed, proceeding without ID:",
+              custError,
+            );
+          }
         } else {
-          console.warn(
-            "⚠️ Customer insert failed, proceeding without ID:",
-            custError,
-          );
+          // Existing customer, use provided ID
+          finalCustomerId = customerSnapshot.id;
         }
-      } else {
-        // Existing customer, use provided ID
-        finalCustomerId = customerSnapshot.id;
-        console.log("✅ Menggunakan pelanggan lama:", customerSnapshot.name);
+      } catch (err) {
+        console.error("Error Customer Processing:", err);
       }
-    } catch (err) {
-      console.error("Error Customer Processing:", err);
-    }
 
-    // 3. Susun Payload Order
-    const orderPayload = {
-      customer_id: finalCustomerId,
-      customer_name: customerSnapshot.name.trim(),
-      customer_phone: phoneToSave,
-      received_by: currentUser.name,
-      meta: { createdBy: currentUser.name, shift: "morning", temp_id: uuid() },
-      payment_method: paymentState.mode || "CASH",
-      total_amount: finalAmount,
-      discount_amount: safeDiscount,
-      tax_amount: 0,
-      paid_amount: paid,
-      remaining_amount: Math.max(0, finalAmount - paid),
-      payment_status: paymentStatus,
-      status: "PENDING",
-      production_status: "PENDING",
-      is_tempo: isTempo,
-      source: "OFFLINE",
-      target_date: targetDate,
-      production_service: {
-        priority: productionService?.priority || "STANDARD",
-        label: productionService?.label || "Layanan Produksi Standard",
-        fee: productionService?.fee ?? 0,
-        estimate_date: productionService?.estimate_date || null,
-        category: productionService?.category || "PRODUCTION_PRIORITY",
-      },
-      created_at: new Date().toISOString(),
-      items: tempItems.map((item, index) => {
-        const safePrice = Number(item.unitPrice || item.price);
-        const safeQty = Number(item.qty) || 1;
-        const safeProductId = item.productId || item.id || `MANUAL_${index}`;
-        return {
-          product_id: safeProductId,
-          product_name: item.name || item.productName,
-          quantity: safeQty,
-          price: safePrice,
-          subtotal: item.totalPrice,
-          metadata: {
-            original_name: item.name,
-            specs_json: item.dimensions,
-            finishing_list: item.finishings || [],
-            notes: item.notes || "",
-            custom_dimensions: item.dimensions?.length
-              ? { w: item.dimensions.width, h: item.dimensions.length }
-              : null,
-          },
-        };
-      }),
-    };
+      // 3. Susun Payload Order (SANITIZED)
+      const orderPayload = {
+        customer_id: finalCustomerId,
+        customer_name: customerSnapshot.name.trim(),
+        customer_phone: phoneToSave,
+        received_by: currentUser.name,
+        meta: {
+          createdBy: currentUser.name,
+          shift: "morning",
+          temp_id: uuid(),
+          source_version: "v2_stabilization",
+          production_service: productionService,
+        },
+        payment_method: paymentState.mode || "CASH",
 
-    try {
+        // C. Data Sanitation (Integers/Safe Math)
+        total_amount: Math.round(Math.max(0, finalAmount)),
+        discount_amount: Math.round(Math.max(0, safeDiscount)),
+        tax_amount: 0,
+        paid_amount: Math.round(Math.max(0, paid)),
+        remaining_amount: Math.round(Math.max(0, finalAmount - paid)),
+
+        payment_status: paymentStatus,
+        status: "PENDING",
+        production_status: "PENDING",
+        is_tempo: isTempo,
+        source: "POS", // Sesuai request point 4
+        target_date: targetDate,
+        created_at: new Date().toISOString(),
+        items: tempItems.map((item, index) => {
+          const safePrice = Number(item.unitPrice || item.price);
+          const safeQty = Number(item.qty) || 1;
+          const safeProductId = item.productId || item.id || `MANUAL_${index}`;
+          return {
+            product_id: safeProductId,
+            product_name: item.name || item.productName,
+            quantity: safeQty,
+            price: safePrice,
+            subtotal: Math.round(item.totalPrice), // Ensure integer
+            metadata: {
+              original_name: item.name,
+              specs_json: item.dimensions,
+              finishing_list: item.finishings || [],
+              notes: item.notes || "",
+              custom_dimensions: item.dimensions?.length
+                ? { w: item.dimensions.width, h: item.dimensions.length }
+                : null,
+            },
+          };
+        }),
+      };
+
       const order = await createOrderFn(orderPayload);
       if (!order) throw new Error("Gagal membuat order (Null response)");
+
+      // 🔍 LOG VALIDASI (WAJIB STEP 5)
+      console.log("ORDER FROM DB:", order);
+
       return order;
     } catch (error) {
       console.error("❌ Order Gagal:", error);
       throw error;
+    } finally {
+      setIsSubmitting(false); // D. Finally always reset
     }
   };
 
@@ -712,6 +745,7 @@ export function useTransaction() {
     setPriorityUrgent,
     productionPriority: productionService?.priority || "STANDARD",
     setProductionPriority,
+    setManualEstimateDate, // Exposed for Date Picker
     productionService,
     transactionStage,
     setTransactionStage,

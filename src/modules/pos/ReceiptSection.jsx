@@ -556,7 +556,7 @@ const PostPaymentView = ({
     {/* Action Buttons */}
     <div style={{ display: "flex", gap: "8px" }}>
       <button
-        onClick={() => onPrint?.()}
+        onClick={onPrint}
         style={{
           flex: 1,
           padding: "12px",

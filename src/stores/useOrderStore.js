@@ -73,11 +73,9 @@ const normalizeOrder = (dbOrder) => {
   return {
     id: dbOrder.id,
     orderNumber: dbOrder.order_number || dbOrder.orderNumber || "-",
-    customerName:
-      dbOrder.customer_name && dbOrder.customer_name.trim() !== ""
-        ? dbOrder.customer_name
-        : "PELANGGAN UMUM",
-    customerPhone: dbOrder.customer_phone || "-",
+    customerName: dbOrder.customer_name,
+    customerPhone: dbOrder.customer_phone,
+    receivedBy: dbOrder.received_by,
 
     // Financials
     totalAmount: Number(dbOrder.total_amount || dbOrder.totalAmount || 0),
@@ -96,6 +94,9 @@ const normalizeOrder = (dbOrder) => {
     paymentMethod: dbOrder.payment_method || dbOrder.paymentMethod || "TUNAI",
     isTempo: Boolean(dbOrder.is_tempo || dbOrder.isTempo),
     createdAt: dbOrder.created_at || dbOrder.createdAt,
+
+    // 🔑 META (WAJIB UTUH)
+    meta: dbOrder.meta || {},
 
     // Items Mapping
     items: rawItems.map((item) => ({
