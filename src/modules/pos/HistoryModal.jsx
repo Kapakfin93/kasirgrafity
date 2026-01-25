@@ -1,7 +1,15 @@
+/**
+ * HistoryModal.jsx (Fixed Version)
+ * Module: Ringkasan Piutang & Riwayat Pembayaran
+ * Updates:
+ * - Added 'humanizeActor' to translate "POS_WORKSPACE" -> "Kasir Depan"
+ * - Consistent formatting with CCTV Audit
+ */
+
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../services/supabaseClient";
 
-// Format Rupiah
+// --- HELPER: FORMAT RUPIAH ---
 const formatRupiah = (num) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -9,7 +17,7 @@ const formatRupiah = (num) =>
     minimumFractionDigits: 0,
   }).format(num);
 
-// Format Date
+// --- HELPER: FORMAT TANGGAL ---
 const formatDate = (isoString) => {
   try {
     const date = new Date(isoString);
@@ -23,6 +31,22 @@ const formatDate = (isoString) => {
   } catch (e) {
     return "-";
   }
+};
+
+// --- HELPER: PENERJEMAH BAHASA MANUSIA (HUMANIZER) ---
+// Ini fungsi yang sama dengan di CCTV agar tampilan seragam
+const humanizeActor = (actorCode) => {
+  if (!actorCode) return "-";
+  const code = actorCode.toUpperCase();
+
+  if (code.includes("POS_WORKSPACE")) return "🖥️ Kasir Depan";
+  if (code.includes("ORDER_BOARD")) return "🏭 Tim Produksi";
+  if (code.includes("OWNER")) return "👑 Owner";
+  if (code.includes("SYSTEM")) return "🤖 Sistem Otomatis";
+  if (code.includes("KASIR")) return "👤 Kasir";
+
+  // Jika nama orang biasa, kembalikan apa adanya
+  return actorCode;
 };
 
 export function HistoryModal({ isOpen, onClose }) {
@@ -40,6 +64,7 @@ export function HistoryModal({ isOpen, onClose }) {
   const fetchReceivables = async () => {
     setLoading(true);
     try {
+      // Kita ambil order yang belum lunas (remaining > 0)
       const { data, error } = await supabase
         .from("orders")
         .select(
@@ -487,7 +512,8 @@ export function HistoryModal({ isOpen, onClose }) {
                                         fontWeight: "600",
                                       }}
                                     >
-                                      {payment.received_by || "-"}
+                                      {/* IMPLEMENTASI HUMANIZER DISINI */}
+                                      {humanizeActor(payment.received_by)}
                                     </div>
                                   </div>
                                 </div>

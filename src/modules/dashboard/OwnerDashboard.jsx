@@ -1,7 +1,9 @@
 /**
- * OwnerDashboard Component
- * READ-ONLY FINANCIAL DASHBOARD
- * CONNECTED TO INTELLIGENT STORE LOGIC (Anti-Zero & Service Detection)
+ * src/modules/dashboard/OwnerDashboard.jsx
+ * OWNER DASHBOARD (V6 - HYBRID RESTORED)
+ * Features:
+ * 1. UI RESTORED: Date Filters (Today/Week/Month), Operational Cards, Cancelled Log.
+ * 2. LOGIC UPGRADED: Financials feed from Core (OwnerDecisionEngine) for accuracy.
  */
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -18,140 +20,105 @@ import { StatsCard } from "./StatsCard";
 import { RecentOrders } from "./RecentOrders";
 import { TodayAttendance } from "./TodayAttendance";
 import { TopProducts } from "./TopProducts";
-import { HistoryModal } from "../pos/HistoryModal"; // Import History Modal
+import { HistoryModal } from "../pos/HistoryModal";
 import { OwnerActionPanel } from "../../components/dashboard/OwnerActionPanel";
+
+// IMPORT MESIN PINTAR (CORE)
 import { getOwnerDailySnapshot } from "../../core/ownerDecisionEngine";
 import { resolveActionsFromSnapshot } from "../../core/ownerActionResolver";
 
 export function OwnerDashboard() {
   const navigate = useNavigate();
   const { isOwner } = usePermissions();
+
+  // 1. KEMBALIKAN STATE FILTER WAKTU
   const [period, setPeriod] = useState("today");
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false); // History Modal State
-  const [isActionPanelOpen, setIsActionPanelOpen] = useState(false); // Action Panel Modal State
-  const [actions, setActions] = useState([]); // Resolved actions
-  const [actionsLoading, setActionsLoading] = useState(false);
 
-  // AMBIL DATA DARI STORE (YANG SUDAH PINTAR)
-  const {
-    orders,
-    loadOrders,
-    summaryData, // <--- INI KUNCINYA (Data yang sudah diolah Store)
-    loadSummary, // <--- Pemicu hitung ulang
-    loading,
-  } = useOrderStore();
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isActionPanelOpen, setIsActionPanelOpen] = useState(false);
 
+  // STATE INTELEJEN (CORE)
+  const [coreData, setCoreData] = useState(null);
+  const [actions, setActions] = useState([]);
+  const [isLoadingCore, setIsLoadingCore] = useState(true);
+
+  // STORE (Untuk Data Operasional & List Table)
+  const { orders, loadOrders, summaryData, loadSummary } = useOrderStore();
   const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
   const { todayAttendances, loadTodayAttendances } = useAttendanceStore();
   const { expenses, loadExpenses } = useExpenseStore();
 
-  // === 1. LOAD DATA SAAT PERIOD BERUBAH ===
+  // === LOAD DATA ===
   useEffect(() => {
     const { start, end } = getDateRange(period);
 
-    // Load Orders (untuk list recent & top products)
+    // A. Load Data Store (Untuk Grafik Produksi, List Order, dll)
     loadOrders({ page: 1, limit: 50 });
-
-    // Load Summary (untuk Financial Cards - Logika Anti-Nol ada di sini)
-    loadSummary({ start, end });
-
+    loadSummary({ start, end }); // Tetap load ini untuk data operasional
     loadEmployees();
     loadTodayAttendances();
     loadExpenses();
 
-    // Load actions for action panel
-    loadActions();
-  }, [
-    period,
-    loadOrders,
-    loadSummary,
-    loadEmployees,
-    loadTodayAttendances,
-    loadExpenses,
-  ]);
+    // B. Load Data Intelijen (Untuk Keuangan Akurat)
+    // Core snapshot didesain untuk "Hari Ini".
+    // Jika filter bukan hari ini, kita andalkan Store lama sementara.
+    if (period === "today") {
+      fetchCoreIntelligence();
+    } else {
+      setCoreData(null); // Reset core data jika bukan hari ini
+    }
+  }, [period]);
 
-  // Load actions from decision engine
-  const loadActions = async () => {
-    setActionsLoading(true);
+  const fetchCoreIntelligence = async () => {
+    setIsLoadingCore(true);
     try {
       const snapshot = await getOwnerDailySnapshot();
-      const resolvedActions = resolveActionsFromSnapshot(snapshot);
-      setActions(resolvedActions);
+      if (snapshot.success) {
+        setCoreData(snapshot);
+        const resolvedActions = resolveActionsFromSnapshot(snapshot);
+        setActions(resolvedActions);
+      }
     } catch (error) {
-      console.error("Failed to load actions:", error);
-      setActions([]);
+      console.error("Core Intelligence Error:", error);
     } finally {
-      setActionsLoading(false);
+      setIsLoadingCore(false);
     }
   };
 
-  // === 2. HITUNG PENGELUARAN (EXPENSES) SECARA LOKAL ===
-  // (Karena Expense Store terpisah, kita hitung manual di sini untuk Net Profit)
-  const expenseStats = useMemo(() => {
-    const { start, end } = getDateRange(period);
+  // === 2. HITUNG PENGELUARAN (EXPENSE - FIXED WITH DATE FILTER) ===
+  const totalExpenses = useMemo(() => {
+    const { start, end } = getDateRange(period); // Ambil rentang waktu dari tombol filter
 
-    const filteredExpenses = expenses.filter((e) => {
-      const date = new Date(e.date);
-      return date >= start && date <= end;
-    });
+    return expenses
+      .filter((e) => {
+        if (!e.date) return false; // Abaikan jika tidak ada tanggal
+        const expenseDate = new Date(e.date);
+        // Lolos jika tanggal pengeluaran ada di antara Start dan End
+        return expenseDate >= start && expenseDate <= end;
+      })
+      .reduce((sum, e) => sum + (e.amount || 0), 0);
+  }, [expenses, period]); // Hitung ulang hanya jika data expense atau periode berubah
 
-    const totalExpenses = filteredExpenses.reduce(
-      (sum, e) => sum + (e.amount || 0),
-      0,
-    );
-    return totalExpenses;
-  }, [expenses, period]);
+  // === MAPPING DATA (HYBRID STRATEGY) ===
+  // Jika Period = TODAY, pakai CORE (Akurat). Jika tidak, pakai STORE (Estimasi).
+  const useCore = period === "today" && coreData;
 
-  // === 3. SAFE DATA MAPPING (HANDLE NULL/UNDEFINED) ===
-  // Mapping variabel untuk kompatibilitas dengan JSX yang sudah ada
-  const safeData = summaryData || {};
+  const totalSales = useCore
+    ? coreData.today.newOrdersAmount
+    : summaryData.totalSales || 0;
+  const totalCollected = useCore
+    ? coreData.today.paymentsAmount
+    : summaryData.totalCollected || 0;
+  // Total Outstanding selalu ambil real-time dari Core jika ada (karena piutang tidak kenal tanggal)
+  const totalOutstanding =
+    coreData?.receivables?.total || summaryData.totalOutstanding || 0;
 
-  // Mapping sesuai permintaan: totalSales ← totalRevenue (prioritas) atau totalSales (existing)
-  const totalSales = safeData.totalRevenue || safeData.totalSales || 0;
+  const netProfit = totalCollected - totalExpenses;
 
-  // Mapping: totalTransactions ← totalCount
-  const totalTransactions = safeData.totalCount || 0;
+  // Breakdown Piutang (Dari Core jika ada)
+  const receivableMacet = coreData?.receivables?.overdue?.total || 0;
 
-  // Mapping data lainnya dengan fallback aman
-  const totalCollected = safeData.totalCollected || 0;
-  const totalOutstanding = safeData.totalOutstanding || 0;
-  const totalDiscount = safeData.totalDiscount || 0;
-  const omsetBahan = safeData.omsetBahan || 0;
-  const omsetJasa = safeData.omsetJasa || 0;
-
-  // === 4. HITUNG NET PROFIT ===
-  // Revenue (dari Store yang sudah fix) - Expense (dari perhitungan lokal)
-  const netProfit = totalSales - expenseStats;
-
-  // === 5. HITUNG SPLIT PIUTANG (TEMPO vs BAD DEBT) ===
-  // Kita gunakan orders lokal untuk rasio, tapi totalnya tetap mengacu pada summaryData
-  const receivableStats = useMemo(() => {
-    let tempo = 0;
-    let badDebt = 0;
-
-    // Kita loop orders yang ada di memori untuk cek status tempo
-    // Catatan: Ini estimasi dari 50 order terakhir yang terload.
-    // Untuk akurasi 100% idealnya ini juga dari server, tapi untuk sekarang cukup.
-    orders.forEach((o) => {
-      if (o.remainingAmount > 0) {
-        if (o.isTempo) tempo += o.remainingAmount;
-        else badDebt += o.remainingAmount;
-      }
-    });
-
-    return { tempo, badDebt };
-  }, [orders]);
-
-  if (!isOwner) {
-    return (
-      <div className="access-denied">
-        <h2>❌ Akses Ditolak</h2>
-        <p>Hanya Owner yang bisa mengakses dashboard ini.</p>
-      </div>
-    );
-  }
-
-  // Data untuk Widget
+  // Data List Order (Operational)
   const activeOrders = orders
     .filter((o) => o.productionStatus !== "CANCELLED")
     .slice(0, 50);
@@ -159,19 +126,15 @@ export function OwnerDashboard() {
     .filter((o) => o.productionStatus === "CANCELLED")
     .slice(0, 20);
 
-  const hasEmployees = employees.length > 0;
-
-  const handleExpenseClick = () => {
-    navigate("/expenses");
-  };
+  if (!isOwner) return <div className="p-4 text-red-500">Akses Ditolak</div>;
 
   return (
     <div className="owner-dashboard">
-      {/* BURNING CORE HEADER - Command Center Style */}
+      {/* HEADER COMMAND CENTER */}
       <div className="command-center-header">
         <div className="animated-border" />
 
-        {/* LEFT: Identity */}
+        {/* Kiri: Identitas */}
         <div
           className="header-identity"
           style={{ display: "flex", gap: "12px", alignItems: "center" }}
@@ -180,8 +143,6 @@ export function OwnerDashboard() {
           <div>
             <h1 className="header-title">Dashboard Owner</h1>
           </div>
-
-          {/* History Button - Added beside title */}
           <button
             onClick={() => setIsHistoryOpen(true)}
             style={{
@@ -193,40 +154,30 @@ export function OwnerDashboard() {
               fontSize: "13px",
               fontWeight: "700",
               cursor: "pointer",
-              boxShadow: "0 0 15px rgba(139, 92, 246, 0.3)",
-              transition: "all 0.2s ease",
               display: "flex",
               alignItems: "center",
               gap: "6px",
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "scale(1.05)";
-              e.currentTarget.style.boxShadow =
-                "0 0 20px rgba(139, 92, 246, 0.5)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.boxShadow =
-                "0 0 15px rgba(139, 92, 246, 0.3)";
-            }}
           >
             <span>📜</span>
-            <span>Lihat Detail</span>
+            <span>Detail</span>
           </button>
         </div>
 
-        {/* CENTER: Burning Net Profit (THE CORE) */}
+        {/* Tengah: NET PROFIT LIVE */}
         <div className="burning-core">
-          <div className="core-label">NET PROFIT LIVE</div>
+          <div className="core-label">CASHFLOW BERSIH</div>
           <div className={`core-value ${netProfit >= 0 ? "profit" : "loss"}`}>
-            {formatRupiah(netProfit)}
+            {period === "today" && isLoadingCore
+              ? "..."
+              : formatRupiah(netProfit)}
           </div>
           <div className="core-status">
-            {netProfit >= 0 ? "🔥 Profit" : "❄️ Rugi"}
+            {netProfit >= 0 ? "🔥 Surplus" : "❄️ Defisit"}
           </div>
         </div>
 
-        {/* RIGHT: Capsule Filter */}
+        {/* Kanan: RESTORED FILTER BUTTONS */}
         <div className="capsule-filter">
           <button
             className={`capsule-btn ${period === "today" ? "active" : ""}`}
@@ -249,127 +200,84 @@ export function OwnerDashboard() {
         </div>
       </div>
 
-      {/* === TIER 1: FINANCIAL MACRO === */}
+      {/* === TIER 1: KEUANGAN UTAMA === */}
       <div className="stats-grid-5">
         <StatsCard
           icon="💰"
           title="Total Penjualan"
-          value={formatRupiah(totalSales)} // Menggunakan mapped variable
-          subtitle={`${totalTransactions} pesanan (Net)`} // Menggunakan mapped variable
+          value={formatRupiah(totalSales)}
+          subtitle={useCore ? "Data Real-time Core" : "Data Akumulasi Store"}
           color="#22c55e"
         />
         <StatsCard
           icon="💵"
-          title="Uang Terkumpul"
-          value={formatRupiah(totalCollected)} // Menggunakan mapped variable
-          subtitle={`Cash In Hand`}
+          title="Uang Masuk"
+          value={formatRupiah(totalCollected)}
+          subtitle="Cash In Hand"
           color="#3b82f6"
         />
 
-        {/* Piutang Umum with Action Badge */}
+        {/* Action Panel Button Restored */}
         <div style={{ position: "relative" }}>
           <StatsCard
             icon="⚠️"
-            title="Kurang Bayar"
-            value={formatRupiah(totalOutstanding)} // Menggunakan mapped variable
+            title="Total Tagihan"
+            value={formatRupiah(totalOutstanding)}
             subtitle={
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
                   justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
-                <span>Harus ditagih</span>
+                <span>
+                  {receivableMacet > 0
+                    ? `Macet: ${formatRupiah(receivableMacet)}`
+                    : "Aman"}
+                </span>
                 {actions.length > 0 && (
                   <button
                     onClick={() => setIsActionPanelOpen(true)}
                     style={{
-                      padding: "4px 8px",
-                      background: "rgba(139, 92, 246, 0.2)",
-                      border: "1px solid rgba(139, 92, 246, 0.5)",
-                      borderRadius: "6px",
-                      color: "#a78bfa",
-                      fontSize: "11px",
-                      fontWeight: "700",
+                      padding: "2px 6px",
+                      background: "rgba(239,68,68,0.2)",
+                      color: "#ef4444",
+                      borderRadius: "4px",
+                      fontSize: "10px",
+                      fontWeight: "bold",
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      transition: "all 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background =
-                        "rgba(139, 92, 246, 0.3)";
-                      e.currentTarget.style.transform = "scale(1.05)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background =
-                        "rgba(139, 92, 246, 0.2)";
-                      e.currentTarget.style.transform = "scale(1)";
+                      border: "1px solid rgba(239,68,68,0.5)",
                     }}
                   >
-                    🎯 {actions.length} Tindakan
+                    {actions.length} Aksi
                   </button>
                 )}
               </div>
             }
-            color="#ef4444"
+            color={receivableMacet > 0 ? "#ef4444" : "#64748b"}
           />
-          {/* Action count badge */}
-          {actions.length > 0 && (
-            <div
-              style={{
-                position: "absolute",
-                top: "8px",
-                right: "8px",
-                background: "linear-gradient(135deg, #8b5cf6, #a78bfa)",
-                color: "#fff",
-                borderRadius: "12px",
-                padding: "4px 8px",
-                fontSize: "11px",
-                fontWeight: "700",
-                boxShadow: "0 0 10px rgba(139, 92, 246, 0.5)",
-                animation: "pulse 2s infinite",
-              }}
-            >
-              {actions.length}
-            </div>
-          )}
         </div>
 
-        {/* Invoice Berjalan (Placeholder / Future Dev) */}
-        <StatsCard
-          icon="⭐"
-          title="Invoice Berjalan"
-          value={formatRupiah(receivableStats.tempo)}
-          subtitle="Piutang VIP / Korporat"
-          color="#eab308"
-        />
-
-        {/* Total Discount */}
         <StatsCard
           icon="🎟️"
           title="Total Diskon"
-          value={formatRupiah(totalDiscount)} // Menggunakan mapped variable
-          subtitle="Potongan harga"
+          value={formatRupiah(summaryData.totalDiscount)}
+          subtitle="Potongan Harga"
           color="#f59e0b"
         />
-
-        {/* Expense Card */}
         <StatsCard
           icon="💸"
-          title="Total Pengeluaran"
-          value={formatRupiah(expenseStats)}
-          subtitle="Klik untuk detail →"
+          title="Pengeluaran"
+          value={formatRupiah(totalExpenses)}
+          subtitle="Klik detail →"
           color="#f43f5e"
           isClickable={true}
-          onClick={handleExpenseClick}
+          onClick={() => navigate("/expenses")}
         />
       </div>
 
-      {/* === TIER 2: REVENUE BREAKDOWN (OMSET BAHAN VS JASA) === */}
+      {/* === TIER 2: REVENUE BREAKDOWN (STORE DATA) === */}
       <div
         style={{
           display: "grid",
@@ -378,26 +286,16 @@ export function OwnerDashboard() {
           marginTop: "16px",
         }}
       >
-        {/* Print Revenue Card - Cyan Neon */}
         <div
           style={{
             background:
               "linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)",
             borderRadius: "16px",
             padding: "20px",
-            border: "1px solid rgba(6, 182, 212, 0.3)",
             borderLeft: "4px solid #06b6d4",
-            boxShadow: "0 0 20px rgba(6, 182, 212, 0.15)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              marginBottom: "12px",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span style={{ fontSize: "32px" }}>🖨️</span>
             <div>
               <div
@@ -405,49 +303,32 @@ export function OwnerDashboard() {
                   fontSize: "12px",
                   fontWeight: "700",
                   color: "#64748b",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
                 }}
               >
-                Omset Bahan (Gross)
+                OMSET BAHAN
               </div>
               <div
                 style={{
                   fontSize: "24px",
                   fontWeight: "800",
                   color: "#22d3ee",
-                  textShadow: "0 0 10px rgba(34, 211, 238, 0.5)",
                 }}
               >
-                {formatRupiah(omsetBahan)} {/* Menggunakan mapped variable */}
-              </div>
-              <div style={{ fontSize: "10px", color: "#94a3b8" }}>
-                *Sebelum Diskon
+                {formatRupiah(summaryData.omsetBahan || 0)}
               </div>
             </div>
           </div>
         </div>
-
-        {/* Finishing Revenue Card - Purple Neon */}
         <div
           style={{
             background:
               "linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)",
             borderRadius: "16px",
             padding: "20px",
-            border: "1px solid rgba(139, 92, 246, 0.3)",
             borderLeft: "4px solid #8b5cf6",
-            boxShadow: "0 0 20px rgba(139, 92, 246, 0.15)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              marginBottom: "12px",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span style={{ fontSize: "32px" }}>✨</span>
             <div>
               <div
@@ -455,31 +336,25 @@ export function OwnerDashboard() {
                   fontSize: "12px",
                   fontWeight: "700",
                   color: "#64748b",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
                 }}
               >
-                Omset Jasa (Finishing)
+                OMSET JASA
               </div>
               <div
                 style={{
                   fontSize: "24px",
-                  fontWeight: "900",
+                  fontWeight: "800",
                   color: "#8b5cf6",
-                  marginTop: "4px",
                 }}
               >
-                {formatRupiah(omsetJasa)} {/* Menggunakan mapped variable */}
-              </div>
-              <div style={{ fontSize: "10px", color: "#94a3b8" }}>
-                Belum ada data
+                {formatRupiah(summaryData.omsetJasa || 0)}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* === TIER 3: OPERATIONAL STATS === */}
+      {/* === TIER 3: RESTORED OPERATIONAL STATS === */}
       <div
         style={{
           display: "grid",
@@ -504,50 +379,39 @@ export function OwnerDashboard() {
         />
       </div>
 
-      {/* MONEY-ORIENTED SECONDARY STATS */}
+      {/* === RESTORED SECONDARY STATS === */}
       <div className="secondary-stats-grid">
         <div className="stat-card stat-card-danger">
           <div className="stat-card-label">🔴 Belum Bayar</div>
           <div className="stat-card-value">
             {summaryData.countByPaymentStatus?.UNPAID || 0}
           </div>
-          <div className="stat-card-money">
-            {formatRupiah(summaryData.totalOutstanding)}
-          </div>
         </div>
-
         <div className="stat-card stat-card-warning">
           <div className="stat-card-label">🟡 DP (Cicilan)</div>
           <div className="stat-card-value">
             {summaryData.countByPaymentStatus?.DP || 0}
           </div>
-          <div className="stat-card-money">Sisa: Rp 0</div>
         </div>
-
         <div className="stat-card stat-card-success">
           <div className="stat-card-label">🟢 Lunas</div>
           <div className="stat-card-value">
             {summaryData.countByPaymentStatus?.PAID || 0}
           </div>
-          <div className="stat-card-money">
-            {formatRupiah(summaryData.totalCollected)}
-          </div>
         </div>
       </div>
 
-      {/* Content Grid */}
+      {/* === CONTENT GRID === */}
       <div className="dashboard-widgets">
         <div className="widget-card">
           <h2 className="widget-title">📋 Pesanan Terbaru</h2>
           <RecentOrders orders={activeOrders.slice(0, 5)} />
         </div>
-
         <div className="widget-card">
           <h2 className="widget-title">🏆 Produk Terlaris</h2>
           <TopProducts orders={activeOrders} />
         </div>
-
-        {hasEmployees && (
+        {employees.length > 0 && (
           <div className="widget-card">
             <h2 className="widget-title">⏰ Absensi Hari Ini</h2>
             <TodayAttendance
@@ -558,101 +422,71 @@ export function OwnerDashboard() {
         )}
       </div>
 
-      {/* Cancelled Orders Log */}
+      {/* === RESTORED CANCELLED LOG === */}
       <div className="widget-card cancelled-section">
         <div className="cancelled-header">
           <div className="cancelled-title">
             <span className="cancelled-icon">🚫</span>
-            <div>
-              <h3>Riwayat Pembatalan</h3>
-              <p>Monitoring order yang digagalkan</p>
-            </div>
+            <h3>Riwayat Pembatalan</h3>
           </div>
-          <div className="cancelled-badges">
-            <span className="badge badge-count">
-              Total: {cancelledOrders.length}
-            </span>
-          </div>
+          <span className="badge badge-count">
+            Total: {cancelledOrders.length}
+          </span>
         </div>
-
         {cancelledOrders.length === 0 ? (
           <div className="empty-state">
-            <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
-            <p>Belum ada data pembatalan (Aman)</p>
+            <div style={{ fontSize: "32px" }}>✅</div>
+            <p>Aman</p>
           </div>
         ) : (
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Waktu Batal</th>
-                  <th>ID Order</th>
+                  <th>Waktu</th>
+                  <th>Order</th>
                   <th>Pelanggan</th>
                   <th>Alasan</th>
-                  <th>Nasib Uang</th>
-                  <th>Nominal</th>
+                  <th>Dana</th>
+                  <th>Nilai</th>
                 </tr>
               </thead>
               <tbody>
-                {cancelledOrders.map((order) => {
-                  let financialStatus;
-                  if (order.financialAction === "REFUND") {
-                    financialStatus = (
-                      <span className="badge badge-refund">
-                        💸 DIKEMBALIKAN
-                      </span>
-                    );
-                  } else if (order.financialAction === "FORFEIT") {
-                    financialStatus = (
-                      <span className="badge badge-forfeit">💰 MASUK KAS</span>
-                    );
-                  } else {
-                    financialStatus = "-";
-                  }
-
-                  return (
-                    <tr key={order.id}>
-                      <td className="text-muted">
-                        {new Date(
-                          order.cancelledAt || order.createdAt,
-                        ).toLocaleString("id-ID")}
-                      </td>
-                      <td className="text-bold">
-                        {order.orderNumber ||
-                          `#${String(order.id).slice(0, 8)}`}
-                      </td>
-                      <td>
-                        {order.customerSnapshot?.name ||
-                          order.customerName ||
-                          "-"}
-                      </td>
-                      <td>
-                        <span className="reason-badge">
-                          "{order.cancelReason || "Tidak ada alasan"}"
-                        </span>
-                      </td>
-                      <td className="text-center">{financialStatus}</td>
-                      <td
-                        className={`text-right ${order.totalAmount > 0 ? "text-danger text-bold" : ""}`}
-                      >
-                        {formatRupiah(order.totalAmount || 0)}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {cancelledOrders.map((order) => (
+                  <tr key={order.id}>
+                    <td className="text-muted">
+                      {new Date(
+                        order.cancelledAt || order.createdAt,
+                      ).toLocaleString("id-ID")}
+                    </td>
+                    <td className="text-bold">{order.orderNumber}</td>
+                    <td>{order.customerName}</td>
+                    <td>
+                      <span className="reason-badge">{order.cancelReason}</span>
+                    </td>
+                    <td>
+                      {order.financialAction === "REFUND"
+                        ? "💸 KEMBALI"
+                        : order.financialAction === "FORFEIT"
+                          ? "🔥 HANGUS"
+                          : "-"}
+                    </td>
+                    <td className="text-right text-danger">
+                      {formatRupiah(order.totalAmount)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* History Modal */}
+      {/* MODALS */}
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
       />
-
-      {/* Action Panel Modal */}
       {isActionPanelOpen && (
         <div
           style={{
@@ -661,58 +495,26 @@ export function OwnerDashboard() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(0, 0, 0, 0.7)",
-            backdropFilter: "blur(4px)",
+            background: "rgba(0,0,0,0.7)",
             zIndex: 9999,
             display: "flex",
-            alignItems: "center",
             justifyContent: "center",
-            padding: "20px",
+            alignItems: "center",
           }}
           onClick={() => setIsActionPanelOpen(false)}
         >
           <div
             style={{
               maxWidth: "800px",
-              width: "100%",
-              maxHeight: "90vh",
+              width: "90%",
+              maxHeight: "80vh",
               overflow: "auto",
-              position: "relative",
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Close button */}
-            <button
-              onClick={() => setIsActionPanelOpen(false)}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                background: "rgba(239, 68, 68, 0.2)",
-                border: "1px solid rgba(239, 68, 68, 0.5)",
-                borderRadius: "8px",
-                color: "#ef4444",
-                padding: "8px 12px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "700",
-                zIndex: 10000,
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(239, 68, 68, 0.3)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
-              }}
-            >
-              ✕ Tutup
-            </button>
-
-            {/* Action Panel */}
             <OwnerActionPanel
               actions={actions}
-              title="🎯 Tindakan yang Diperlukan"
+              title="🎯 Rekomendasi Tindakan Cerdas"
             />
           </div>
         </div>

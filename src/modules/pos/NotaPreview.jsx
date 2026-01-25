@@ -1,13 +1,29 @@
+/**
+ * NotaPreview Component (V2 - HUMANIZED & OMNIVORE)
+ * Updates:
+ * - Added 'humanizeActor' helper to fix "POS_WORKSPACE" on printed receipts.
+ * - Ensures customer sees professional names, not system codes.
+ */
+
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import { formatRupiah } from "../../core/formatters";
 
-/**
- * NotaPreview Component (REWRITTEN)
- * - Uses React.forwardRef for parent printing compatibility
- * - Implements "Omnivore" data extraction for robust handling of draft/db data
- */
+// --- HELPER: PENERJEMAH BAHASA MANUSIA (Agar Nota Rapi) ---
+const humanizeActor = (actorCode) => {
+  if (!actorCode) return "Kasir"; // Default fallback
+  const code = actorCode.toUpperCase();
+
+  if (code.includes("POS_WORKSPACE")) return "Admin/Kasir";
+  if (code.includes("ORDER_BOARD")) return "Tim Produksi";
+  if (code.includes("OWNER")) return "Owner";
+  if (code.includes("SYSTEM")) return "Sistem";
+
+  // Jika nama orang asli (misal: "Alex"), kembalikan apa adanya
+  return actorCode;
+};
+
 export const NotaPreview = React.forwardRef(
   (
     {
@@ -28,7 +44,11 @@ export const NotaPreview = React.forwardRef(
       order?.customerName || order?.customerSnapshot?.name || "Pelanggan Umum";
     const custWA =
       order?.customerPhone || order?.customerSnapshot?.whatsapp || "";
-    const csName = order?.receivedBy || order?.received_by || "Kasir";
+
+    // 🔥 PERBAIKAN DISINI: Gunakan Humanizer
+    const rawCsName = order?.receivedBy || order?.received_by || "Kasir";
+    const csName = humanizeActor(rawCsName);
+
     const orderNumber = order?.orderNumber || "DRAFT";
 
     // Financial Fallback
@@ -469,7 +489,7 @@ export const NotaPreview = React.forwardRef(
               </div>
             )}
 
-            {/* CS Name */}
+            {/* CS Name (HUMANIZED) */}
             <div className="nota-row" style={{ marginBottom: "8px" }}>
               <span>Kasir</span>
               <span>: {csName}</span>

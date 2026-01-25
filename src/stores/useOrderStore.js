@@ -1,19 +1,30 @@
 /**
- * Order Store - Zustand
+ * Order Store - Zustand (V5.3 - LOGIC RESTORED & VERIFIED)
  * State management for order/production tracking
- * FINAL STABLE VERSION - JOGLO POS
+ * Features:
+ * - Strict Normalization
+ * - Supabase Hybrid Sync
+ * - Auto Audit Logging (CCTV)
+ * - INTELLIGENT DASHBOARD FEED (Via ownerDecisionEngine)
+ * - FIX: Restored Missing Calculation Logic for Monthly View
  */
 
 import { create } from "zustand";
-import db from "../data/db/schema";
-import { Order } from "../data/models/Order";
-import { updateSupabaseOrder } from "./supabaseUploadHelper";
+import {
+  logPOSOrderCreated,
+  logPaymentRecorded,
+  logOrderStatusChanged,
+  logEvent,
+} from "../utils/eventLogger";
 
-// === 1. FINAL NORMALIZER (PENYELARAS TOTAL) ===
-const normalizeOrder = (dbOrder) => {
+// Import Mesin Cerdas (Core)
+import { getOwnerDailySnapshot } from "../core/ownerDecisionEngine";
+
+// === 1. FINAL NORMALIZER ===
+const internalNormalizeOrder = (dbOrder) => {
   if (!dbOrder) return null;
 
-  // A. PARSE SNAPSHOT (DATA BELANJAAN)
+  // A. PARSE SNAPSHOT
   let rawItems = [];
   if (dbOrder.items_snapshot) {
     if (Array.isArray(dbOrder.items_snapshot)) {
@@ -28,17 +39,14 @@ const normalizeOrder = (dbOrder) => {
       }
     }
   }
-  // Fallback ke relasi item jika snapshot kosong
   if ((!rawItems || rawItems.length === 0) && dbOrder.items) {
     rawItems = dbOrder.items;
   }
 
-  // B. DESCRIPTION BUILDER (PENCANTIK NOTA)
+  // B. DESCRIPTION BUILDER
   const buildDescription = (item) => {
     const meta = item.meta || item.metadata || {};
     const parts = [];
-
-    // 1. Dimensi (Misal: "3x1m")
     const dims =
       meta.custom_dimensions ||
       meta.dimensions ||
@@ -48,15 +56,11 @@ const normalizeOrder = (dbOrder) => {
       const w = dims.width || dims.w || 0;
       if (l > 0 && w > 0) parts.push(`${l}x${w}m`);
     }
-
-    // 2. Bahan / Varian
     const variant =
       meta.variantLabel ||
       meta.variant_label ||
       (meta.specs_json ? meta.specs_json.variantLabel : null);
     if (variant) parts.push(variant);
-
-    // 3. Finishing
     const finish =
       meta.finishing ||
       (meta.specs_json ? meta.specs_json.finishing_list : null);
@@ -65,7 +69,6 @@ const normalizeOrder = (dbOrder) => {
     } else if (typeof finish === "string" && finish) {
       parts.push(`Fin: ${finish}`);
     }
-
     return parts.join(" | ");
   };
 
@@ -75,7 +78,10 @@ const normalizeOrder = (dbOrder) => {
     orderNumber: dbOrder.order_number || dbOrder.orderNumber || "-",
     customerName: dbOrder.customer_name,
     customerPhone: dbOrder.customer_phone,
+
+    // Pastikan Operator & Kasir Terbaca
     receivedBy: dbOrder.received_by,
+    assignedTo: dbOrder.assigned_to,
 
     // Financials
     totalAmount: Number(dbOrder.total_amount || dbOrder.totalAmount || 0),
@@ -95,10 +101,13 @@ const normalizeOrder = (dbOrder) => {
     isTempo: Boolean(dbOrder.is_tempo || dbOrder.isTempo),
     createdAt: dbOrder.created_at || dbOrder.createdAt,
 
-    // 🔑 META (WAJIB UTUH)
+    cancelReason: dbOrder.cancel_reason || dbOrder.cancelReason,
+    cancelledAt: dbOrder.cancelled_at || dbOrder.cancelledAt,
+
+    // Meta
     meta: dbOrder.meta || {},
 
-    // Items Mapping
+    // Items
     items: rawItems.map((item) => ({
       id: item.id || Math.random().toString(36).substr(2, 9),
       productId: item.product_id || item.productId,
@@ -148,7 +157,7 @@ export const useOrderStore = create((set, get) => ({
 
   // === ACTIONS ===
 
-  // 1. LOAD ORDERS (SUPABASE HYBRID)
+  // 1. LOAD ORDERS
   loadOrders: async ({
     page = 1,
     limit = 20,
@@ -168,13 +177,10 @@ export const useOrderStore = create((set, get) => ({
             count: "exact",
           });
 
-        if (paymentStatus !== "ALL") {
+        if (paymentStatus !== "ALL")
           query = query.eq("payment_status", paymentStatus);
-        }
-
-        if (productionStatus !== "ALL") {
+        if (productionStatus !== "ALL")
           query = query.eq("production_status", productionStatus);
-        }
 
         const { data, count, error } = await query
           .range(offset, offset + safeLimit - 1)
@@ -182,7 +188,7 @@ export const useOrderStore = create((set, get) => ({
 
         if (error) throw error;
 
-        const appOrders = data.map(normalizeOrder);
+        const appOrders = data.map(internalNormalizeOrder);
 
         set({
           orders: appOrders,
@@ -201,12 +207,11 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // === GANTI loadSummary DENGAN VERSI SENSOR BILINGUAL ===
-
+  // 2. LOAD SUMMARY (HYBRID INTELLIGENCE)
   loadSummary: async (dateRange = null) => {
     const { supabase } = await import("../services/supabaseClient");
-
     try {
+      // A. Fetch Basic Data
       let query = supabase
         .from("orders")
         .select(
@@ -222,6 +227,7 @@ export const useOrderStore = create((set, get) => ({
       const { data: orders, error } = await query;
       if (error) throw error;
 
+      // Stats Container
       let stats = {
         totalCount: 0,
         totalSalesGross: 0,
@@ -249,9 +255,10 @@ export const useOrderStore = create((set, get) => ({
 
         stats.totalCount++;
 
-        // A. Bedah Item
+        // --- 1. Bedah Item (Bahan vs Jasa) ---
         let items = [];
-        let calculatedItemsTotal = 0;
+        let calculatedItemsTotal = 0; // Temp total dari item
+
         if (o.items_snapshot) {
           if (typeof o.items_snapshot === "string") {
             try {
@@ -263,21 +270,17 @@ export const useOrderStore = create((set, get) => ({
         }
 
         items.forEach((item) => {
-          // FIX 1: BACA HARGA (Cek format camelCase DAN snake_case)
           const itemTotal = Number(
             item.totalPrice || item.total_price || item.subtotal || 0,
           );
           calculatedItemsTotal += itemTotal;
 
-          // FIX 2: BACA NAMA (Sensor Bilingual)
-          // Kita cek product_name (DB) dan productName (App)
           const name = (
             item.productName ||
             item.product_name ||
             item.name ||
             ""
           ).toLowerCase();
-
           const serviceKeywords = [
             "jasa",
             "layanan",
@@ -292,7 +295,6 @@ export const useOrderStore = create((set, get) => ({
             "prioritas",
           ];
 
-          // Logika Deteksi
           if (serviceKeywords.some((keyword) => name.includes(keyword))) {
             stats.omsetJasa += itemTotal;
           } else {
@@ -300,24 +302,27 @@ export const useOrderStore = create((set, get) => ({
           }
         });
 
-        // B. Financial Basics
+        // --- 2. Hitung Keuangan (INI YANG TADI HILANG!) ---
         let gross = Number(o.total_amount || 0);
-        let net = Number(o.grand_total || o.final_amount || 0);
+        let net = Number(o.grand_total || o.total_amount || 0); // Fallback ke total_amount jika grand_total null
         const discount = Number(o.discount || 0);
         const paid = Number(o.paid_amount || 0);
 
+        // Safety check: Jika header 0 tapi item ada isinya
         if (net === 0 && calculatedItemsTotal > 0) {
           net = calculatedItemsTotal;
           if (gross === 0) gross = calculatedItemsTotal;
         }
+
         const remaining = net - paid;
 
         stats.totalSalesGross += gross;
-        stats.totalSalesNet += net;
+        stats.totalSalesNet += net; // <-- Akumulasi Penjualan
         stats.totalDiscount += discount;
-        stats.totalCollected += paid;
+        stats.totalCollected += paid; // <-- Akumulasi Uang Masuk
         stats.totalOutstanding += remaining;
 
+        // --- 3. Status Counter ---
         const payStatus = o.payment_status || "UNPAID";
         if (stats.countByPayment[payStatus] !== undefined)
           stats.countByPayment[payStatus]++;
@@ -327,18 +332,52 @@ export const useOrderStore = create((set, get) => ({
           stats.countByProduction[prodStatus]++;
       });
 
+      // B. FETCH CORE SNAPSHOT
+      let intelligentData = {};
+      try {
+        const snapshot = await getOwnerDailySnapshot();
+        if (snapshot.success) {
+          intelligentData = {
+            totalSales: snapshot.today.newOrdersAmount,
+            totalCollected: snapshot.today.paymentsAmount,
+            totalOutstanding: snapshot.receivables.total,
+          };
+        }
+      } catch (err) {
+        console.warn("Core Snapshot Failed", err);
+      }
+
+      // C. MERGE RESULT
+      const isTodayFilter =
+        dateRange?.start &&
+        dateRange?.end &&
+        dateRange.end.getTime() - dateRange.start.getTime() < 86400000 + 1000;
+
       const summaryResult = {
         totalCount: stats.totalCount,
-        totalSales: stats.totalSalesNet,
+
+        // JIKA "Hari Ini": Pakai Core (Supaya Alex terbaca real-time)
+        // JIKA "Bulan Ini": Pakai Stats Manual (Supaya angka 5 Juta muncul)
+        totalSales:
+          isTodayFilter && intelligentData.totalSales != null
+            ? intelligentData.totalSales
+            : stats.totalSalesNet,
+
         totalGross: stats.totalSalesGross,
         totalDiscount: stats.totalDiscount,
-        totalCollected: stats.totalCollected,
-        totalOutstanding: stats.totalOutstanding,
+
+        totalCollected:
+          isTodayFilter && intelligentData.totalCollected != null
+            ? intelligentData.totalCollected
+            : stats.totalCollected,
+
+        totalOutstanding:
+          intelligentData.totalOutstanding ?? stats.totalOutstanding,
+
         omsetBahan: stats.omsetBahan,
         omsetJasa: stats.omsetJasa,
         countByPaymentStatus: stats.countByPayment,
         countByProductionStatus: stats.countByProduction,
-        totalLostRevenue: 0,
       };
 
       set({ summaryData: summaryResult });
@@ -347,6 +386,7 @@ export const useOrderStore = create((set, get) => ({
       console.error("❌ Failed to load summary:", error);
     }
   },
+
   // 3. CREATE ORDER
   createOrder: async (payload) => {
     set({ isLoading: true, error: null });
@@ -363,7 +403,6 @@ export const useOrderStore = create((set, get) => ({
         .insert([orderPayload])
         .select()
         .single();
-
       if (orderError) throw orderError;
 
       if (items && items.length > 0) {
@@ -374,13 +413,19 @@ export const useOrderStore = create((set, get) => ({
         await supabase.from("order_items").insert(itemsWithOrderId);
       }
 
+      logPOSOrderCreated(
+        orderData.id,
+        orderData.order_number,
+        orderData.received_by || "Kasir",
+      );
+
       const { data: fullOrder } = await supabase
         .from("orders")
         .select(`*, items_snapshot, items:order_items(*)`)
         .eq("id", orderData.id)
         .single();
+      const normalizedOrder = internalNormalizeOrder(fullOrder);
 
-      const normalizedOrder = normalizeOrder(fullOrder);
       set((state) => ({
         orders: [normalizedOrder, ...state.orders],
         loading: false,
@@ -393,14 +438,12 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // 4. UPDATE ORDER (SAFE VERSION)
+  // 4. UPDATE ORDER
   updateOrder: async (id, updates) => {
     set({ loading: true, error: null });
     try {
       const { supabase } = await import("../services/supabaseClient");
       const dbUpdates = {};
-
-      // Mapping Field UI -> DB
       const fieldMap = {
         productionStatus: "production_status",
         paymentStatus: "payment_status",
@@ -446,14 +489,14 @@ export const useOrderStore = create((set, get) => ({
     }
     set({ loading: true, searchQuery: query.trim() });
     try {
-      get().loadOrders({ page: 1, limit: 50 }); // Fallback
+      get().loadOrders({ page: 1, limit: 50 });
     } catch (error) {
       set({ error: error.message, loading: false });
     }
   },
 
-  // ACTION BUTTONS HANDLERS (Pelunasan, Status, Cancel)
-  // FASE 3.3: RPC-based payment recording
+  // === ACTION BUTTONS ===
+
   payOrder: async (
     orderId,
     amount,
@@ -462,18 +505,13 @@ export const useOrderStore = create((set, get) => ({
   ) => {
     set({ loading: true, error: null });
     try {
-      // Client-side validation
-      if (!amount || amount <= 0) {
+      if (!amount || amount <= 0)
         throw new Error("Payment amount must be greater than 0");
-      }
-
-      if (!receivedBy || receivedBy.trim() === "") {
-        throw new Error("Received by (user name) is required");
-      }
+      if (!receivedBy || receivedBy.trim() === "")
+        throw new Error("Received by is required");
 
       const { supabase } = await import("../services/supabaseClient");
 
-      // Call RPC function for atomic payment recording
       const { data, error: rpcError } = await supabase.rpc(
         "add_payment_to_order",
         {
@@ -484,18 +522,17 @@ export const useOrderStore = create((set, get) => ({
         },
       );
 
-      if (rpcError) {
-        console.error("❌ Payment RPC Error:", rpcError);
-        throw new Error(`Payment failed: ${rpcError.message}`);
-      }
+      if (rpcError) throw new Error(`Payment failed: ${rpcError.message}`);
+      if (!data || !data.success) throw new Error("Payment recording failed");
 
-      if (!data || !data.success) {
-        throw new Error("Payment recording failed");
-      }
+      logPaymentRecorded(
+        data.payment_id || "rpc_pay",
+        orderId,
+        amount,
+        paymentMethod,
+        receivedBy,
+      );
 
-      console.log("✅ Payment recorded:", data);
-
-      // Refresh the order to get updated state
       const { data: updatedOrder, error: fetchError } = await supabase
         .from("orders")
         .select(`*, items_snapshot, items:order_items(*)`)
@@ -503,7 +540,7 @@ export const useOrderStore = create((set, get) => ({
         .single();
 
       if (!fetchError && updatedOrder) {
-        const normalizedOrder = normalizeOrder(updatedOrder);
+        const normalizedOrder = internalNormalizeOrder(updatedOrder);
         set((state) => ({
           orders: state.orders.map((o) =>
             o.id === orderId ? normalizedOrder : o,
@@ -513,7 +550,6 @@ export const useOrderStore = create((set, get) => ({
       } else {
         set({ loading: false });
       }
-
       return data;
     } catch (error) {
       console.error("❌ Payment failed:", error);
@@ -522,23 +558,22 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // Backward compatibility: Keep addPayment alias
   addPayment: async (orderId, amount, receivedBy = null) => {
     return get().payOrder(orderId, amount, receivedBy || "Kasir", "CASH");
   },
 
   updateProductionStatus: async (orderId, status, assignedTo = null) => {
+    const oldOrder = get().orders.find((o) => o.id === orderId);
+    const oldStatus = oldOrder ? oldOrder.productionStatus : "UNKNOWN";
+
     const updates = { productionStatus: status };
-    if (status === "IN_PROGRESS" && assignedTo) {
-      updates.assignedTo = assignedTo;
-    }
-    if (status === "READY") {
-      updates.completedAt = new Date().toISOString();
-    }
-    if (status === "DELIVERED") {
-      updates.deliveredAt = new Date().toISOString();
-    }
+    if (status === "IN_PROGRESS" && assignedTo) updates.assignedTo = assignedTo;
+    if (status === "READY") updates.completedAt = new Date().toISOString();
+    if (status === "DELIVERED") updates.deliveredAt = new Date().toISOString();
+
     await get().updateOrder(orderId, updates);
+
+    logOrderStatusChanged(orderId, oldStatus, status, assignedTo || "Operator");
   },
 
   cancelOrder: async (orderId, reason, financialAction = "NONE") => {
@@ -548,9 +583,18 @@ export const useOrderStore = create((set, get) => ({
       cancelledAt: new Date().toISOString(),
       financialAction,
     });
+
+    logEvent(
+      "order_cancelled",
+      "ORDER_BOARD",
+      orderId,
+      "orders",
+      { reason: reason, financial_action: financialAction },
+      "Operator",
+    );
   },
 
-  // Dummy pagination placeholders (untuk kompatibilitas)
+  // Helpers
   loadOrdersPaginated: async (page, pageSize, filter) =>
     get().loadOrders({ page, limit: pageSize, paymentStatus: filter }),
   goToPage: async (page) =>
@@ -573,14 +617,12 @@ export const useOrderStore = create((set, get) => ({
   },
   applyFilter: (orders) => orders,
 
-  // === PAYMENT CONSISTENCY VALIDATION ===
-  // READ-ONLY: Detects discrepancies between orders and order_payments
+  // PAYMENT VALIDATION
   getPaymentValidationReport: async (options = {}) => {
     try {
       const { getPaymentDiscrepancyReport } =
         await import("../core/paymentValidator");
-      const report = await getPaymentDiscrepancyReport(options);
-      return report;
+      return await getPaymentDiscrepancyReport(options);
     } catch (error) {
       console.error("❌ Payment validation failed:", error);
       return {
@@ -591,14 +633,11 @@ export const useOrderStore = create((set, get) => ({
       };
     }
   },
-
-  // Get only problematic orders (convenience method)
   getProblematicPayments: async () => {
     const report = await get().getPaymentValidationReport({
       onlyMismatches: true,
     });
     return report.results || [];
   },
-
   clearError: () => set({ error: null }),
 }));

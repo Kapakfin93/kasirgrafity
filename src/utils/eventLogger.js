@@ -1,12 +1,10 @@
 /**
+ * src/utils/eventLogger.js (FIXED V5 - SAFE METADATA)
  * Event Logger - Client-Side Event Emitter
- * Fire-and-forget event logging to event_logs table
- *
- * RULES:
- * - Minimal payload (ID + timestamp + actor only)
- * - No listeners
- * - No automation
- * - If insert fails → IGNORE (fire and forget)
+ * * PERBAIKAN UTAMA:
+ * Pada fungsi 'logPaymentRecorded', parameter 'receivedBy' sekarang
+ * dimasukkan ke dalam objek metadata. Ini mencegah nama manual (misal: Gemini)
+ * tertimpa oleh nama sistem (POS_WORKSPACE) saat disimpan ke database.
  */
 
 import { supabase } from "../services/supabaseClient";
@@ -14,13 +12,6 @@ import { supabase } from "../services/supabaseClient";
 /**
  * Log event to event_logs table
  * Fire-and-forget - errors are ignored
- *
- * @param {string} eventName - Event name from event_contract.md
- * @param {string} source - Source of event (WEB_LANDING, POS_WORKSPACE, etc.)
- * @param {string} refId - Reference ID (order_id, inbox_id, etc.)
- * @param {string} refTable - Reference table name
- * @param {object} metadata - Optional minimal metadata
- * @param {string} actor - Who triggered the event
  */
 export const logEvent = async (
   eventName,
@@ -37,22 +28,20 @@ export const logEvent = async (
       source: source,
       ref_id: refId,
       ref_table: refTable,
-      metadata: metadata,
-      actor: actor,
+      metadata: metadata, // <-- Data "Gemini" akan aman disini
+      actor: actor, // <-- Data ini sering tertimpa sistem
       created_at: new Date().toISOString(),
     });
 
     // Success - do nothing (fire and forget)
   } catch (error) {
     // Failure - ignore (fire and forget)
-    // Don't throw, don't alert, just continue
     console.debug("Event log failed (ignored):", eventName, error.message);
   }
 };
 
 /**
  * Event 1: Web Order Received
- * Emit after INSERT to web_order_inbox
  */
 export const logWebOrderReceived = (inboxId, customerEmail = null) => {
   logEvent(
@@ -60,14 +49,13 @@ export const logWebOrderReceived = (inboxId, customerEmail = null) => {
     "WEB_LANDING",
     inboxId,
     "web_order_inbox",
-    null, // No metadata needed
+    null,
     customerEmail || "anonymous",
   );
 };
 
 /**
  * Event 2: Inbox Reviewed
- * Emit after admin approves/rejects web order
  */
 export const logInboxReviewed = (inboxId, oldStatus, newStatus, reviewedBy) => {
   logEvent(
@@ -82,7 +70,6 @@ export const logInboxReviewed = (inboxId, oldStatus, newStatus, reviewedBy) => {
 
 /**
  * Event 3: POS Order Created
- * Emit after order saved to orders table
  */
 export const logPOSOrderCreated = (orderId, orderNumber, createdBy) => {
   logEvent(
@@ -96,8 +83,8 @@ export const logPOSOrderCreated = (orderId, orderNumber, createdBy) => {
 };
 
 /**
- * Event 4: Payment Recorded
- * Emit after RPC add_payment_to_order succeeds
+ * Event 4: Payment Recorded (DIPERBAIKI)
+ * Fix: Memasukkan 'receivedBy' ke dalam Metadata agar terbaca di CCTV
  */
 export const logPaymentRecorded = (
   paymentId,
@@ -106,19 +93,28 @@ export const logPaymentRecorded = (
   method,
   receivedBy,
 ) => {
+  // Pastikan ada nilai default jika kosong, agar tidak null
+  const finalReceiver = receivedBy || "Kasir";
+
   logEvent(
     "payment_recorded",
     "RPC",
     paymentId,
     "order_payments",
-    { order_id: orderId, amount: amount, method: method },
-    receivedBy,
+    // 👇 INI BAGIAN YANG DIPERBAIKI 👇
+    {
+      order_id: orderId,
+      amount: amount,
+      method: method,
+      received_by: finalReceiver, // <-- Masuk ke Bagasi Metadata (AMAN)
+    },
+    // 👆 SELESAI PERBAIKAN 👆
+    finalReceiver, // Tetap kirim sebagai actor cadangan
   );
 };
 
 /**
  * Event 5: Order Status Changed
- * Emit after production_status update
  */
 export const logOrderStatusChanged = (
   orderId,
