@@ -1,29 +1,28 @@
 /**
- * App.jsx - REFACTORED with Admin Auth
- * Main application entry with Supabase Auth protection
+ * src/App.jsx (FULL RESTORE)
+ * Memastikan semua Rute (Dashboard, POS, Products) terdaftar.
  */
-
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { CSProvider } from "./context/CSContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { ProtectedWithPIN } from "./components/ProtectedWithPIN";
+import { ProtectedWithPIN } from "./components/ProtectedWithPIN"; // Pastikan file ini ada
+import { MainLayout } from "./components/MainLayout";
 
 // Pages
 import { Login } from "./pages/Login";
-import { EmployeeLogin } from "./modules/employees/EmployeeLogin";
-import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
-import { EmployeeList } from "./modules/employees/EmployeeList";
-import { OrderBoard } from "./modules/orders/OrderBoard";
 import { OwnerDashboard } from "./modules/dashboard/OwnerDashboard";
 import { ProductManager } from "./modules/products/ProductManager";
+import { EmployeeList } from "./modules/employees/EmployeeList";
 import { DataManagement } from "./modules/settings/DataManagement";
 import { Workspace } from "./modules/pos/Workspace";
+import { OrderBoard } from "./modules/orders/OrderBoard";
 import { ExpensePage } from "./modules/expenses/ExpensePage";
-import { MainLayout } from "./components/MainLayout";
 import { WebInboxPanel } from "./modules/orders/WebInboxPanel";
+import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
 
+// Style
 import "./index.css";
 
 function App() {
@@ -35,11 +34,7 @@ function App() {
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
 
-            {/* Employee Routes (keep untouched) */}
-            <Route path="/employee-login" element={<EmployeeLogin />} />
-            <Route path="/attendance" element={<AttendanceBoard />} />
-
-            {/* Protected Routes with Layout */}
+            {/* Protected Routes (Harus Login) */}
             <Route
               path="/"
               element={
@@ -48,9 +43,10 @@ function App() {
                 </ProtectedRoute>
               }
             >
+              {/* Default redirect ke POS */}
               <Route index element={<Navigate to="/pos" replace />} />
 
-              {/* Admin Routes (PIN Protected) */}
+              {/* === ZONA OWNER (TERKUNCI PIN) === */}
               <Route
                 path="/dashboard"
                 element={
@@ -84,18 +80,15 @@ function App() {
                 }
               />
 
-              {/* Operational Routes (No PIN Required) */}
+              {/* === ZONA BEBAS (OPERASIONAL) === */}
+              <Route path="/pos" element={<Workspace />} />
+              <Route path="/orders" element={<OrderBoard />} />
               <Route path="/expenses" element={<ExpensePage />} />
               <Route path="/web-inbox" element={<WebInboxPanel />} />
-
-              {/* POS Routes */}
-              <Route path="/pos" element={<Workspace />} />
-
-              {/* Production Routes */}
-              <Route path="/orders" element={<OrderBoard />} />
+              <Route path="/attendance" element={<AttendanceBoard />} />
             </Route>
 
-            {/* Fallback */}
+            {/* Fallback 404 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

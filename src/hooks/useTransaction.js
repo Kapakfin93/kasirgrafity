@@ -549,13 +549,28 @@ export function useTransaction() {
       if (!customerSnapshot.name || customerSnapshot.name.trim() === "")
         throw new Error("Nama customer wajib diisi");
 
-      const paidInput = Number.parseFloat(paymentState.amountPaid) || 0;
-      const paid = isTempo ? 0 : paidInput;
+      // --- 🔧 FIX: LOGIKA PEMBAYARAN & STATUS (SESUAI RUMUS RESMI) ---
 
+      // 1. Ambil nilai real input user. Jangan di-nol-kan meski Tempo.
+      const paidInput = Number.parseFloat(paymentState.amountPaid) || 0;
+      const paid = paidInput; // KUNCI: Paid adalah apa yang diinput, valid untuk Cash maupun Tempo (DP)
+
+      // 2. Tentukan status berdasarkan Rumus Matematika (bukan hardcode flag)
       let paymentStatus = "UNPAID";
-      if (isTempo) paymentStatus = "UNPAID";
-      else if (paid >= finalAmount) paymentStatus = "PAID";
-      else if (paid > 0) paymentStatus = "PARTIAL";
+
+      // Hitung sisa sementara untuk penentuan status
+      const tempRemaining = finalAmount - paid;
+
+      if (tempRemaining <= 0.5) {
+        // Toleransi koma kecil
+        paymentStatus = "PAID"; // Lunas
+      } else if (paid > 0) {
+        paymentStatus = "PARTIAL"; // Ada DP (Tempo dengan DP)
+      } else {
+        paymentStatus = "UNPAID"; // Murni Tempo (0 Rupiah)
+      }
+
+      // --- END FIX ---
 
       // 2. 🔥 AUTO-SAVE CUSTOMER KE DATABASE & CACHE 🔥
       let finalCustomerId = customerSnapshot.id;

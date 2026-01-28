@@ -51,7 +51,7 @@ export const useProductStore = create((set, get) => ({
 
     try {
       // Fetch all data (filter is_active in JS for reliable boolean handling)
-      const allCategories = await db.categories.orderBy("sort_order").toArray();
+      const allCategories = await db.categories.toArray();
       // STRICT FILTER: Only categories with is_active === 1 (not 0, not undefined, not false)
       const categoriesRaw = allCategories.filter((c) => c.is_active === 1);
 
@@ -194,6 +194,13 @@ export const useProductStore = create((set, get) => ({
 
   clearError: () => set({ error: null }),
 }));
+
+if (typeof window !== "undefined") {
+  window.reloadMasterData = () => {
+    console.log("🔄 Manual Reload Triggered from Window");
+    return useProductStore.getState().fetchMasterData();
+  };
+}
 
 // Export for backward compatibility
 export default useProductStore;

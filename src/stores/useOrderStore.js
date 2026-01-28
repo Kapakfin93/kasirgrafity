@@ -426,6 +426,38 @@ export const useOrderStore = create((set, get) => ({
         .single();
       const normalizedOrder = internalNormalizeOrder(fullOrder);
 
+      // --- 💉 SURGICAL INJECTION: RECORD INITIAL PAYMENT ---
+      // Cek apakah ada pembayaran awal (DP/Lunas) saat order dibuat
+      if (orderData && parseFloat(payload.paid_amount || 0) > 0) {
+        const paymentData = {
+          order_id: orderData.id,
+          amount: parseFloat(payload.paid_amount),
+          payment_method: payload.payment_method || "TUNAI",
+          // payment_date dihapus karena tidak ada di tabel
+          created_at: new Date().toISOString(),
+          // 🔥 TAMBAHAN WAJIB: Masukkan nama penerima uang
+          received_by: payload.received_by || "Kasir",
+        };
+
+        // Silent Insert (Fire & Forget) agar tidak memblokir UI jika gagal
+        const { error: payError } = await supabase
+          .from("order_payments")
+          .insert([paymentData]);
+
+        if (payError) {
+          console.error(
+            "⚠️ Order created but Initial Payment recording failed:",
+            payError,
+          );
+          // Jangan throw error, biarkan order tetap sukses
+        } else {
+          console.log(
+            `✅ Initial payment recorded: Rp ${paymentData.amount} (${paymentData.payment_method})`,
+          );
+        }
+      }
+      // --- END INJECTION ---
+
       set((state) => ({
         orders: [normalizedOrder, ...state.orders],
         loading: false,

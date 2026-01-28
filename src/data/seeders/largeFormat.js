@@ -1,7 +1,12 @@
+import { supabase } from "../../services/supabaseClient.js";
+import db from "../db/schema.js";
+
+// ============================================================================
+// 1️⃣ STATIC DATA RESERVOIR (BASE STRUCTURE)
+// Definisi dasar produk. Varian akan di-inject otomatis dari 'product_materials'
+// ============================================================================
 export const largeFormatProducts = [
-  // =========================================
-  // KATEGORI 1: OUTDOOR PRINT (Logic: AREA)
-  // =========================================
+  // --- OUTDOOR (AREA) ---
   {
     id: "PROD_SPANDUK_V2",
     categoryId: "CAT_OUTDOOR",
@@ -10,32 +15,7 @@ export const largeFormatProducts = [
     base_price: 18000,
     input_mode: "AREA",
     min_qty: 1,
-    variants: [
-      {
-        label: "Flexi 280gr Standard",
-        price: 18000,
-        specs: "Outdoor Standard",
-        desc: "Bahan tipis ekonomis, cocok untuk spanduk promo jangka pendek.",
-      },
-      {
-        label: "Flexi Korea 440gr",
-        price: 45000,
-        specs: "Outdoor Premium",
-        desc: "Bahan lebih tebal & kokoh, tahan lama untuk pemakaian outdoor.",
-      },
-      {
-        label: "Flexi Backlite",
-        price: 65000,
-        specs: "Khusus Neonbox",
-        desc: "Bahan tembus cahaya, khusus untuk papan lampu (neonbox).",
-      },
-      {
-        label: "Banner Jerman",
-        price: 85000,
-        specs: "Premium High Res",
-        desc: "Kualitas premium, hasil cetak paling tajam & awet.",
-      },
-    ],
+    variants: [], // AKAN DIISI OTOMATIS DARI SUPABASE
     finishing_groups: [
       {
         id: "fin_outdoor",
@@ -51,10 +31,7 @@ export const largeFormatProducts = [
       },
     ],
   },
-
-  // ==================================================
-  // KATEGORI 2: ROLL MEDIA & TEXTILE (Logic: LINEAR)
-  // ==================================================
+  // --- ROLLS (LINEAR) ---
   {
     id: "PROD_KAIN_V2",
     categoryId: "CAT_ROLLS",
@@ -63,50 +40,7 @@ export const largeFormatProducts = [
     base_price: 65000,
     input_mode: "LINEAR",
     min_qty: 1,
-    variants: [
-      {
-        label: "Kain Lokal (L: 90cm)",
-        price: 55000,
-        width: 0.9,
-        specs: "Bahan Lokal Standard",
-        desc: "Kain lokal murah, cocok untuk umbul-umbul & dekorasi.",
-      },
-      {
-        label: "Kain Lokal (L: 120cm)",
-        price: 70000,
-        width: 1.2,
-        specs: "Bahan Lokal Lebar",
-        desc: "Kain lokal lebar, lebih hemat untuk banner besar.",
-      },
-      {
-        label: "Kain Import (L: 90cm)",
-        price: 65000,
-        width: 0.9,
-        specs: "TC Import Premium",
-        desc: "Kain import halus, warna lebih cerah & tajam.",
-      },
-      {
-        label: "Kain Import (L: 120cm)",
-        price: 85000,
-        width: 1.2,
-        specs: "TC Import Premium",
-        desc: "Kain import lebar, untuk backdrop & jersey berkualitas.",
-      },
-      {
-        label: "Kain Import (L: 150cm)",
-        price: 105000,
-        width: 1.5,
-        specs: "TC Import Premium",
-        desc: "Kain import jumbo, cocok untuk spanduk besar tanpa sambung.",
-      },
-      {
-        label: "Kain Import (L: 200cm)",
-        price: 140000,
-        width: 2.0,
-        specs: "TC Import Jumbo",
-        desc: "Kain import terlebar, untuk panggung & backdrop raksasa.",
-      },
-    ],
+    variants: [], // AKAN DIISI OTOMATIS DARI SUPABASE
     finishing_groups: [
       {
         id: "fin_kain",
@@ -116,7 +50,6 @@ export const largeFormatProducts = [
         options: [
           { label: "Potong Pas (Free)", price: 0 },
           { label: "Jahit Keliling", price: 15000 },
-          { label: "Tali + Jahit", price: 20000 },
           { label: "Slongsong", price: 10000 },
         ],
       },
@@ -130,71 +63,7 @@ export const largeFormatProducts = [
     base_price: 75000,
     input_mode: "LINEAR",
     min_qty: 1,
-    variants: [
-      {
-        label: "Vinyl White (L: 100cm)",
-        price: 75000,
-        width: 1.0,
-        specs: "Bahan Putih Standar",
-        desc: "Stiker putih standar, cocok untuk label & tempelan biasa.",
-      },
-      {
-        label: "Vinyl White (L: 120cm)",
-        price: 90000,
-        width: 1.2,
-        specs: "Bahan Putih Lebar",
-        desc: "Stiker putih lebar, lebih hemat untuk cutting besar.",
-      },
-      {
-        label: "Vinyl White (L: 150cm)",
-        price: 115000,
-        width: 1.5,
-        specs: "Bahan Putih Jumbo",
-        desc: "Stiker putih jumbo, untuk branding mobil & kaca toko.",
-      },
-      {
-        label: "Transparan (L: 100cm)",
-        price: 80000,
-        width: 1.0,
-        specs: "Tembus Pandang",
-        desc: "Stiker bening, cocok untuk kaca & pintu transparan.",
-      },
-      {
-        label: "Transparan (L: 120cm)",
-        price: 96000,
-        width: 1.2,
-        specs: "Tembus Pandang",
-        desc: "Stiker bening lebar, untuk kaca etalase besar.",
-      },
-      {
-        label: "Transparan (L: 150cm)",
-        price: 120000,
-        width: 1.5,
-        specs: "Tembus Pandang",
-        desc: "Stiker bening jumbo, untuk dinding kaca & partisi.",
-      },
-      {
-        label: "One Way (L: 100cm)",
-        price: 85000,
-        width: 1.0,
-        specs: "Kaca Film",
-        desc: "Stiker tembus dari dalam, tutup dari luar (kaca film).",
-      },
-      {
-        label: "One Way (L: 120cm)",
-        price: 105000,
-        width: 1.2,
-        specs: "Kaca Film",
-        desc: "Stiker kaca film lebar, untuk jendela & kaca mobil.",
-      },
-      {
-        label: "One Way (L: 150cm)",
-        price: 130000,
-        width: 1.5,
-        specs: "Kaca Film",
-        desc: "Stiker kaca film jumbo, untuk kaca gedung & ruko.",
-      },
-    ],
+    variants: [], // AKAN DIISI OTOMATIS DARI SUPABASE
     finishing_groups: [
       {
         id: "fin_stiker_lam",
@@ -217,15 +86,7 @@ export const largeFormatProducts = [
     base_price: 35000,
     input_mode: "LINEAR",
     min_qty: 1,
-    variants: [
-      {
-        label: "PET Film (L: 60cm)",
-        price: 35000,
-        width: 0.6,
-        specs: "Area Cetak 58cm",
-        desc: "Film transfer panas untuk cetak gambar di kaos & kain.",
-      },
-    ],
+    variants: [], // AKAN DIISI OTOMATIS DARI SUPABASE
     finishing_groups: [
       {
         id: "fin_dtf",
@@ -239,186 +100,176 @@ export const largeFormatProducts = [
       },
     ],
   },
-
-  // ===============================================
-  // KATEGORI 3: POSTER & INDOOR (Logic: MATRIX)
-  // ===============================================
-
-  // 1. POSTER INDOOR (STANDARD)
-  {
-    id: "PROD_POSTER_INDOOR",
-    categoryId: "CAT_POSTER",
-    name: "CETAK POSTER (Indoor)",
-    description: "Cetak Poster Indoor Waterbase (Pcs).",
-    base_price: 0,
-    input_mode: "MATRIX",
-    min_qty: 1,
-    variants: [
-      {
-        label: "A2 (42 x 60 cm)",
-        specs: "Ukuran Sedang",
-        desc: "Poster sedang, cocok untuk promosi & dekorasi dinding.",
-        price_list: {
-          "Albatros (Matte)": 25000,
-          "Luster (Kulit Jeruk)": 30000,
-          Photopaper: 35000,
-        },
-      },
-      {
-        label: "A1 (60 x 84 cm)",
-        specs: "Ukuran Besar",
-        desc: "Poster besar, ideal untuk pajangan toko & galeri.",
-        price_list: {
-          "Albatros (Matte)": 50000,
-          "Luster (Kulit Jeruk)": 60000,
-          Photopaper: 70000,
-        },
-      },
-      {
-        label: "A0 (84 x 118 cm)",
-        specs: "Ukuran Jumbo",
-        desc: "Poster jumbo, untuk display pameran & event besar.",
-        price_list: {
-          "Albatros (Matte)": 95000,
-          "Luster (Kulit Jeruk)": 110000,
-          Photopaper: 130000,
-        },
-      },
-    ],
-    finishing_groups: [
-      {
-        id: "fin_poster",
-        title: "Laminasi (Per Pcs)",
-        type: "radio",
-        price_mode: "FIXED",
-        options: [
-          { label: "Tanpa Laminasi", price: 0 },
-          { label: "Laminasi Glossy", price: 10000 },
-          { label: "Laminasi Doff", price: 10000 },
-        ],
-      },
-    ],
-  },
-
-  // 2. POSTER UV (PREMIUM)
-  {
-    id: "PROD_POSTER_UV",
-    categoryId: "CAT_POSTER",
-    name: "CETAK POSTER (UV Print)",
-    description: "Cetak Poster UV Premium / Timbul (Pcs).",
-    base_price: 0,
-    input_mode: "MATRIX",
-    min_qty: 1,
-    variants: [
-      {
-        label: "A2 (42 x 60 cm)",
-        specs: "Ukuran Sedang",
-        desc: "Poster UV sedang, warna lebih tajam & tahan pudar.",
-        price_list: {
-          "Albatros (Matte)": 35000,
-          "Luster (Kulit Jeruk)": 45000,
-          Photopaper: 50000,
-        },
-      },
-      {
-        label: "A1 (60 x 84 cm)",
-        specs: "Ukuran Besar",
-        desc: "Poster UV besar, efek mengkilap premium.",
-        price_list: {
-          "Albatros (Matte)": 70000,
-          "Luster (Kulit Jeruk)": 90000,
-          Photopaper: 100000,
-        },
-      },
-      {
-        label: "A0 (84 x 118 cm)",
-        specs: "Ukuran Jumbo",
-        desc: "Poster UV jumbo, kualitas display profesional.",
-        price_list: {
-          "Albatros (Matte)": 135000,
-          "Luster (Kulit Jeruk)": 175000,
-          Photopaper: 195000,
-        },
-      },
-    ],
-    finishing_groups: [
-      {
-        id: "fin_poster",
-        title: "Laminasi (Per Pcs)",
-        type: "radio",
-        price_mode: "FIXED",
-        options: [
-          { label: "Tanpa Laminasi", price: 0 },
-          { label: "Laminasi Glossy", price: 10000 },
-          { label: "Laminasi Doff", price: 10000 },
-        ],
-      },
-    ],
-  },
 ];
 
-// Supabase migration function
-import { supabase } from "../../services/supabaseClient.js";
+// ============================================================================
+// 2️⃣ ADAPTER: FETCH VARIANTS FROM MATERIALS (NEW)
+// Mengambil data real-time dari tabel 'product_materials'
+// ============================================================================
+async function adaptProductVariantsFromMaterials(productId) {
+  const { data, error } = await supabase
+    .from("product_materials")
+    .select("label, price_per_unit, specs, display_order")
+    .eq("product_id", productId)
+    .eq("is_active", true)
+    .order("display_order", { ascending: true });
 
+  if (error)
+    throw new Error(
+      `Failed to fetch materials for ${productId}: ${error.message}`,
+    );
+  if (!data || data.length === 0)
+    throw new Error(`No materials found for ${productId}`);
+
+  return data.map((m) => ({
+    label: m.label,
+    price: m.price_per_unit,
+    specs: m.specs || "",
+  }));
+}
+
+// ============================================================================
+// 3️⃣ ADAPTER: POSTER FROM VIEW (EXISTING)
+// ============================================================================
+async function fetchPosterProductsFromView() {
+  const { data, error } = await supabase
+    .from("v_products_legacy_poster")
+    .select("*");
+
+  if (error) throw error;
+  return data;
+}
+
+function adaptPosterProductFromView(row) {
+  return {
+    id: row.id,
+    categoryId: row.category_id, // Mapping Snake -> Camel
+    name: row.name,
+    description: row.description ?? "",
+    base_price: row.base_price ?? 0,
+    input_mode: row.input_mode ?? "MATRIX",
+    calc_engine: row.calc_engine ?? "MATRIX_FIXED",
+    variants: row.variants ?? [],
+    finishing_groups: row.finishing_groups ?? [],
+    is_active: 1,
+    is_archived: 0,
+    min_qty: row.min_qty ?? 1,
+  };
+}
+
+// ============================================================================
+// 4️⃣ MAIN EXECUTION (HYBRID SYNC ENGINE)
+// ============================================================================
 export async function runLargeFormatReconstruction() {
-  console.log("🔧 LARGE FORMAT RECONSTRUCTION STARTING...");
+  console.log("🔄 LARGE FORMAT RECONSTRUCTION STARTED (Hybrid Mode)");
 
   try {
-    // 1. Ensure categories exist
-    const categoriesToInsert = [
+    // A. SYNC CATEGORIES (Wajib ada logic_type agar UI tidak loading terus)
+    const categoriesToSync = [
       {
         id: "CAT_OUTDOOR",
         name: "Cetak Outdoor (Area)",
-        description: "Spanduk, Banner - Harga per meter persegi",
+        description: "Spanduk, Banner",
         icon: "🏞️",
         display_order: 1,
+        logic_type: "AREA",
       },
       {
         id: "CAT_ROLLS",
         name: "Cetak Roll (Linear)",
-        description: "Kain, Stiker, DTF - Harga per meter panjang",
+        description: "Kain, Stiker, DTF",
         icon: "📏",
         display_order: 2,
+        logic_type: "LINEAR",
       },
       {
         id: "CAT_POSTER",
         name: "Poster & Media Cetak",
-        description: "Poster berbagai ukuran - Harga per lembar",
+        description: "Poster A0-A2",
         icon: "🖼️",
         display_order: 3,
+        logic_type: "MATRIX",
       },
     ];
 
-    for (const cat of categoriesToInsert) {
-      const { error } = await supabase.from("categories").upsert(cat, {
-        onConflict: "id",
-        ignoreDuplicates: false,
-      });
-
-      if (error && error.code !== "23505") {
-        console.error(`❌ Failed to insert category ${cat.id}:`, error);
-      }
+    for (const cat of categoriesToSync) {
+      // Backup ke Supabase
+      await supabase
+        .from("categories")
+        .upsert(cat, { onConflict: "id", ignoreDuplicates: false });
+      // Masuk ke Dexie (UI) - Pastikan is_active: 1
+      await db.categories.put({ ...cat, is_active: 1 });
     }
+    console.log("✅ Categories synced");
 
-    console.log("✅ Categories ensured");
-
-    // 2. Insert products
-    for (const product of largeFormatProducts) {
-      const { error } = await supabase.from("products").upsert(product, {
-        onConflict: "code",
-        ignoreDuplicates: false,
-      });
-
-      if (error && error.code !== "23505") {
-        console.error(`❌ Failed to insert product ${product.id}:`, error);
-      }
-    }
-
+    // B. PHASE 1: STATIC PRODUCTS + DYNAMIC MATERIAL INJECTION
     console.log(
-      `✅ LARGE FORMAT RECONSTRUCTION COMPLETE (${largeFormatProducts.length} products)`,
+      "📦 Phase 1: Syncing Static Products with dynamic materials...",
     );
+
+    const PRODUCTS_WITH_MATERIALS = [
+      "PROD_SPANDUK_V2",
+      "PROD_KAIN_V2",
+      "PROD_STIKER_METER_V2",
+      "PROD_DTF_V1",
+    ];
+
+    for (const product of largeFormatProducts) {
+      // Clone agar aman
+      let productToSave = { ...product };
+
+      // Inject variants from Supabase product_materials
+      if (PRODUCTS_WITH_MATERIALS.includes(product.id)) {
+        try {
+          const dynamicVariants = await adaptProductVariantsFromMaterials(
+            product.id,
+          );
+          productToSave.variants = dynamicVariants;
+          console.log(
+            `   ✅ Loaded ${dynamicVariants.length} variants for ${product.id}`,
+          );
+        } catch (error) {
+          console.error(
+            `   ❌ Failed to load variants for ${product.id}:`,
+            error.message,
+          );
+          throw error; // Fail hard agar ketahuan
+        }
+      }
+
+      // Simpan ke Dexie
+      await db.products.put({
+        ...productToSave,
+        is_active: 1,
+        is_archived: 0,
+      });
+    }
+    console.log(`   Synced static products.`);
+
+    // C. PHASE 2: POSTER PRODUCTS (FROM VIEW)
+    console.log("📦 Phase 2: Fetching Poster products from Supabase view...");
+    const posterRows = await fetchPosterProductsFromView();
+
+    if (posterRows && posterRows.length > 0) {
+      for (const row of posterRows) {
+        const adaptedProduct = adaptPosterProductFromView(row);
+        await db.products.put(adaptedProduct);
+      }
+      console.log(`   Synced ${posterRows.length} poster products.`);
+    }
+
+    console.log("✅ SYNC COMPLETE. Refresh your browser!");
   } catch (error) {
-    console.error("❌ LARGE FORMAT RECONSTRUCTION ERROR:", error);
+    console.error("❌ SYNC ERROR:", error);
     throw error;
   }
+}
+
+// ============================================================================
+// 5️⃣ WINDOW EXPOSURE
+// ============================================================================
+if (typeof window !== "undefined") {
+  window.runLargeFormatReconstruction = runLargeFormatReconstruction;
+  window.db = db; // Penting untuk inspeksi manual
+  console.log("✅ window.runLargeFormatReconstruction() is ready");
 }
