@@ -60,7 +60,56 @@ export default function ProductConfigModal({
   // NOTE: LINEAR width is now set inline in the onClick handler to avoid cascading renders
 
   // --- 3. SAFE GUARDS & HELPERS ---
-  const safeProduct = useMemo(() => product || {}, [product]);
+  // --- 3. SAFE GUARDS & HELPERS ---
+
+  // ✅ POS MATRIX READ GUARD
+  const [displayProduct, setDisplayProduct] = useState(product);
+
+  useEffect(() => {
+    setDisplayProduct(product); // Sync prop if it changes
+
+    if (product?.calc_engine === "MATRIX_FIXED" && product.variants) {
+      (async () => {
+        const { fetchMatrixPricesFromSupabase } =
+          await import("../../services/matrixPriceService");
+
+        // Deep clone variants to avoid mutation issues
+        const clonedVariants = product.variants.map((v) => ({
+          ...v,
+          // shallow copy is enough as we replace price_list
+        }));
+
+        let hasUpdates = false;
+
+        for (let i = 0; i < clonedVariants.length; i++) {
+          const variant = clonedVariants[i];
+          if (variant.id) {
+            const matrixPrices = await fetchMatrixPricesFromSupabase(
+              product.id,
+              variant.id,
+            );
+
+            if (matrixPrices && Object.keys(matrixPrices).length > 0) {
+              variant.price_list = matrixPrices; // Override
+              hasUpdates = true;
+              console.log(
+                `POS MATRIX READ SOURCE = SUPABASE | ${product.id} | ${variant.id}`,
+              );
+            }
+          }
+        }
+
+        if (hasUpdates) {
+          setDisplayProduct((prev) => ({
+            ...prev,
+            variants: clonedVariants,
+          }));
+        }
+      })();
+    }
+  }, [product]);
+
+  const safeProduct = useMemo(() => displayProduct || {}, [displayProduct]);
   const inputMode = safeProduct.input_mode || "UNIT";
   const isArea = inputMode === "AREA";
   const isLinear = inputMode === "LINEAR";
@@ -215,6 +264,17 @@ export default function ProductConfigModal({
     dimensions.length,
     sheetsPerBook,
   ]);
+
+  // Debug log for finishing calculation
+  useEffect(() => {
+    if (finishingTotal > 0) {
+      console.log("💰 FINISHING CALCULATION:", {
+        finishingTotal,
+        selectedFinishings,
+        grandTotal: (finalUnitPrice + finishingTotal) * qty,
+      });
+    }
+  }, [finishingTotal, selectedFinishings, finalUnitPrice, qty]);
 
   const grandTotal = (finalUnitPrice + finishingTotal) * qty;
 
@@ -554,6 +614,92 @@ export default function ProductConfigModal({
                   )}
                 </div>
               </section>
+            )}
+
+            {/* FINISHING GROUPS (INTERACTIVE UI) */}
+            {product.finishing_groups?.length > 0 && (
+              <div className="mt-6 space-y-4">
+                {product.finishing_groups.map((group) => (
+                  <div key={group.id} className="space-y-2">
+                    <div className="text-sm font-semibold text-slate-300">
+                      {group.title}
+                      {group.required && (
+                        <span className="text-red-400 ml-1">*</span>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      {group.options.map((opt, idx) => {
+                        const isChecked =
+                          group.type === "radio"
+                            ? selectedFinishings[group.id] === opt.label
+                            : Array.isArray(selectedFinishings[group.id]) &&
+                              selectedFinishings[group.id].includes(opt.label);
+
+                        return (
+                          <label
+                            key={idx}
+                            className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${
+                              isChecked
+                                ? "border-cyan-500 bg-cyan-500/10"
+                                : "border-slate-700 hover:border-cyan-500"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type={group.type}
+                                name={group.id}
+                                value={opt.label}
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (group.type === "radio") {
+                                    // Radio: single selection
+                                    setSelectedFinishings((prev) => ({
+                                      ...prev,
+                                      [group.id]: opt.label,
+                                    }));
+                                  } else {
+                                    // Checkbox: multi selection
+                                    setSelectedFinishings((prev) => {
+                                      const current = prev[group.id] || [];
+                                      const updated = e.target.checked
+                                        ? [...current, opt.label]
+                                        : current.filter(
+                                            (label) => label !== opt.label,
+                                          );
+                                      return {
+                                        ...prev,
+                                        [group.id]: updated,
+                                      };
+                                    });
+                                  }
+                                  console.log("FINISHING SELECTED:", {
+                                    group: group.id,
+                                    option: opt.label,
+                                    price: opt.price,
+                                  });
+                                }}
+                                required={
+                                  group.required && group.type === "radio"
+                                }
+                                className="w-4 h-4 text-cyan-500 bg-slate-800 border-slate-600 focus:ring-cyan-500"
+                              />
+                              <span className="text-slate-200">
+                                {opt.label}
+                              </span>
+                            </div>
+                            <span className="text-cyan-400 font-semibold">
+                              {opt.price > 0
+                                ? `+Rp ${opt.price.toLocaleString()}`
+                                : "Gratis"}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
 
             {/* BOOKLET: Debug info if print_modes missing */}

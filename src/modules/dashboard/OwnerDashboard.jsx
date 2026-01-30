@@ -452,30 +452,38 @@ export function OwnerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {cancelledOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td className="text-muted">
-                      {new Date(
-                        order.cancelledAt || order.createdAt,
-                      ).toLocaleString("id-ID")}
-                    </td>
-                    <td className="text-bold">{order.orderNumber}</td>
-                    <td>{order.customerName}</td>
-                    <td>
-                      <span className="reason-badge">{order.cancelReason}</span>
-                    </td>
-                    <td>
-                      {order.financialAction === "REFUND"
-                        ? "💸 KEMBALI"
-                        : order.financialAction === "FORFEIT"
-                          ? "🔥 HANGUS"
-                          : "-"}
-                    </td>
-                    <td className="text-right text-danger">
-                      {formatRupiah(order.totalAmount)}
-                    </td>
-                  </tr>
-                ))}
+                {cancelledOrders.map((order) => {
+                  // ✅ FIX: Baca dari camelCase (jika sudah dimapping) ATAU snake_case (raw dari DB)
+                  const rawAction =
+                    order.financialAction || order.financial_action || "NONE";
+
+                  return (
+                    <tr key={order.id}>
+                      <td className="text-muted">
+                        {new Date(
+                          order.cancelledAt || order.createdAt,
+                        ).toLocaleString("id-ID")}
+                      </td>
+                      <td className="text-bold">{order.orderNumber}</td>
+                      <td>{order.customerName}</td>
+                      <td>
+                        <span className="reason-badge">
+                          {order.cancelReason}
+                        </span>
+                      </td>
+                      <td>
+                        {rawAction === "REFUND"
+                          ? "💸 KEMBALI"
+                          : rawAction === "FORFEIT"
+                            ? "🔥 HANGUS"
+                            : "-"}
+                      </td>
+                      <td className="text-right text-danger">
+                        {formatRupiah(order.totalAmount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

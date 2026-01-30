@@ -59,7 +59,10 @@ export const NotaPreview = React.forwardRef(
 
     const paid = Number(order?.paidAmount || paymentState?.amountPaid || 0);
     const sisaBayar = safeTotal - paid;
-    const statusText = sisaBayar <= 0 ? "LUNAS" : "BELUM LUNAS";
+    // ✅ FIX: Strict Database Read. Jangan hitung manual!
+    // Hanya tampilkan LUNAS jika DB bilang 'PAID'.
+    const statusText =
+      order?.paymentStatus === "PAID" ? "LUNAS" : "BELUM LUNAS";
     const mode = order?.paymentMethod || paymentState?.mode || "TUNAI";
 
     // Service Fee Logic
@@ -316,6 +319,30 @@ export const NotaPreview = React.forwardRef(
                 }}
               >
                 JOGLO PRINT
+              </div>
+            )}
+
+            {/* 🚨 SECURITY WATERMARK: CANCELLED ORDER */}
+            {order?.productionStatus === "CANCELLED" && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%) rotate(-45deg)",
+                  fontSize: "3.5rem",
+                  fontWeight: "900",
+                  color: "rgba(220, 38, 38, 0.3)",
+                  border: "5px solid rgba(220, 38, 38, 0.3)",
+                  padding: "20px 40px",
+                  pointerEvents: "none",
+                  zIndex: 50,
+                  whiteSpace: "nowrap",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.2em",
+                }}
+              >
+                DIBATALKAN
               </div>
             )}
 

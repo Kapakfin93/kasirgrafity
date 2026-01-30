@@ -54,6 +54,7 @@ function ProductFormModal({
         categoryId: product.categoryId || "",
         prices: product.prices || null,
         input_mode: product.input_mode || "",
+        calc_engine: product.calc_engine || "", // ✅ WAJIB
         variants: product.variants || null,
         finishing_groups: product.finishing_groups || [],
         price_tiers: product.price_tiers || null,
@@ -67,6 +68,7 @@ function ProductFormModal({
         categoryId: preselectedCategory || categories[0]?.id || "",
         prices: null,
         input_mode: "",
+        calc_engine: "", // ✅ WAJIB
         variants: null,
         finishing_groups: [],
         price_tiers: null,
@@ -76,6 +78,43 @@ function ProductFormModal({
     }
   }, [product, categories, isOpen, preselectedCategory]);
 
+  // ✅ MATRIX READ GUARD: Fetch latest prices from Supabase for MATRIX products
+  useEffect(() => {
+    if (
+      !product ||
+      product.calc_engine !== "MATRIX_FIXED" ||
+      !product.variants
+    ) {
+      return;
+    }
+    (async () => {
+      const { fetchMatrixPricesFromSupabase } =
+        await import("../../services/matrixPriceService");
+      const updatedVariants = [...product.variants];
+      let hasUpdates = false;
+      for (let i = 0; i < updatedVariants.length; i++) {
+        const variant = updatedVariants[i];
+        if (variant.id) {
+          const matrixPrices = await fetchMatrixPricesFromSupabase(
+            product.id,
+            variant.id,
+          );
+          if (matrixPrices && Object.keys(matrixPrices).length > 0) {
+            // ✅ STRICT OVERRIDE: Use Supabase data, BLOCK fallback
+            updatedVariants[i] = { ...variant, price_list: matrixPrices };
+            hasUpdates = true;
+            console.log(
+              `✅ MATRIX READ SOURCE = SUPABASE | ${product.id} | ${variant.id}`,
+            );
+          }
+        }
+      }
+      if (hasUpdates) {
+        setFormData((prev) => ({ ...prev, variants: updatedVariants }));
+      }
+    })();
+  }, [product, isOpen]);
+  // jogo jogo //
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
@@ -801,7 +840,17 @@ function ProductFormModal({
                                 className="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700/50"
                               >
                                 <span className="text-xs text-slate-300">
-                                  {materialName}
+                                  {materialName === "FOLIO_1_4"
+                                    ? "1/4 Folio (10x16)"
+                                    : materialName === "FOLIO_1_3"
+                                      ? "1/3 Folio (10x21)"
+                                      : materialName === "FOLIO_1_2"
+                                        ? "1/2 Folio (16x21)"
+                                        : materialName === "FOLIO_1_1"
+                                          ? "1 Folio (21x33)"
+                                          : materialName === "FOLIO_1"
+                                            ? "1 Folio (21x33)"
+                                            : materialName}
                                 </span>
                                 <input
                                   type="number"

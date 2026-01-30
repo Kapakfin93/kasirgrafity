@@ -23,6 +23,14 @@ const categories = [
     icon: "Image",
     color: "purple",
   },
+  // STATIONERY & OFFICE - UNIT/TIERED LOGIC
+  {
+    id: "STATIONERY_OFFICE",
+    name: "STATIONERY / OFFICE",
+    description: "Nota, Kalender, Map, dll",
+    icon: "FileText",
+    color: "slate",
+  },
 ];
 
 export default categories;

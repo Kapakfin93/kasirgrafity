@@ -3,17 +3,53 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
 
-// WAJIB: side-effect import
+// =================================================================
+// 1. IMPORT SEEDERS (Pemicu agar file .js dimuat ke browser)
+// =================================================================
 import "./data/seeders/largeFormat.js";
+import "./data/seeders/reconstructStationery.js";
+import "./data/seeders/reconstructMerchandise.js"; // Merchandise disiapkan
 
 import { useProductStore } from "./stores/useProductStore";
 
-// 🔥 URUTAN BENAR
+// =================================================================
+// 2. SYSTEM BOOTSTRAP (Jantung Aplikasi)
+// Ini berjalan otomatis setiap kali aplikasi dibuka/refresh
+// =================================================================
 (async () => {
-  if (window.runLargeFormatReconstruction) {
-    await window.runLargeFormatReconstruction(); // isi Dexie
+  console.log("🚀 SYSTEM BOOT SEQUENCE STARTED...");
+
+  try {
+    // A. LARGE FORMAT RECONSTRUCTION
+    if (typeof window.runLargeFormatReconstruction === "function") {
+      console.log("🔄 Booting Large Format...");
+      await window.runLargeFormatReconstruction();
+    }
+
+    // B. STATIONERY RECONSTRUCTION (FIXED NAME)
+    // Kita panggil nama fungsi yang benar sesuai file reconstructStationery.js terbaru
+    if (typeof window.runOfficeReconstruction === "function") {
+      console.log("🔄 Booting Stationery...");
+      await window.runOfficeReconstruction();
+    } else {
+      console.warn("⚠️ Warning: runOfficeReconstruction function not found!");
+    }
+
+    // C. MERCHANDISE RECONSTRUCTION (Jika file & fungsinya sudah siap)
+    if (typeof window.runMerchReconstruction === "function") {
+      console.log("🔄 Booting Merchandise...");
+      await window.runMerchReconstruction();
+    }
+
+    // D. LOAD DATA TO STATE (ZUSTAND)
+    // Setelah semua data siap di Dexie, tarik ke memori aplikasi
+    console.log("📥 Loading data to App State...");
+    await useProductStore.getState().fetchMasterData();
+
+    console.log("✅ SYSTEM BOOT COMPLETE. Ready to serve.");
+  } catch (error) {
+    console.error("❌ CRITICAL BOOT ERROR:", error);
   }
-  await useProductStore.getState().fetchMasterData(); // baca Dexie → Zustand
 })();
 
 createRoot(document.getElementById("root")).render(

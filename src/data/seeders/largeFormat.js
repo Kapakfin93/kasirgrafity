@@ -6,6 +6,43 @@ import db from "../db/schema.js";
 // Definisi dasar produk. Varian akan di-inject otomatis dari 'product_materials'
 // ============================================================================
 export const largeFormatProducts = [
+  // --- DISPLAY SYSTEM (RELOCATION FROM MERCH) ---
+  {
+    id: "master_display_system",
+    categoryId: "CAT_OUTDOOR", // Sudah kita pindahkan ke Outdoor
+    name: "DISPLAY SYSTEM / STANDING",
+    description: "X-Banner, Y-Banner, Roll Up (Hitungan Per Unit).",
+    base_price: 75000,
+    input_mode: "UNIT",
+    min_qty: 1,
+    // Kita gunakan Varian Statis dulu agar cepat muncul (tanpa perlu load dari DB)
+    variants: [
+      { label: "X-Banner", specs: "60x160 | Fiber Black", price: 75000 },
+      { label: "Y-Banner", specs: "60x160 | Rangka Besi/Alu", price: 125000 },
+      {
+        label: "Roll Up Banner",
+        specs: "60x160 | Aluminium Putar",
+        price: 250000,
+      },
+      {
+        label: "Roll Up Banner 80",
+        specs: "80x200 | Aluminium Putar",
+        price: 295000,
+      },
+    ],
+    finishing_groups: [
+      {
+        id: "OPT_DISPLAY_MAT", // Kita pakai ID Standar Baru
+        title: "Pilihan Bahan Visual",
+        type: "radio",
+        required: true,
+        options: [
+          { label: "Flexi 280gr (Standar)", price: 0 },
+          { label: "Albatros + Laminasi (Premium)", price: 25000 },
+        ],
+      },
+    ],
+  },
   // --- OUTDOOR (AREA) ---
   {
     id: "PROD_SPANDUK_V2",
@@ -109,7 +146,7 @@ export const largeFormatProducts = [
 async function adaptProductVariantsFromMaterials(productId) {
   const { data, error } = await supabase
     .from("product_materials")
-    .select("label, price_per_unit, specs, display_order")
+    .select("id, label, price_per_unit, specs, display_order") // ✅ TAMBAH: id
     .eq("product_id", productId)
     .eq("is_active", true)
     .order("display_order", { ascending: true });
@@ -122,6 +159,7 @@ async function adaptProductVariantsFromMaterials(productId) {
     throw new Error(`No materials found for ${productId}`);
 
   return data.map((m) => ({
+    id: m.id, // ✅ TAMBAH: Inject material ID
     label: m.label,
     price: m.price_per_unit,
     specs: m.specs || "",
@@ -189,6 +227,22 @@ export async function runLargeFormatReconstruction() {
         icon: "🖼️",
         display_order: 3,
         logic_type: "MATRIX",
+      },
+      {
+        id: "MERCH_APPAREL", // ID Kategori Lama (Kita pakai lagi)
+        name: "Apparel & Merchandise",
+        description: "Jersey, Kaos, Pin, Lanyard",
+        icon: "👕", // Ikon Kaos
+        display_order: 5,
+        logic_type: "UNIT", // Wajib UNIT agar tidak error
+      },
+      {
+        id: "STATIONERY_OFFICE",
+        name: "STATIONERY / OFFICE",
+        description: "Nota, Kalender, Map, dll",
+        icon: "📄",
+        display_order: 4,
+        logic_type: "UNIT",
       },
     ];
 

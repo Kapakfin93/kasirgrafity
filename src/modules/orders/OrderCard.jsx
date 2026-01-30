@@ -889,11 +889,11 @@ export function OrderCard({ order }) {
         />
         <ConfirmModal
           isOpen={financialAuditModal.show}
-          title="💰 Audit Keuangan"
+          title="⚠️ Uangnya Mau Diapakan?"
           message={
             <div>
               <p style={{ marginBottom: "12px" }}>
-                Order ini memiliki pembayaran:
+                Order ini sudah ada uang masuk:
               </p>
               <p
                 style={{
@@ -915,12 +915,12 @@ export function OrderCard({ order }) {
                   color: "#475569",
                 }}
               >
-                Pilih nasib uang pembayaran:
+                Karena batal, uang ini mau:
               </p>
             </div>
           }
-          confirmText="💸 REFUND (Dikembalikan)"
-          cancelText="🔥 HANGUS (Masuk Kas)"
+          confirmText="💸 Kembalikan ke Pelanggan"
+          cancelText="🔒 Masuk Kas Toko (Hangus)"
           confirmColor="#f59e0b"
           onConfirm={handleFinancialRefund}
           onCancel={handleFinancialForfeit}

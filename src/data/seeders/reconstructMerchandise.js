@@ -1,230 +1,221 @@
-import db from '../db/schema.js';
+/**
+ * MERCHANDISE RECONSTRUCTION (GEN 4.1 FINAL MATCH)
+ * Status: FULL DYNAMIC (Varian & Finishing dari Supabase)
+ * Fix: ID disamakan persis dengan Database Existing (PROD_MERCH_...)
+ */
+
+import { supabase } from "../../services/supabaseClient.js";
+import db from "../db/schema.js";
+
+// ============================================================================
+// 1️⃣ ADAPTER LOGIC (FETCH DARI SUPABASE)
+// ============================================================================
+
+// A. Ambil Varian (Bahan/Ukuran)
+async function adaptProductVariantsFromMaterials(productId) {
+  const { data, error } = await supabase
+    .from("product_materials")
+    .select("id, label, price_per_unit, specs, display_order")
+    .eq("product_id", productId)
+    .eq("is_active", true)
+    .order("display_order", { ascending: true });
+
+  if (error) return [];
+  if (!data) return [];
+
+  return data.map((m) => ({
+    id: m.id,
+    label: m.label,
+    price: m.price_per_unit,
+    specs: m.specs || "",
+  }));
+}
+
+// B. Ambil Finishing (Opsi Tambahan)
+async function adaptFinishingsFromOptions(productId) {
+  const { data, error } = await supabase
+    .from("finishing_options")
+    .select(
+      "finishing_id, group_key, group_title, type, is_required, label, price, display_order",
+    )
+    .eq("product_id", productId)
+    .order("group_key", { ascending: true })
+    .order("display_order", { ascending: true });
+
+  if (error || !data) return [];
+
+  const grouped = {};
+  for (const row of data) {
+    if (!grouped[row.group_key]) {
+      grouped[row.group_key] = {
+        id: row.finishing_id,
+        title: row.group_title,
+        type: row.type,
+        required: row.is_required,
+        options: [],
+      };
+    }
+    grouped[row.group_key].options.push({ label: row.label, price: row.price });
+  }
+  return Object.values(grouped);
+}
+
+// ============================================================================
+// 2️⃣ STATIC RESERVOIR (ID SESUAI FAKTA DATABASE)
+// ============================================================================
 
 const MERCH_PRODUCTS = [
-    // 1. MASTER JERSEY (The King)
-    // Logic: Unit Variants (Material + Model) + Wholesale Tier
-    {
-        id: "master_jersey_printing",
-        categoryId: "MERCH_APPAREL",
-        name: "JERSEY FUTSAL / BOLA (Printing)",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 150000,
-        min_qty: 1,
-        advanced_features: {
-            wholesale_rules: [
-                { min: 1, max: 11, price: 150000 }, // Harga Ecer (Mahal)
-                { min: 12, max: 1000, price: 135000 } // Harga Tim (Diskon) - Logic will adjust based on variant delta
-            ]
-        },
-        variants: [
-            { label: "Milano - Setelan", specs: "Zigzag Tech | Baju + Celana", price: 150000 },
-            { label: "Milano - Atasan", specs: "Zigzag Tech | Baju Saja", price: 95000 },
-            { label: "Benzema - Setelan", specs: "Pori Halus | Baju + Celana", price: 140000 },
-            { label: "Benzema - Atasan", specs: "Pori Halus | Baju Saja", price: 85000 }
-        ],
-        finishing_groups: [
-            {
-                id: "fin_jersey_opt", title: "Opsi Tambahan", type: "checkbox", required: false,
-                options: [
-                    { label: "Lengan Panjang", price: 10000 },
-                    { label: "Size Jumbo (XXL/3XL)", price: 15000 },
-                    { label: "Kerah Custom (V-Neck/Shanghai)", price: 5000 }
-                ]
-            }
-        ],
-        is_active: 1, is_archived: 0
-    },
+  // A. JERSEY (ID: master_jersey_printing) - SUDAH BENAR
+  {
+    id: "master_jersey_printing",
+    categoryId: "MERCH_APPAREL",
+    name: "JERSEY FUTSAL / BOLA (Printing)",
+    description: "Jersey Custom Printing.",
+    input_mode: "UNIT",
+    calc_engine: "UNIT",
+    base_price: 150000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 
-    // 2. MASTER KAOS CUSTOM (DTF)
-    {
-        id: "master_kaos_dtf",
-        categoryId: "MERCH_APPAREL",
-        name: "KAOS CUSTOM (Sablon DTF)",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 85000,
-        min_qty: 1,
-        advanced_features: {
-            wholesale_rules: [
-                { min: 1, max: 11, price: 85000 },
-                { min: 12, max: 1000, price: 75000 }
-            ]
-        },
-        variants: [
-            { label: "Logo Kecil", specs: "Area A6/A5 (Dada Kiri)", price: 65000 },
-            { label: "Blok A4", specs: "Area A4 (Dada/Punggung)", price: 85000 },
-            { label: "Blok A3", specs: "Area A3 (Jumbo)", price: 100000 },
-            { label: "2 Sisi (A4+A4)", specs: "Depan & Belakang", price: 120000 }
-        ],
-        finishing_groups: [
-            {
-                id: "fin_kaos_mat", title: "Upgrade Bahan", type: "checkbox", required: false,
-                options: [
-                    { label: "Upgrade Cotton 24s (Tebal)", price: 5000 },
-                    { label: "Lengan Panjang", price: 10000 }
-                ]
-            }
-        ],
-        is_active: 1, is_archived: 0
-    },
+  // B. KAOS CUSTOM (ID: PROD_MERCH_KAOS) - FIX DARI IMAGE
+  {
+    id: "PROD_MERCH_KAOS",
+    categoryId: "MERCH_APPAREL",
+    name: "KAOS CUSTOM (Sablon DTF)",
+    description: "Kaos Sablon DTF.",
+    input_mode: "UNIT",
+    calc_engine: "UNIT",
+    base_price: 85000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 
-    // 3. MASTER DISPLAY SYSTEM (Banner Stand)
-    {
-        id: "master_display_system",
-        categoryId: "MERCH_APPAREL",
-        name: "DISPLAY SYSTEM / STANDING",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 75000,
-        min_qty: 1,
-        variants: [
-            { label: "X-Banner", specs: "60x160 | Fiber Black", price: 75000 },
-            { label: "Y-Banner", specs: "60x160 | Rangka Besi/Alu", price: 125000 },
-            { label: "Roll Up Banner", specs: "60x160 | Aluminium Putar", price: 250000 },
-            { label: "Roll Up Banner 80", specs: "80x200 | Aluminium Putar", price: 295000 }
-        ],
-        finishing_groups: [
-            {
-                id: "fin_banner_mat", title: "Pilihan Bahan Visual", type: "radio", required: true,
-                options: [
-                    { label: "Flexi 280gr (Standar)", price: 0 },
-                    { label: "Albatros + Laminasi (Premium)", price: 25000 }
-                ]
-            }
-        ],
-        is_active: 1, is_archived: 0
-    },
+  // C. LANYARD (ID: PROD_MERCH_LANYARD) - FIX DARI IMAGE
+  {
+    id: "PROD_MERCH_LANYARD",
+    categoryId: "MERCH_APPAREL",
+    name: "LANYARD TALI ID CARD",
+    description: "Lanyard Printing Tissue/Polyester.",
+    input_mode: "UNIT",
+    calc_engine: "UNIT",
+    base_price: 25000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 
-    // 4. MASTER PIN & GANCI (Souvenir)
-    {
-        id: "master_pin_ganci",
-        categoryId: "MERCH_APPAREL",
-        name: "PIN & GANTUNGAN KUNCI",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 5000,
-        min_qty: 1,
-        advanced_features: {
-            wholesale_rules: [
-                { min: 1, max: 49, price: 5000 }, // Ecer
-                { min: 50, max: 99, price: 4000 }, // Partai Kecil
-                { min: 100, max: 1000, price: 3000 } // Partai Besar
-            ]
-        },
-        variants: [
-            { label: "Pin Peniti 44mm", specs: "Laminasi Glossy/Doff", price: 4000 },
-            { label: "Pin Peniti 58mm", specs: "Laminasi Glossy/Doff", price: 5000 },
-            { label: "Ganci 44mm", specs: "Gantungan Kunci Polos", price: 5000 },
-            { label: "Ganci 58mm", specs: "Gantungan Kunci Polos", price: 6000 }
-        ],
-        is_active: 1, is_archived: 0
-    },
+  // D. PIN & GANTUNGAN (ID: PROD_MERCH_PIN) - FIX DARI IMAGE
+  {
+    id: "PROD_MERCH_PIN",
+    categoryId: "MERCH_APPAREL",
+    name: "PIN & GANTUNGAN KUNCI (Bulat)",
+    description: "Pin Peniti / Ganci Buka Botol.",
+    input_mode: "UNIT",
+    calc_engine: "UNIT",
+    base_price: 5000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 
-    // 5. MASTER LANYARD & ID CARD
-    {
-        id: "master_lanyard_id",
-        categoryId: "MERCH_APPAREL",
-        name: "LANYARD & ID CARD",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 25000,
-        min_qty: 1,
-        advanced_features: {
-            wholesale_rules: [
-                { min: 1, max: 9, price: 25000 },
-                { min: 10, max: 49, price: 20000 },
-                { min: 50, max: 1000, price: 15000 }
-            ]
-        },
-        variants: [
-            { label: "PAKET FULLSET", specs: "Tali 2 Sisi + ID Card + Holder", price: 35000 },
-            { label: "TALI LANYARD SAJA", specs: "Print 2 Sisi + Kait + Stopper", price: 25000 },
-            { label: "CETAK ID CARD SAJA", specs: "PVC 0.76 Tebal (ATM)", price: 10000 }
-        ],
-        is_active: 1, is_archived: 0
-    },
+  // E. ID CARD PVC (ID: PROD_MERCH_IDCARD) - FIX DARI IMAGE
+  {
+    id: "PROD_MERCH_IDCARD",
+    categoryId: "MERCH_APPAREL",
+    name: "CETAK ID CARD (PVC)",
+    description: "ID Card bahan PVC ATM.",
+    input_mode: "UNIT",
+    calc_engine: "UNIT",
+    base_price: 10000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 
-    // 6. MASTER NAME TAG (Resin)
-    {
-        id: "master_nametag",
-        categoryId: "MERCH_APPAREL",
-        name: "NAME TAG / NAMA DADA",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 25000,
-        min_qty: 1,
-        advanced_features: {
-            wholesale_rules: [
-                { min: 1, max: 10, price: 25000 },
-                { min: 11, max: 1000, price: 20000 }
-            ]
-        },
-        variants: [
-            { label: "Kait Peniti", specs: "2x8 cm | Resin Cembung", price: 25000 },
-            { label: "Kait Magnet", specs: "2x8 cm | Resin Cembung", price: 35000 }
-        ],
-        is_active: 1, is_archived: 0
-    },
+  // F. MUG CUSTOM (ID: PROD_MERCH_MUG) - FIX DARI IMAGE
+  {
+    id: "PROD_MERCH_MUG",
+    categoryId: "MERCH_APPAREL",
+    name: "MUG KERAMIK CUSTOM",
+    description: "Mug Keramik Standard SNI.",
+    input_mode: "UNIT",
+    calc_engine: "UNIT",
+    base_price: 25000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 
-    // 7. MASTER MUG CUSTOM
-    {
-        id: "master_mug_custom",
-        categoryId: "MERCH_APPAREL",
-        name: "MUG KERAMIK CUSTOM",
-        input_mode: "UNIT",
-        calc_engine: "TIERED",
-        base_price: 25000,
-        min_qty: 1,
-        advanced_features: {
-            wholesale_rules: [
-                { min: 1, max: 11, price: 25000 },
-                { min: 12, max: 1000, price: 20000 }
-            ]
-        },
-        variants: [
-            { label: "Mug Standar Putih", specs: "SNI | Sublim Full Colour", price: 25000 }
-        ],
-        is_active: 1, is_archived: 0
-    }
+  // G. GANTUNGAN KUNCI AKRILIK (ID: master_ganci_akrilik) - SUDAH BENAR (BARU)
+  {
+    id: "master_ganci_akrilik",
+    categoryId: "MERCH_APPAREL",
+    name: "GANTUNGAN KUNCI AKRILIK (Custom)",
+    description: "Ganci Akrilik Potong sesuai Pola.",
+    input_mode: "UNIT",
+    calc_engine: "TIERED",
+    base_price: 15000,
+    min_qty: 1,
+    variants: [],
+    finishing_groups: [],
+  },
 ];
 
+// ============================================================================
+// 3️⃣ MAIN EXECUTION
+// ============================================================================
+
 export async function runMerchReconstruction() {
-    console.log("☢️ MERCHANDISE NUCLEAR CLEANUP STARTING...");
-    try {
-        // STRATEGY: DELETE BY KEYWORDS (To catch zombie products with wrong CategoryIDs)
-        const zombies = await db.products.filter(p => {
-            const name = p.name.toLowerCase();
-            const cat = p.categoryId || '';
-            // Keywords of OLD products seen in screenshots
-            const isZombie = name.includes('jersey') ||
-                name.includes('banner') ||
-                name.includes('pin') ||
-                name.includes('ganci') ||
-                name.includes('lanyard') ||
-                name.includes('tali') ||
-                name.includes('mug') ||
-                name.includes('kaos') ||
-                name.includes('standing') ||
-                cat === 'MERCH_APPAREL';
-            return isZombie;
-        }).toArray();
+  console.log("👕 MERCHANDISE RECONSTRUCTION STARTED (Fix Match ID)");
 
-        console.log(`Found ${zombies.length} items to vaporize.`);
-
-        for (const p of zombies) {
-            await db.products.delete(p.id);
-            console.log(`🔥 Vaporized: ${p.name} (${p.categoryId})`);
-        }
-
-        // SEED NEW MASTERS
-        console.log("🌱 Seeding 7 Master Products...");
-        for (const mp of MERCH_PRODUCTS) {
-            await db.products.put(mp);
-            console.log(`✅ Seeded: ${mp.name}`);
-        }
-        console.log("✅ NUCLEAR CLEANUP & RECONSTRUCTION COMPLETE");
-    } catch (err) {
-        console.error("❌ FAILED:", err);
+  try {
+    // A. BERSIHKAN DATA LAMA
+    console.log("🧹 Cleaning up old MERCH_APPAREL products...");
+    const oldProducts = await db.products
+      .where("categoryId")
+      .equals("MERCH_APPAREL")
+      .toArray();
+    for (const p of oldProducts) {
+      await db.products.delete(p.id);
     }
+
+    // B. LOOP & SYNC
+    for (const product of MERCH_PRODUCTS) {
+      let productToSave = { ...product };
+
+      // 1. Ambil Varian dari Supabase
+      const variants = await adaptProductVariantsFromMaterials(product.id);
+      productToSave.variants = variants;
+
+      // 2. Ambil Finishing dari Supabase
+      const finishings = await adaptFinishingsFromOptions(product.id);
+      productToSave.finishing_groups =
+        finishings.length > 0 ? finishings : undefined;
+
+      // 3. Simpan ke Dexie Lokal
+      await db.products.put({
+        ...productToSave,
+        is_active: 1,
+        is_archived: 0,
+      });
+
+      console.log(
+        `   ✅ Seeded: ${product.name} (ID: ${product.id}) -> Vars: ${variants.length}, Fin: ${finishings.length}`,
+      );
+    }
+
+    console.log("✅ MERCHANDISE RECONSTRUCTION COMPLETE");
+  } catch (error) {
+    console.error("❌ MERCHANDISE RECONSTRUCTION ERROR:", error);
+    throw error;
+  }
+}
+
+// Global Expose
+if (typeof window !== "undefined") {
+  window.runMerchReconstruction = runMerchReconstruction;
+  console.log("✅ window.runMerchReconstruction() ready");
 }

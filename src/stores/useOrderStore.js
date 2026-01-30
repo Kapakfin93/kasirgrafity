@@ -104,6 +104,11 @@ const internalNormalizeOrder = (dbOrder) => {
     cancelReason: dbOrder.cancel_reason || dbOrder.cancelReason,
     cancelledAt: dbOrder.cancelled_at || dbOrder.cancelledAt,
 
+    // ✅ FIX: Map financial_action dari database (snake_case) ke app (camelCase)
+    // Needed untuk kolom "Dana" di Dashboard Riwayat Pembatalan
+    financialAction:
+      dbOrder.financial_action || dbOrder.financialAction || "NONE",
+
     // Meta
     meta: dbOrder.meta || {},
 
@@ -250,7 +255,13 @@ export const useOrderStore = create((set, get) => ({
       orders.forEach((o) => {
         if (o.production_status === "CANCELLED") {
           stats.countByProduction.CANCELLED++;
-          return;
+
+          // ✅ FIX: Catat uang masuk (DP) meskipun order batal.
+          // Uang fisik sudah diterima, tidak boleh hilang dari laporan Cash Flow.
+          const paid = Number(o.paid_amount || 0);
+          stats.totalCollected += paid; // Tambahkan ke Uang Masuk
+
+          return; // Skip dari perhitungan Sales/Omzet
         }
 
         stats.totalCount++;
@@ -613,7 +624,9 @@ export const useOrderStore = create((set, get) => ({
       productionStatus: "CANCELLED",
       cancelReason: reason,
       cancelledAt: new Date().toISOString(),
-      financialAction,
+      // ✅ FIX: Force snake_case key to match Supabase column exact name
+      // Bypass auto-mapper by using direct column name
+      financial_action: financialAction,
     });
 
     logEvent(
