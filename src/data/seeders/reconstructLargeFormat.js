@@ -13,7 +13,7 @@ import { largeFormatProducts } from "./largeFormat.js";
 export async function runLargeFormatReconstruction() {
   console.log(
     "%c🏗️ STARTING 3-PILLAR INFRASTRUCTURE MIGRATION...",
-    "color: cyan; font-weight: bold;"
+    "color: cyan; font-weight: bold;",
   );
 
   try {
@@ -68,7 +68,7 @@ export async function runLargeFormatReconstruction() {
       console.log("  🗑️  [DEMOLITION] Legacy LARGE_FORMAT category removed.");
     } catch (err) {
       console.log(
-        "  ℹ️  Legacy LARGE_FORMAT category not found (already removed)."
+        "  ℹ️  Legacy LARGE_FORMAT category not found (already removed).",
       );
     }
 
@@ -108,7 +108,7 @@ export async function runLargeFormatReconstruction() {
       }
     }
     console.log(
-      `  🧟 [CLEANUP] Removed ${zombieCount} zombie products from failed migrations.`
+      `  🧟 [CLEANUP] Removed ${zombieCount} zombie products from failed migrations.`,
     );
 
     // --- STEP 3: SEED NEW PRODUCTS ---
@@ -123,7 +123,7 @@ export async function runLargeFormatReconstruction() {
       // Safety check: Ensure the product belongs to one of our new categories
       if (!validCats.includes(product.categoryId)) {
         console.warn(
-          `  ⚠️  [SKIP] Product ${product.name} has invalid CategoryID: ${product.categoryId}`
+          `  ⚠️  [SKIP] Product ${product.name} has invalid CategoryID: ${product.categoryId}`,
         );
         skippedCount++;
         continue;
@@ -160,13 +160,13 @@ export async function runLargeFormatReconstruction() {
     console.log(`     🖼️  CAT_POSTER: ${posterCount} products`);
 
     console.log(
-      "\n╔═══════════════════════════════════════════════════════════════╗"
+      "\n╔═══════════════════════════════════════════════════════════════╗",
     );
     console.log(
-      "║  ✅ 3-PILLAR INFRASTRUCTURE MIGRATION COMPLETE!              ║"
+      "║  ✅ 3-PILLAR INFRASTRUCTURE MIGRATION COMPLETE!              ║",
     );
     console.log(
-      "╚═══════════════════════════════════════════════════════════════╝\n"
+      "╚═══════════════════════════════════════════════════════════════╝\n",
     );
 
     console.log("💡 NEXT STEPS:");
@@ -175,7 +175,7 @@ export async function runLargeFormatReconstruction() {
     console.log("   3. Verify 3 new category tabs appear");
     console.log("   4. Test LINEAR mode on Stiker/Kain/DTF (locked width)");
     console.log(
-      "   5. Test MATRIX mode on Poster (size + material selection)\n"
+      "   5. Test MATRIX mode on Poster (size + material selection)\n",
     );
 
     return {

@@ -122,7 +122,11 @@ const CUSTOM_PRODUCTS = [
 ];
 
 export async function runCustomReconstruction() {
-  console.log("🛠️ CUSTOM SERVICES RECONSTRUCTION STARTING...");
+  console.log(
+    "� [MIGRATION GUARD] Skipping local seeder. Using Supabase data.",
+  );
+  return;
+  console.log("�🛠️ CUSTOM SERVICES RECONSTRUCTION STARTING...");
   try {
     // STEP 1: CREATE CATEGORY IF NOT EXISTS
     const customCategory = {
