@@ -1,11 +1,12 @@
 /**
- * Product Store - Zustand (GEN 4.7 - FINAL GHOSTBUSTER)
+ * Product Store - Zustand (GEN 4.8 - TIERED PRICING FIRST CLASS)
  * State management for master data
- * FIX:
+ * UPDATE:
  * 1. Supports Junction Table for Finishings (product_finishings)
  * 2. Filters Sizes per Product (Smart Matrix)
  * 3. Handles Cross-Reference Materials
- * 4. AGGRESSIVE GHOSTBUSTER: Auto-deletes duplicate local products (DTF/Stiker ghosts)
+ * 4. AGGRESSIVE GHOSTBUSTER: Auto-deletes duplicate local products
+ * 5. ✅ NEW: Fetches 'product_price_tiers' & Injects into advanced_features
  */
 
 import { create } from "zustand";
@@ -81,7 +82,7 @@ export const useProductStore = create((set, get) => ({
    */
   syncCloudProducts: async () => {
     const { supabase } = await import("../services/supabaseClient");
-    console.log("☁️ Syncing Cloud Products (GEN 4.7 GHOSTBUSTER)...");
+    console.log("☁️ Syncing Cloud Products (GEN 4.8 WITH TIERS)...");
 
     // Daftar Kategori yang dikelola Cloud
     const targetCategories = [
@@ -90,6 +91,8 @@ export const useProductStore = create((set, get) => ({
       "CAT_OUTDOOR",
       "CAT_ROLLS",
       "CAT_POSTER",
+      "STATIONERY_OFFICE",
+      "DIGITAL_A3_PRO",
     ];
 
     try {
@@ -106,13 +109,20 @@ export const useProductStore = create((set, get) => ({
       const productIds = products.map((p) => p.id);
 
       // =========================================================
-      // 🗺️ 2. FETCH THE MAPS (Matrix & Junctions)
+      // 🗺️ 2. FETCH THE MAPS (Matrix, Junctions, & TIERS)
       // =========================================================
 
       const { data: matrixPrices } = await supabase
         .from("product_price_matrix")
         .select("*")
         .in("product_id", productIds);
+
+      // ✅ NEW: FETCH TIERS (GROSIR) DARI TABEL BARU
+      const { data: priceTiers } = await supabase
+        .from("product_price_tiers")
+        .select("*")
+        .in("product_id", productIds)
+        .order("min_qty", { ascending: true });
 
       const { data: productFinishingsMap } = await supabase
         .from("product_finishings")
@@ -160,7 +170,7 @@ export const useProductStore = create((set, get) => ({
         const productMatrix =
           matrixPrices?.filter((mx) => mx.product_id === p.id) || [];
 
-        // --- A. JAHIT VARIAN / MATERIAL (UPDATE: DENGAN WIDTH) ---
+        // --- A. JAHIT VARIAN / MATERIAL ---
         let finalVariants =
           materials?.filter((m) => m.product_id === p.id) || [];
         if (isMatrix && productMatrix.length > 0) {
@@ -183,7 +193,7 @@ export const useProductStore = create((set, get) => ({
             price: m.price_per_unit || 0,
             specs: m.specs || "",
             display_order: m.display_order || 99,
-            width: m.width, // ✅ PENAMBAHAN PENTING: Agar fitur Lock Lebar berfungsi
+            width: m.width,
           }))
           .sort((a, b) => a.display_order - b.display_order);
 
@@ -232,6 +242,30 @@ export const useProductStore = create((set, get) => ({
           }
         }
 
+        // --- D. ✅ INJECT LOGIC TIERS KE ADVANCED_FEATURES ---
+        // Kita bypass: Ambil data dari tabel tiers, tapi kita format seolah-olah dari JSON lama
+        // agar logic frontend existing (Calculator Engine) tetap jalan tanpa diubah.
+        let advancedFeatures = p.advanced_features || {};
+
+        const productTiers =
+          priceTiers?.filter((t) => t.product_id === p.id) || [];
+
+        if (productTiers.length > 0) {
+          // Kita rekonstruksi format JSON lama: [{min, max, value, type}]
+          const injectedRules = productTiers.map((t) => ({
+            min: t.min_qty,
+            max: t.max_qty,
+            value: Number(t.value),
+            type: t.type,
+          }));
+
+          // Timpa/Isi wholesale_rules dengan data segar dari tabel
+          advancedFeatures = {
+            ...advancedFeatures,
+            wholesale_rules: injectedRules,
+          };
+        }
+
         return {
           id: p.id,
           categoryId: p.category_id,
@@ -244,7 +278,7 @@ export const useProductStore = create((set, get) => ({
           is_active: p.is_active ? 1 : 0,
           is_archived: 0,
           pricing_model: p.pricing_model,
-          advanced_features: p.advanced_features,
+          advanced_features: advancedFeatures, // ✅ Updated with real DB Tiers
 
           variants,
           finishing_groups:
@@ -262,18 +296,13 @@ export const useProductStore = create((set, get) => ({
       // =========================================================
       // 🗑️ 6. GHOSTBUSTER V2 (HAPUS HANTU AGRESIF)
       // =========================================================
-      // Ambil semua produk lokal
       const allLocalProducts = await db.products.toArray();
-      const officialIds = new Set(productIds); // Daftar ID Resmi dari Cloud
+      const officialIds = new Set(productIds);
 
-      // Cari Produk Ilegal:
-      // 1. Yang kategorinya masuk target operasi, TAPI ID-nya gak resmi.
-      // 2. ATAU yang namanya mengandung "DTF" atau "Stiker" TAPI ID-nya gak resmi (Hantu nyasar).
       const ghostProducts = allLocalProducts.filter((p) => {
         const isOfficial = officialIds.has(p.id);
-        if (isOfficial) return false; // Produk resmi, jangan disentuh
+        if (isOfficial) return false;
 
-        // Kriteria Hantu:
         const isTargetCategory = targetCategories.includes(p.categoryId);
         const isSuspiciousName = /DTF|Stiker|Meteran/i.test(p.name);
 
@@ -284,11 +313,6 @@ export const useProductStore = create((set, get) => ({
         console.warn(
           `👻 Ghostbuster V2 found ${ghostProducts.length} intruders. Executing...`,
         );
-        console.log(
-          "💀 Target Eliminasi:",
-          ghostProducts.map((p) => `${p.name} (${p.id})`),
-        );
-
         const ghostIds = ghostProducts.map((p) => p.id);
         await db.products.bulkDelete(ghostIds);
         console.log("🧹 Ghostbuster V2: Area Cleaned.");

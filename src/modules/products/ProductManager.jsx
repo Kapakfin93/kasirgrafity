@@ -208,6 +208,10 @@ function ProductFormModal({
   // NUMBER FORMATTING HELPER
   // ============================================
   const formatNumber = (num) => {
+    // JARING PENGAMAN: Cek dulu apakah angkanya valid
+    if (num === undefined || num === null || isNaN(num)) {
+      return "0"; // Kalau kosong, anggap saja 0 (Jangan error)
+    }
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   };
 
@@ -599,13 +603,20 @@ function ProductFormModal({
                             <input
                               type="number"
                               className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
-                              value={tier.price}
+                              // REVISI: Cek 'price' ATAU 'value' (biar tidak 0)
+                              value={tier.price ?? tier.value ?? 0}
                               onChange={(e) =>
-                                updateTier(index, "price", e.target.value)
+                                // REVISI: Deteksi otomatis mau update 'price' atau 'value'
+                                updateTier(
+                                  index,
+                                  tier.value !== undefined ? "value" : "price",
+                                  e.target.value,
+                                )
                               }
                             />
                             <span className="text-[10px] text-slate-600 mt-1 block text-right">
-                              {formatNumber(tier.price)}
+                              {/* REVISI: Tampilkan format angka yang benar */}
+                              {formatNumber(tier.price ?? tier.value)}
                             </span>
                           </div>
                           {/* Delete Button */}

@@ -6,21 +6,20 @@ import {
   Scroll,
   CheckCircle2,
   ArrowRight,
+  Zap, // Icon Petir untuk Grosir
 } from "lucide-react";
 
 export const ProductCard = ({ product, onClick }) => {
-  // --- 1. DETECT HERO CONDITION (LOOSER CHECK) ---
+  // --- 1. DETECT HERO CONDITION ---
   const isOutdoorHero =
     product.categoryId === "CAT_OUTDOOR" || product.input_mode === "AREA";
 
-  // Debugging (Check Console if this triggers)
-  if (product.name.includes("SPANDUK")) {
-    console.log(
-      `[ProductCard] Rendering ${product.name}: isOutdoorHero=${isOutdoorHero}, CatID=${product.categoryId}`,
-    );
-  }
+  // --- 2. DETECT WHOLESALE (TIERED) ---
+  // Cek apakah produk punya aturan grosir di advanced_features
+  const wholesaleRules = product.advanced_features?.wholesale_rules || [];
+  const hasWholesale = wholesaleRules.length > 0;
 
-  // --- 2. HERO CARD LAYOUT (OUTDOOR / SPANDUK) ---
+  // --- 3. HERO CARD LAYOUT (OUTDOOR / SPANDUK) ---
   if (isOutdoorHero) {
     return (
       <div
@@ -46,6 +45,14 @@ export const ProductCard = ({ product, onClick }) => {
                 </p>
               </div>
             </div>
+
+            {/* BADGE GROSIR HERO (JIKA ADA) */}
+            {hasWholesale && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-yellow-400/50 bg-yellow-400/10 text-yellow-400 text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(250,204,21,0.2)]">
+                <Zap size={14} fill="currentColor" />
+                <span>Grosir Available</span>
+              </div>
+            )}
           </div>
 
           {/* Smart Badges Info */}
@@ -67,7 +74,7 @@ export const ProductCard = ({ product, onClick }) => {
             />
           </div>
 
-          {/* Material Preview - Show first 3 variants */}
+          {/* Material Preview */}
           {product.variants?.length > 0 && (
             <div
               style={{
@@ -81,50 +88,18 @@ export const ProductCard = ({ product, onClick }) => {
               {product.variants.slice(0, 3).map((variant, idx) => (
                 <div
                   key={variant.label || idx}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    marginBottom:
-                      idx < 2 && idx < product.variants.length - 1
-                        ? "8px"
-                        : "0",
-                  }}
+                  className="flex flex-col mb-2 last:mb-0"
                 >
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: "600",
-                      color: "#67e8f9", // cyan-300
-                    }}
-                  >
+                  <span className="text-[13px] font-semibold text-cyan-300">
                     📦 {variant.label}
                   </span>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "#94a3b8", // slate-400
-                      lineHeight: "1.3",
-                    }}
-                  >
+                  <span className="text-[12px] text-slate-400 leading-tight">
                     {variant.desc ||
                       variant.specs ||
                       "Material cetak berkualitas"}
                   </span>
                 </div>
               ))}
-              {product.variants.length > 3 && (
-                <div
-                  style={{
-                    marginTop: "8px",
-                    fontSize: "12px",
-                    fontWeight: "500",
-                    color: "#06b6d4", // cyan-500
-                    fontStyle: "italic",
-                  }}
-                >
-                  +{product.variants.length - 3} bahan lainnya
-                </div>
-              )}
             </div>
           )}
 
@@ -137,11 +112,10 @@ export const ProductCard = ({ product, onClick }) => {
     );
   }
 
-  // --- 3. STANDARD CARD LAYOUT (ELEGANT & MINIMALIST - MATCHING SPANDUK STYLE) ---
+  // --- 4. STANDARD CARD LAYOUT ---
   const visibleVariants = product.variants?.slice(0, 4) || [];
   const remainingCount =
     (product.variants?.length || 0) - visibleVariants.length;
-  const productDescription = product.description || "Kategori Produk & Layanan";
 
   return (
     <div
@@ -163,118 +137,101 @@ export const ProductCard = ({ product, onClick }) => {
       {/* Subtle Background Glow */}
       <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/5 rounded-full blur-3xl opacity-30"></div>
 
+      {/* --- BADGE GROSIR (NEON KUNING FUTURISTIC) --- */}
+      {hasWholesale && (
+        <div className="absolute top-4 right-4 z-20 group/tooltip">
+          {/* The Badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-yellow-500/10 border border-yellow-500/40 text-yellow-400 text-[10px] font-bold uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.15)] group-hover:shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all">
+            <Zap size={12} fill="currentColor" />
+            <span>Grosir</span>
+          </div>
+
+          {/* THE TOOLTIP (Muncul saat Hover Badge) */}
+          <div className="absolute top-full right-0 mt-2 w-48 p-3 rounded-lg bg-slate-900 border border-yellow-500/30 shadow-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 z-50">
+            <p className="text-[10px] font-bold text-yellow-500 mb-2 uppercase tracking-wide border-b border-yellow-500/20 pb-1">
+              Diskon Kuantitas
+            </p>
+            <div className="flex flex-col gap-1">
+              {wholesaleRules.map((rule, idx) => (
+                <div
+                  key={idx}
+                  className="flex justify-between items-center text-[10px]"
+                >
+                  <span className="text-slate-400">
+                    {rule.min} - {rule.max} pcs
+                  </span>
+                  <span className="font-bold text-emerald-400">
+                    Hemat Rp {rule.value?.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="relative z-10">
         {/* Header: Category Name */}
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xl font-bold text-white tracking-wide">
+        <div className="flex items-center justify-between mb-2 pr-16">
+          {" "}
+          {/* pr-16 biar gak nabrak badge */}
+          <h3 className="text-xl font-bold text-white tracking-wide leading-tight">
             {product.name}
           </h3>
+        </div>
 
-          {/* Input Mode Badge (Subtle) */}
-          <div
-            className="px-2.5 py-1 rounded-md text-xs font-semibold"
+        {/* Input Mode Badge (Subtle) */}
+        <div className="mb-3">
+          <span
+            className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
             style={{
               background: "rgba(255, 255, 255, 0.05)",
-              color: "rgba(148, 163, 184, 0.8)",
+              color: "rgba(148, 163, 184, 0.6)",
               border: "1px solid rgba(148, 163, 184, 0.1)",
             }}
           >
-            {product.input_mode}
-          </div>
+            {product.input_mode} MODE
+          </span>
         </div>
 
-        {/* Description - Improved Contrast */}
-        <p
-          className="mb-4 line-clamp-2"
-          style={{
-            color: "#94a3b8",
-            fontSize: "14px",
-            lineHeight: "1.5",
-          }}
-        >
-          {productDescription}
+        {/* Description */}
+        <p className="mb-4 line-clamp-2 text-slate-400 text-sm leading-relaxed">
+          {product.description || "Kategori Produk & Layanan"}
         </p>
 
-        {/* Variant Badges (Improved Readability with Descriptions) */}
+        {/* Variant Badges */}
         {visibleVariants.length > 0 && (
           <div className="flex flex-col gap-2">
             {visibleVariants.map((variant, index) => (
               <div
                 key={index}
-                className="flex flex-col px-3 py-2 rounded-lg"
-                style={{
-                  background: "rgba(255, 255, 255, 0.06)",
-                  border: "1px solid rgba(148, 163, 184, 0.15)",
-                }}
+                className="flex flex-col px-3 py-2 rounded-lg bg-white/5 border border-slate-700/50"
               >
-                {/* Variant Name - Prominent */}
                 <div className="flex items-center gap-2">
-                  <Package
-                    size={14}
-                    style={{ color: "#06b6d4", opacity: 0.9 }}
-                  />
-                  <span
-                    className="font-semibold"
-                    style={{
-                      color: "#e2e8f0",
-                      fontSize: "14px",
-                    }}
-                  >
+                  <Package size={14} className="text-cyan-400/90" />
+                  <span className="font-semibold text-slate-200 text-sm">
                     {variant.label || variant.name}
                   </span>
                 </div>
-                {/* Variant Description OR Material Hint (for MATRIX) */}
-                {variant.price_list ? (
-                  // MATRIX Product: Show material options from price_list keys
-                  <span
-                    className="mt-1 ml-6"
-                    style={{
-                      color: "#67e8f9",
-                      fontSize: "11px",
-                      lineHeight: "1.4",
-                    }}
-                  >
-                    🎨 Bahan: {Object.keys(variant.price_list).join(" • ")}
-                  </span>
-                ) : variant.desc ? (
-                  // Non-MATRIX: Show regular description
-                  <span
-                    className="mt-1 ml-6"
-                    style={{
-                      color: "#94a3b8",
-                      fontSize: "12px",
-                      lineHeight: "1.4",
-                    }}
-                  >
+                {variant.desc && (
+                  <span className="mt-1 ml-6 text-slate-400 text-xs">
                     {variant.desc}
                   </span>
-                ) : null}
+                )}
+                {/* Khusus Matrix: Tampilkan Hint Harga */}
+                {variant.price_list && (
+                  <span className="mt-1 ml-6 text-cyan-300/80 text-[10px]">
+                    Tersedia {Object.keys(variant.price_list).length} Ukuran
+                  </span>
+                )}
               </div>
             ))}
 
             {remainingCount > 0 && (
-              <div
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium"
-                style={{
-                  background: "rgba(255, 255, 255, 0.03)",
-                  color: "rgba(148, 163, 184, 0.8)",
-                  border: "1px solid rgba(148, 163, 184, 0.08)",
-                }}
-              >
-                +{remainingCount} pilihan bahan lainnya
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white/5 border border-slate-700/30 text-slate-400">
+                +{remainingCount} pilihan lainnya
               </div>
             )}
-          </div>
-        )}
-
-        {/* Fallback if no variants */}
-        {visibleVariants.length === 0 && (
-          <div
-            className="flex items-center gap-2 text-xs"
-            style={{ color: "rgba(148, 163, 184, 0.6)" }}
-          >
-            <Package size={14} />
-            <span>Tersedia berbagai pilihan</span>
           </div>
         )}
       </div>
@@ -282,8 +239,7 @@ export const ProductCard = ({ product, onClick }) => {
   );
 };
 
-// --- HELPER COMPONENTS & FUNCTIONS ---
-
+// --- HELPER COMPONENTS ---
 const Badge = ({ icon, text, color }) => (
   <div
     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${color} text-xs font-semibold`}
