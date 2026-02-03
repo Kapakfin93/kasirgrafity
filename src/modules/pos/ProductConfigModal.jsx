@@ -489,15 +489,22 @@ export default function ProductConfigModal({
                   >
                     {v.label}
                   </span>
+                  {/* INJECTED: Material Specs/Description */}
+                  {v.specs && (
+                    <span
+                      className={`text-[11px] font-normal leading-tight mt-0.5 ${
+                        isSelected
+                          ? "text-cyan-100/80"
+                          : "text-slate-500 group-hover:text-slate-400"
+                      }`}
+                    >
+                      {v.specs}
+                    </span>
+                  )}
                   {isLinear && (
                     <span className="text-[10px] text-slate-500 flex items-center gap-1">
                       <Lock size={10} className="text-amber-500" /> Lebar:{" "}
                       {v.width}m (Fixed)
-                    </span>
-                  )}
-                  {v.specs && (
-                    <span className="text-[10px] text-slate-600 italic">
-                      {v.specs}
                     </span>
                   )}
                 </div>
@@ -680,11 +687,19 @@ export default function ProductConfigModal({
                             }
                             className={`p-4 rounded-xl border-2 text-left flex justify-between items-center transition-all group ${isSelected ? "border-emerald-500 bg-slate-800" : "border-slate-700/50 bg-slate-800/30"}`}
                           >
-                            <span
-                              className={`font-medium ${isSelected ? "text-emerald-400" : "text-slate-300"}`}
-                            >
-                              {mat.label}
-                            </span>
+                            <div className="flex flex-col">
+                              <span
+                                className={`font-medium ${isSelected ? "text-emerald-400" : "text-slate-300"}`}
+                              >
+                                {mat.label}
+                              </span>
+                              {/* INJECTED SPECS FOR MATRIX */}
+                              {(mat.specs || mat.description) && (
+                                <div className="text-[10px] font-normal text-slate-400 mt-0.5 leading-tight">
+                                  {mat.specs || mat.description}
+                                </div>
+                              )}
+                            </div>
                             <span
                               className={`text-xs px-2 py-1 rounded font-bold ${isSelected ? "bg-emerald-900/30 text-emerald-400" : "bg-slate-900/50 text-slate-400"}`}
                             >
@@ -707,6 +722,16 @@ export default function ProductConfigModal({
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {product.variants?.map((v, i) => {
+                    // === 🕵️‍♂️ CCTV INJEKSI ===
+                    // Kita cek varian pertama saja biar console tidak banjir
+                    if (i === 0)
+                      console.log(
+                        "🔍 CEK VARIAN 0:",
+                        v.label,
+                        "| SPECS:",
+                        v.specs,
+                      );
+                    // ========================
                     const isSelected = isMatrix
                       ? matrixSelection.step1 === v.label
                       : selectedVariant?.label === v.label;

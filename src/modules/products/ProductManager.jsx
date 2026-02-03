@@ -80,11 +80,14 @@ function ProductFormModal({
 
   // ✅ MATRIX READ GUARD: Fetch latest prices from Supabase for MATRIX products
   useEffect(() => {
-    if (
-      !product ||
-      product.calc_engine !== "MATRIX_FIXED" ||
-      !product.variants
-    ) {
+    if (!product || !product.variants) return;
+
+    // Perbolehkan jika MATRIX_FIXED ATAU jika produk mengandung nama "Nota" / "NCR"
+    const isNota =
+      product.name?.toLowerCase().includes("nota") ||
+      product.name?.toLowerCase().includes("ncr");
+
+    if (product.calc_engine !== "MATRIX_FIXED" && !isNota) {
       return;
     }
     (async () => {
@@ -844,44 +847,88 @@ function ProductFormModal({
                           {variant.label} ({variant.specs})
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {Object.entries(variant.price_list || {}).map(
-                            ([materialName, price]) => (
-                              <div
-                                key={materialName}
-                                className="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700/50"
-                              >
-                                <span className="text-xs text-slate-300">
-                                  {materialName === "FOLIO_1_4"
-                                    ? "1/4 Folio (10x16)"
-                                    : materialName === "FOLIO_1_3"
-                                      ? "1/3 Folio (10x21)"
-                                      : materialName === "FOLIO_1_2"
-                                        ? "1/2 Folio (16x21)"
-                                        : materialName === "FOLIO_1_1"
-                                          ? "1 Folio (21x33)"
-                                          : materialName === "FOLIO_1"
-                                            ? "1 Folio (21x33)"
-                                            : materialName}
-                                </span>
-                                <input
-                                  type="number"
-                                  className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right text-yellow-400 text-sm focus:border-cyan-500 outline-none"
-                                  value={price}
-                                  onChange={(e) => {
-                                    const newVariants = [...formData.variants];
-                                    // Update nested price_list
-                                    newVariants[vIndex].price_list[
-                                      materialName
-                                    ] = Number(e.target.value);
-                                    setFormData({
-                                      ...formData,
-                                      variants: newVariants,
-                                    });
-                                  }}
-                                />
-                              </div>
-                            ),
-                          )}
+                          {
+                            /* LOGIC UPDATE: Handle Existing Keys + Phantom Keys for Nota */
+                            (() => {
+                              // 1. Safely retrieve existing data from DB/State
+                              const existingData = variant.price_list || {};
+                              let renderKeys = Object.keys(existingData);
+
+                              // 2. STRICT CONDITION: Only inject keys if product is specifically 'Nota' or 'NCR'
+                              // This prevents "pollution" of other products (like Banner/Sticker)
+                              const isNotaTarget =
+                                formData.name?.toLowerCase().includes("nota") ||
+                                formData.name?.toLowerCase().includes("ncr") ||
+                                formData.categoryId === "STATIONERY";
+
+                              if (isNotaTarget) {
+                                // Those are the "Phantom Slots" required for UX
+                                const requiredFolioKeys = [
+                                  "FOLIO_1_4",
+                                  "FOLIO_1_3",
+                                  "FOLIO_1_2",
+                                  "FOLIO_1_1",
+                                ];
+                                // Merge unique keys (maintain existing data + add missing slots)
+                                renderKeys = Array.from(
+                                  new Set([
+                                    ...renderKeys,
+                                    ...requiredFolioKeys,
+                                  ]),
+                                );
+                              }
+
+                              // 3. Render the Loop using the computed keys
+                              return renderKeys.map((key) => {
+                                // ALIASING: Ensure variables match the original code's expectation
+                                const materialName = key; // The key acts as the identifier
+                                const price = existingData[key] || 0; // Use DB price OR 0 if it's a new phantom slot
+
+                                return (
+                                  <div
+                                    key={materialName}
+                                    className="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700/50"
+                                  >
+                                    <span className="text-xs text-slate-300">
+                                      {materialName === "FOLIO_1_4"
+                                        ? "1/4 Folio (10x16)"
+                                        : materialName === "FOLIO_1_3"
+                                          ? "1/3 Folio (10x21)"
+                                          : materialName === "FOLIO_1_2"
+                                            ? "1/2 Folio (16x21)"
+                                            : materialName === "FOLIO_1_1"
+                                              ? "1 Folio (21x33)"
+                                              : materialName === "FOLIO_1"
+                                                ? "1 Folio (21x33)"
+                                                : materialName}
+                                    </span>
+                                    <input
+                                      type="number"
+                                      className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right text-yellow-400 text-sm focus:border-cyan-500 outline-none"
+                                      value={price}
+                                      onChange={(e) => {
+                                        const newVariants = [
+                                          ...formData.variants,
+                                        ];
+                                        // Update nested price_list
+                                        // Ensure price_list object exists before assignment
+                                        if (!newVariants[vIndex].price_list) {
+                                          newVariants[vIndex].price_list = {};
+                                        }
+                                        newVariants[vIndex].price_list[
+                                          materialName
+                                        ] = Number(e.target.value);
+                                        setFormData({
+                                          ...formData,
+                                          variants: newVariants,
+                                        });
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              });
+                            })()
+                          }
                         </div>
                       </div>
                     ))}
@@ -920,26 +967,49 @@ function ProductFormModal({
                 <div className="form-group">
                   <label>💰 Harga per Ukuran (MATRIX)</label>
                   <div className="matrix-prices">
-                    {["A2", "A1", "A0"].map((size) => (
-                      <div key={size} className="matrix-price-row">
-                        <span className="size-label">{size}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={formData.prices?.[size] || 0}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              prices: {
-                                ...formData.prices,
-                                [size]: parseInt(e.target.value) || 0,
-                              },
-                            })
-                          }
-                          placeholder="0"
-                        />
-                      </div>
-                    ))}
+                    {(() => {
+                      // 1. Definisikan Ukuran Standar
+                      let visibleSizes = ["A2", "A1", "A0"];
+
+                      // 2. Deteksi Jika Produk adalah NOTA / NCR
+                      // Kita cek nama produk (lowercase) atau kategori ID
+                      const isNota =
+                        formData.name?.toLowerCase().includes("nota") ||
+                        formData.name?.toLowerCase().includes("ncr") ||
+                        formData.categoryId === "STATIONERY";
+
+                      // 3. Jika Nota, Gunakan Ukuran Folio
+                      if (isNota) {
+                        visibleSizes = [
+                          "FOLIO_1_4",
+                          "FOLIO_1_3",
+                          "FOLIO_1_2",
+                          "FOLIO_1_1",
+                        ];
+                      }
+
+                      // 4. Render Mapping
+                      return visibleSizes.map((size) => (
+                        <div key={size} className="matrix-price-row">
+                          <span className="size-label">{size}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.prices?.[size] || 0}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                prices: {
+                                  ...formData.prices,
+                                  [size]: parseInt(e.target.value) || 0,
+                                },
+                              })
+                            }
+                            placeholder="0"
+                          />
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               ) : (

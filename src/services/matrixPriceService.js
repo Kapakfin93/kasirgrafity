@@ -56,7 +56,8 @@ export async function syncMatrixPricesToSupabase(productId, variants) {
             {
               onConflict: "product_id,material_id,size_id",
             },
-          );
+          )
+          .select(); // ✅ Return data to confirm insertion
 
         if (upsertError) {
           throw new Error(

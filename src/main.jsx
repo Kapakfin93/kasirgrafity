@@ -11,6 +11,7 @@ import "./data/seeders/reconstructStationery.js";
 import "./data/seeders/reconstructMerchandise.js"; // Merchandise disiapkan
 
 import { useProductStore } from "./stores/useProductStore";
+import { useOrderStore } from "./stores/useOrderStore";
 
 // =================================================================
 // 2. SYSTEM BOOTSTRAP (Jantung Aplikasi)
@@ -47,11 +48,34 @@ import { useProductStore } from "./stores/useProductStore";
     console.log("📥 Loading data to App State...");
     await useProductStore.getState().fetchMasterData();
 
+    // E. STATE 3: SYNC PENDING LOCAL ORDERS (if online)
+    if (navigator.onLine) {
+      console.log("🔄 Checking for pending local orders to sync...");
+      const syncResult = await useOrderStore
+        .getState()
+        .syncPendingLocalOrders();
+      console.log("📦 Sync result:", syncResult);
+    }
+
     console.log("✅ SYSTEM BOOT COMPLETE. Ready to serve.");
   } catch (error) {
     console.error("❌ CRITICAL BOOT ERROR:", error);
   }
 })();
+
+// =================================================================
+// 3. NETWORK RECONNECT TRIGGER (STATE 3)
+// Auto-sync when coming back online
+// =================================================================
+window.addEventListener("online", async () => {
+  console.log("🌐 Network reconnected - triggering sync...");
+  try {
+    const syncResult = await useOrderStore.getState().syncPendingLocalOrders();
+    console.log("📦 Reconnect sync result:", syncResult);
+  } catch (error) {
+    console.error("❌ Reconnect sync failed:", error);
+  }
+});
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

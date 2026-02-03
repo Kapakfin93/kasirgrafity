@@ -14,6 +14,7 @@ import db from "../data/db/schema";
 import { Category } from "../data/models/Category";
 import { Product } from "../data/models/Product";
 import { Finishing } from "../data/models/Finishing";
+import { syncMatrixPricesToSupabase } from "../services/matrixPriceService";
 
 export const useProductStore = create((set, get) => ({
   // State
@@ -383,6 +384,20 @@ export const useProductStore = create((set, get) => ({
   },
   updateProduct: async (id, d) => {
     await db.products.update(id, d);
+
+    // 💉 INJECTION: Surgical Sync for Matrix Prices
+    // Only triggers if 'variants' data is present in the payload (Efficiency Check)
+    if (d.variants) {
+      try {
+        // This sends ONLY the price matrix data, saving bandwidth.
+        await syncMatrixPricesToSupabase(id, d.variants);
+        console.log("✅ Matrix Prices synced to Supabase (Surgical)");
+      } catch (err) {
+        console.error("⚠️ Failed to sync matrix to cloud (Offline?):", err);
+        // We do NOT throw error here, so the local save remains valid (Offline First)
+      }
+    }
+
     await get().fetchMasterData();
   },
   deleteProduct: async (id) => {

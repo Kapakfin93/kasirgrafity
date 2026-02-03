@@ -274,7 +274,9 @@ export const useOrderStore = create((set, get) => ({
           if (typeof o.items_snapshot === "string") {
             try {
               items = JSON.parse(o.items_snapshot);
-            } catch (e) {}
+            } catch (e) {
+              console.warn("Ignored error:", e);
+            }
           } else {
             items = o.items_snapshot;
           }
@@ -404,7 +406,7 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // 3. CREATE ORDER
+  // 3. CREATE ORDER (V2 - ATOMIC RPC)
   createOrder: async (payload) => {
     set({ isLoading: true, error: null });
     try {
@@ -413,73 +415,143 @@ export const useOrderStore = create((set, get) => ({
         throw new Error("ORDER REJECTED: Nama customer wajib diisi");
 
       const { supabase } = await import("../services/supabaseClient");
-      const orderPayload = { ...orderHeader, items_snapshot: items };
+      const { v4: uuid } = await import("uuid");
 
-      const { data: orderData, error: orderError } = await supabase
-        .from("orders")
-        .insert([orderPayload])
-        .select()
-        .single();
-      if (orderError) throw orderError;
+      // === BUILD RAW_INTENT PAYLOAD ===
+      const rawItems = items.map((item) => ({
+        product_id: item.productId || item.product_id,
+        material_id:
+          item.dimensions?.materialId ||
+          item.dimensions?.variantId ||
+          item.selected_details?.material_id ||
+          null,
+        size_id:
+          item.dimensions?.sizeKey ||
+          item.dimensions?.selectedVariant?.label ||
+          item.selected_details?.size_id ||
+          null,
+        quantity: item.qty || item.quantity || 1,
+        finishing_ids: (item.finishings || []).map((f) => f.id),
+        notes: item.notes || "",
+      }));
 
-      if (items && items.length > 0) {
-        const itemsWithOrderId = items.map((item) => ({
-          ...item,
-          order_id: orderData.id,
-        }));
-        await supabase.from("order_items").insert(itemsWithOrderId);
-      }
+      const rawIntent = {
+        idempotency_key: uuid(),
 
-      logPOSOrderCreated(
-        orderData.id,
-        orderData.order_number,
-        orderData.received_by || "Kasir",
-      );
+        customer: {
+          name: payload.customer_name,
+          phone: payload.customer_phone || "-",
+          address: payload.customer_address || null,
+        },
 
-      const { data: fullOrder } = await supabase
-        .from("orders")
-        .select(`*, items_snapshot, items:order_items(*)`)
-        .eq("id", orderData.id)
-        .single();
-      const normalizedOrder = internalNormalizeOrder(fullOrder);
+        items: rawItems,
 
-      // --- 💉 SURGICAL INJECTION: RECORD INITIAL PAYMENT ---
-      // Cek apakah ada pembayaran awal (DP/Lunas) saat order dibuat
-      if (orderData && parseFloat(payload.paid_amount || 0) > 0) {
-        const paymentData = {
-          order_id: orderData.id,
-          amount: parseFloat(payload.paid_amount),
-          payment_method: payload.payment_method || "TUNAI",
-          // payment_date dihapus karena tidak ada di tabel
-          created_at: new Date().toISOString(),
-          // 🔥 TAMBAHAN WAJIB: Masukkan nama penerima uang
+        payment_attempt: {
+          amount: parseFloat(payload.paid_amount || 0),
+          method: payload.payment_method || "TUNAI",
+        },
+
+        meta: {
           received_by: payload.received_by || "Kasir",
-        };
+          production_priority:
+            payload.meta?.production_service?.priority || "STANDARD",
+          target_date: payload.target_date,
+          discount_request: parseFloat(payload.discount_amount || 0),
+          source_version: "atomic_rpc_v1",
+        },
+      };
 
-        // Silent Insert (Fire & Forget) agar tidak memblokir UI jika gagal
-        const { error: payError } = await supabase
-          .from("order_payments")
-          .insert([paymentData]);
+      // === ONLINE PATH: Single RPC Call ===
+      try {
+        const { data: rpcResult, error: rpcError } = await supabase.rpc(
+          "create_pos_order_atomic",
+          { p_raw_intent: rawIntent },
+        );
 
-        if (payError) {
-          console.error(
-            "⚠️ Order created but Initial Payment recording failed:",
-            payError,
-          );
-          // Jangan throw error, biarkan order tetap sukses
-        } else {
+        if (rpcError) throw rpcError;
+        if (!rpcResult.success) {
+          throw new Error(rpcResult.error || rpcResult.message || "RPC Failed");
+        }
+
+        // Log result
+        if (rpcResult.is_duplicate) {
           console.log(
-            `✅ Initial payment recorded: Rp ${paymentData.amount} (${paymentData.payment_method})`,
+            "♻️ Idempotent: Returning existing order",
+            rpcResult.order_id,
+          );
+        } else {
+          logPOSOrderCreated(
+            rpcResult.order_id,
+            rpcResult.order_number,
+            payload.received_by || "Kasir",
           );
         }
-      }
-      // --- END INJECTION ---
 
-      set((state) => ({
-        orders: [normalizedOrder, ...state.orders],
-        loading: false,
-      }));
-      return normalizedOrder;
+        // Fetch full order for UI normalization
+        const { data: fullOrder } = await supabase
+          .from("orders")
+          .select(`*, items_snapshot, items:order_items(*)`)
+          .eq("id", rpcResult.order_id)
+          .single();
+
+        const normalizedOrder = internalNormalizeOrder(fullOrder);
+
+        set((state) => ({
+          orders: [normalizedOrder, ...state.orders],
+          loading: false,
+        }));
+
+        return normalizedOrder;
+      } catch (supabaseError) {
+        // === OFFLINE PATH: Save RAW INTENT Only (No Price Calculations) ===
+        console.warn(
+          "⚠️ RPC failed. Saving RAW INTENT to local Dexie:",
+          supabaseError,
+        );
+
+        const db = (await import("../data/db/schema")).default;
+        const localOrderId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Build offline RAW INTENT (Authority-Preserving)
+        const offlineIntent = {
+          id: localOrderId,
+          orderNumber: `LOCAL-${Date.now()}`,
+          customer: rawIntent.customer,
+          items: rawItems,
+          payment_attempt: rawIntent.payment_attempt,
+          meta: {
+            ...rawIntent.meta,
+            source_version: "offline_fallback",
+          },
+          idempotency_key: rawIntent.idempotency_key,
+          status: "PENDING_LOCAL",
+          local_created_at: new Date().toISOString(),
+          sync_error: supabaseError.message,
+        };
+
+        await db.orders.put(offlineIntent);
+
+        console.log(
+          "💾 RAW INTENT saved to local Dexie (no price calculations):",
+          localOrderId,
+        );
+
+        // Return minimal order object for UI
+        set({ loading: false });
+        return {
+          id: localOrderId,
+          orderNumber: offlineIntent.orderNumber,
+          customerName: offlineIntent.customer.name,
+          customerPhone: offlineIntent.customer.phone,
+          items: items,
+          totalAmount: 0,
+          paidAmount: offlineIntent.payment_attempt.amount,
+          remainingAmount: 0,
+          paymentStatus: "PENDING_LOCAL",
+          productionStatus: "PENDING",
+          createdAt: offlineIntent.local_created_at,
+        };
+      }
     } catch (err) {
       console.error("❌ Order creation failed:", err);
       set({ error: err.message, isLoading: false });
@@ -690,5 +762,136 @@ export const useOrderStore = create((set, get) => ({
     });
     return report.results || [];
   },
+  // ============================================
+  // STATE 3: OFFLINE → PENDING → SYNC
+  // ============================================
+  syncPendingLocalOrders: async () => {
+    const MAX_RETRIES = 3;
+
+    // A. Check online status
+    if (!navigator.onLine) {
+      console.log("📴 Offline - skipping sync");
+      return { synced: 0, failed: 0, skipped: 0, message: "Offline" };
+    }
+
+    try {
+      const db = (await import("../data/db/schema")).default;
+      const { supabase } = await import("../services/supabaseClient");
+
+      // B. Fetch pending orders from Dexie
+      const pendingOrders = await db.orders
+        .where("status")
+        .equals("PENDING_LOCAL")
+        .toArray();
+
+      if (pendingOrders.length === 0) {
+        console.log("✅ No pending local orders to sync");
+        return { synced: 0, failed: 0, skipped: 0, message: "No pending" };
+      }
+
+      console.log(`🔄 Syncing ${pendingOrders.length} pending local orders...`);
+
+      let synced = 0;
+      let failed = 0;
+      let skipped = 0;
+
+      // C. Loop each pending order
+      for (const localOrder of pendingOrders) {
+        try {
+          // D. Build RAW_INTENT from stored data (REUSE idempotency_key)
+          const rawIntent = {
+            idempotency_key: localOrder.idempotency_key,
+            customer: localOrder.customer,
+            items: localOrder.items,
+            payment_attempt: localOrder.payment_attempt,
+            meta: {
+              ...localOrder.meta,
+              source_version: "sync_recovery",
+            },
+          };
+
+          // E. Validate idempotency_key exists
+          if (!rawIntent.idempotency_key) {
+            console.warn(
+              `⚠️ Order ${localOrder.id} missing idempotency_key - skipping`,
+            );
+            skipped++;
+            continue;
+          }
+
+          // F. Call RPC
+          const { data: rpcResult, error: rpcError } = await supabase.rpc(
+            "create_pos_order_atomic",
+            { p_raw_intent: rawIntent },
+          );
+
+          if (rpcError) throw rpcError;
+
+          // G. Handle RPC response
+          if (rpcResult.success) {
+            // G1. SUCCESS or DUPLICATE - both are valid sync
+            if (rpcResult.is_duplicate) {
+              console.log(
+                `♻️ Order ${localOrder.id} already exists on server (idempotent)`,
+              );
+            } else {
+              console.log(
+                `✅ Order ${localOrder.id} synced → ${rpcResult.order_number}`,
+              );
+            }
+
+            // G2. Update Dexie order status to SYNCED
+            await db.orders.update(localOrder.id, {
+              status: "SYNCED",
+              server_order_id: rpcResult.order_id,
+              server_order_number: rpcResult.order_number,
+              synced_at: new Date().toISOString(),
+            });
+
+            synced++;
+          } else {
+            // G3. RPC returned success: false (validation error)
+            throw new Error(
+              rpcResult.error || rpcResult.message || "RPC validation failed",
+            );
+          }
+        } catch (syncError) {
+          // H. Handle sync failure
+          const attempts = (localOrder.sync_attempts || 0) + 1;
+          const newStatus =
+            attempts >= MAX_RETRIES ? "SYNC_FAILED" : "PENDING_LOCAL";
+
+          await db.orders.update(localOrder.id, {
+            sync_attempts: attempts,
+            last_sync_error: syncError.message,
+            last_sync_at: new Date().toISOString(),
+            status: newStatus,
+          });
+
+          if (newStatus === "SYNC_FAILED") {
+            console.error(
+              `❌ Order ${localOrder.id} failed permanently after ${attempts} attempts`,
+            );
+          } else {
+            console.warn(
+              `⚠️ Order ${localOrder.id} sync failed (attempt ${attempts}/${MAX_RETRIES})`,
+            );
+          }
+
+          failed++;
+        }
+      }
+
+      const result = { synced, failed, skipped, message: "Sync complete" };
+      console.log(
+        `🔄 Sync complete: ${synced} synced, ${failed} failed, ${skipped} skipped`,
+      );
+      return result;
+    } catch (error) {
+      console.error("❌ Sync orchestration failed:", error);
+      return { synced: 0, failed: 0, skipped: 0, error: error.message };
+    }
+  },
+
   clearError: () => set({ error: null }),
 }));
