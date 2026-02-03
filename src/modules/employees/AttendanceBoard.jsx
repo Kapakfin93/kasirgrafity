@@ -1,272 +1,268 @@
 /**
  * AttendanceBoard Component
  * Quick check-in/out interface for employees
+ *
+ * AGILE: No PIN requirement, simple confirmation modal
  */
 
-import React, { useEffect, useState } from 'react';
-import { useAttendanceStore } from '../../stores/useAttendanceStore';
-import { useEmployeeStore } from '../../stores/useEmployeeStore';
-import { formatTime, getCurrentShift, calculateWorkHours } from '../../utils/dateHelpers';
+import React, { useEffect, useState } from "react";
+import { useAttendanceStore } from "../../stores/useAttendanceStore";
+import { useEmployeeStore } from "../../stores/useEmployeeStore";
+import { formatTime, getCurrentShift } from "../../utils/dateHelpers";
 
 export function AttendanceBoard() {
-    const [selectedEmployee, setSelectedEmployee] = useState(null);
-    const [pin, setPin] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [actionType, setActionType] = useState(null); // 'checkin' | 'checkout'
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-    const {
-        todayAttendances,
-        loadTodayAttendances,
-        checkIn,
-        checkOut,
-        getTodayAttendanceByEmployee
-    } = useAttendanceStore();
+  const {
+    todayAttendances,
+    loadTodayAttendances,
+    checkIn,
+    checkOut,
+    getTodayAttendanceByEmployee,
+    syncFromCloud,
+    syncStatus,
+  } = useAttendanceStore();
 
-    const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
+  const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
 
-    // Load data on mount
-    useEffect(() => {
-        loadEmployees();
-        loadTodayAttendances();
-    }, [loadEmployees, loadTodayAttendances]);
+  // Load data on mount
+  useEffect(() => {
+    loadEmployees();
+    loadTodayAttendances();
+    syncFromCloud(); // Attempt cloud sync
+  }, [loadEmployees, loadTodayAttendances, syncFromCloud]);
 
-    const activeEmployees = getActiveEmployees();
-    const currentShift = getCurrentShift();
-    const now = new Date();
+  const activeEmployees = getActiveEmployees();
+  const currentShift = getCurrentShift();
+  const now = new Date();
 
-    // Handle employee select
-    const handleSelectEmployee = (employee) => {
-        setSelectedEmployee(employee);
-        setPin('');
-        setError('');
-    };
+  // Handle employee card click
+  const handleEmployeeClick = (employee) => {
+    const attendance = getTodayAttendanceByEmployee(employee.id);
 
-    // Handle PIN input
-    const handlePinInput = (digit) => {
-        if (pin.length < 4) {
-            setPin(pin + digit);
-        }
-    };
+    setSelectedEmployee(employee);
+    setError("");
 
-    // Handle PIN delete
-    const handlePinDelete = () => {
-        setPin(pin.slice(0, -1));
-    };
+    if (attendance && !attendance.checkOutTime) {
+      // Already checked in, prompt for checkout
+      setActionType("checkout");
+    } else if (!attendance) {
+      // Not checked in, prompt for checkin
+      setActionType("checkin");
+    } else {
+      // Already checked out
+      setError("Sudah check-out hari ini");
+      return;
+    }
 
-    // Handle check-in
-    const handleCheckIn = async () => {
-        if (pin.length !== 4) {
-            setError('PIN harus 4 digit');
-            return;
-        }
+    setShowConfirmModal(true);
+  };
 
-        if (pin !== selectedEmployee.pin) {
-            setError('PIN salah!');
-            setPin('');
-            return;
-        }
+  // Handle confirmation
+  const handleConfirm = async () => {
+    setLoading(true);
+    setError("");
 
-        setLoading(true);
-        setError('');
-
-        try {
-            await checkIn(selectedEmployee.id, selectedEmployee.name, selectedEmployee.shift);
-            alert(`✅ Check-in berhasil!\n${selectedEmployee.name}\nShift: ${selectedEmployee.shift}\nWaktu: ${formatTime(now)}`);
-            setSelectedEmployee(null);
-            setPin('');
-        } catch (err) {
-            setError(err.message);
-            setPin('');
-        }
-
-        setLoading(false);
-    };
-
-    // Handle check-out
-    const handleCheckOut = async () => {
-        if (pin.length !== 4) {
-            setError('PIN harus 4 digit');
-            return;
-        }
-
-        if (pin !== selectedEmployee.pin) {
-            setError('PIN salah!');
-            setPin('');
-            return;
-        }
-
+    try {
+      if (actionType === "checkin") {
+        await checkIn(selectedEmployee.id, selectedEmployee.name);
+        alert(
+          `✅ Check-in berhasil!\n${selectedEmployee.name}\nWaktu: ${formatTime(now)}`,
+        );
+      } else if (actionType === "checkout") {
         const attendance = getTodayAttendanceByEmployee(selectedEmployee.id);
-        if (!attendance) {
-            setError('Anda belum check-in hari ini');
-            return;
-        }
+        const workHours = await checkOut(attendance.id);
+        alert(
+          `✅ Check-out berhasil!\n${selectedEmployee.name}\nTotal kerja: ${workHours.formatted}`,
+        );
+      }
 
-        setLoading(true);
-        setError('');
+      setShowConfirmModal(false);
+      setSelectedEmployee(null);
+    } catch (err) {
+      setError(err.message);
+    }
 
-        try {
-            const workHours = await checkOut(attendance.id);
-            alert(`✅ Check-out berhasil!\n${selectedEmployee.name}\nTotal kerja: ${workHours.formatted}`);
-            setSelectedEmployee(null);
-            setPin('');
-        } catch (err) {
-            setError(err.message);
-            setPin('');
-        }
+    setLoading(false);
+  };
 
-        setLoading(false);
-    };
+  // Handle cancel
+  const handleCancel = () => {
+    setShowConfirmModal(false);
+    setSelectedEmployee(null);
+    setError("");
+  };
 
-    // Check if employee has checked in today
-    const hasCheckedIn = (employeeId) => {
-        const attendance = getTodayAttendanceByEmployee(employeeId);
-        return attendance && attendance.checkInTime;
-    };
+  // Check if employee has checked in today
+  const getEmployeeStatus = (employeeId) => {
+    const attendance = getTodayAttendanceByEmployee(employeeId);
+    if (!attendance)
+      return {
+        status: "not-checked-in",
+        label: "Belum Check-in",
+        color: "#9ca3af",
+      };
+    if (attendance.checkOutTime)
+      return {
+        status: "checked-out",
+        label: "Sudah Check-out",
+        color: "#3b82f6",
+      };
+    return { status: "checked-in", label: "Sedang Bekerja", color: "#10b981" };
+  };
 
-    // Check if employee has checked out today
-    const hasCheckedOut = (employeeId) => {
-        const attendance = getTodayAttendanceByEmployee(employeeId);
-        return attendance && attendance.checkOutTime;
-    };
-
-    // Get attendance for employee
-    const getAttendance = (employeeId) => {
-        return getTodayAttendanceByEmployee(employeeId);
-    };
-
-    return (
-        <div className="attendance-board">
-            <div className="attendance-container">
-                {/* Header */}
-                <div className="attendance-header">
-                    <h1>⏰ Absensi Karyawan</h1>
-                    <div className="current-info">
-                        <span className="current-time">{formatTime(now)}</span>
-                        <span className="current-shift">Shift: {currentShift}</span>
-                    </div>
-                </div>
-
-                {!selectedEmployee ? (
-                    /* Employee Selection */
-                    <div className="employee-selection">
-                        <h2>Pilih Nama Anda</h2>
-                        <div className="employee-grid">
-                            {activeEmployees.map(employee => {
-                                const attendance = getAttendance(employee.id);
-                                const checkedIn = hasCheckedIn(employee.id);
-                                const checkedOut = hasCheckedOut(employee.id);
-
-                                return (
-                                    <button
-                                        key={employee.id}
-                                        className={`employee-attendance-card ${checkedIn ? 'checked-in' : ''} ${checkedOut ? 'checked-out' : ''}`}
-                                        onClick={() => handleSelectEmployee(employee)}
-                                    >
-                                        <div className="employee-avatar">
-                                            {checkedOut ? '✅' : checkedIn ? '🟢' : '⚪'}
-                                        </div>
-                                        <div className="employee-name">{employee.name}</div>
-                                        <div className="employee-shift">Shift {employee.shift}</div>
-                                        {attendance && (
-                                            <div className="attendance-status">
-                                                {checkedOut ? (
-                                                    <span className="status-done">Selesai</span>
-                                                ) : checkedIn ? (
-                                                    <span className="status-active">Sedang Kerja</span>
-                                                ) : null}
-                                            </div>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ) : (
-                    /* PIN Entry */
-                    <div className="pin-entry">
-                        <button className="back-btn" onClick={() => setSelectedEmployee(null)}>
-                            ← Kembali
-                        </button>
-
-                        <div className="selected-employee-info">
-                            <h2>{selectedEmployee.name}</h2>
-                            <p>Shift {selectedEmployee.shift}</p>
-                        </div>
-
-                        <h3>Masukkan PIN</h3>
-
-                        {/* PIN Display */}
-                        <div className="pin-display">
-                            {[0, 1, 2, 3].map(i => (
-                                <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''}`}>
-                                    {pin.length > i ? '●' : '○'}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Error */}
-                        {error && <div className="error-message">{error}</div>}
-
-                        {/* PIN Keypad */}
-                        <div className="pin-keypad">
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                                <button
-                                    key={num}
-                                    className="key-btn"
-                                    onClick={() => handlePinInput(num.toString())}
-                                    disabled={loading}
-                                >
-                                    {num}
-                                </button>
-                            ))}
-                            <button
-                                className="key-btn delete-btn"
-                                onClick={handlePinDelete}
-                                disabled={loading}
-                            >
-                                ⌫
-                            </button>
-                            <button
-                                className="key-btn"
-                                onClick={() => handlePinInput('0')}
-                                disabled={loading}
-                            >
-                                0
-                            </button>
-                            <div className="key-btn empty"></div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="attendance-actions">
-                            {!hasCheckedIn(selectedEmployee.id) && (
-                                <button
-                                    className="action-btn check-in-btn"
-                                    onClick={handleCheckIn}
-                                    disabled={loading || pin.length !== 4}
-                                >
-                                    {loading ? '⏳ Memproses...' : '🟢 CHECK IN'}
-                                </button>
-                            )}
-
-                            {hasCheckedIn(selectedEmployee.id) && !hasCheckedOut(selectedEmployee.id) && (
-                                <button
-                                    className="action-btn check-out-btn"
-                                    onClick={handleCheckOut}
-                                    disabled={loading || pin.length !== 4}
-                                >
-                                    {loading ? '⏳ Memproses...' : '🔴 CHECK OUT'}
-                                </button>
-                            )}
-
-                            {hasCheckedOut(selectedEmployee.id) && (
-                                <div className="already-done">
-                                    ✅ Anda sudah selesai kerja hari ini
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="attendance-board">
+      {/* Header */}
+      <div className="board-header">
+        <div>
+          <h1>⏰ Papan Absensi</h1>
+          <p className="subtitle">Klik nama untuk Check-in / Check-out</p>
+          <span className="shift-badge current">
+            Shift Sekarang: <strong>{currentShift}</strong> ({formatTime(now)})
+          </span>
+          {syncStatus === "syncing" && (
+            <span className="sync-badge syncing" style={{ marginLeft: "10px" }}>
+              🔄 Syncing...
+            </span>
+          )}
+          {syncStatus === "synced" && (
+            <span className="sync-badge synced" style={{ marginLeft: "10px" }}>
+              ☁️ Synced
+            </span>
+          )}
         </div>
-    );
+      </div>
+
+      {/* Employee Cards */}
+      <div className="employee-grid">
+        {activeEmployees.length === 0 && (
+          <div className="empty-state">📭 Belum ada karyawan aktif.</div>
+        )}
+
+        {activeEmployees.map((employee) => {
+          const status = getEmployeeStatus(employee.id);
+          const attendance = getTodayAttendanceByEmployee(employee.id);
+
+          return (
+            <div
+              key={employee.id}
+              className={`employee-card ${status.status}`}
+              onClick={() => handleEmployeeClick(employee)}
+              style={{ cursor: "pointer" }}
+            >
+              <div className="card-header">
+                <h3>{employee.name}</h3>
+                <span className="role-badge">{employee.role}</span>
+              </div>
+              <div className="card-body">
+                <div
+                  className="status-indicator"
+                  style={{ backgroundColor: status.color }}
+                >
+                  {status.label}
+                </div>
+                {attendance && (
+                  <div className="attendance-info">
+                    <small>
+                      Check-in: {formatTime(new Date(attendance.checkInTime))}
+                    </small>
+                    {attendance.checkOutTime && (
+                      <small>
+                        Check-out:{" "}
+                        {formatTime(new Date(attendance.checkOutTime))}
+                      </small>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Today's Summary */}
+      <div className="summary-card">
+        <h3>Rekap Hari Ini</h3>
+        <div className="summary-stats">
+          <div className="stat">
+            <span className="stat-label">Check-in</span>
+            <span className="stat-value">
+              {todayAttendances.filter((a) => a.checkInTime).length}
+            </span>
+          </div>
+          <div className="stat">
+            <span className="stat-label">Belum Check-in</span>
+            <span className="stat-value">
+              {activeEmployees.length -
+                todayAttendances.filter((a) => a.checkInTime).length}
+            </span>
+          </div>
+          <div className="stat">
+            <span className="stat-label">Check-out</span>
+            <span className="stat-value">
+              {todayAttendances.filter((a) => a.checkOutTime).length}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Modal (No PIN) */}
+      {showConfirmModal && selectedEmployee && (
+        <div className="modal-overlay" onClick={handleCancel}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>
+                {actionType === "checkin"
+                  ? "✅ Konfirmasi Check-in"
+                  : "✋ Konfirmasi Check-out"}
+              </h2>
+              <button className="modal-close-btn" onClick={handleCancel}>
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="confirm-message">
+                <p>
+                  Halo <strong>{selectedEmployee.name}</strong>,
+                </p>
+                <p>
+                  {actionType === "checkin"
+                    ? "Mau Check-in sekarang?"
+                    : "Mau Check-out sekarang?"}
+                </p>
+                {error && <div className="error-message">{error}</div>}
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={handleCancel}
+                disabled={loading}
+              >
+                Batal
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleConfirm}
+                disabled={loading}
+              >
+                {loading
+                  ? "⏳ Memproses..."
+                  : actionType === "checkin"
+                    ? "Ya, Check-in"
+                    : "Ya, Check-out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

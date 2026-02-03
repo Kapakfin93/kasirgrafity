@@ -1,108 +1,226 @@
 /**
  * Employee Store - Zustand
  * State management for employee data
+ * Pattern: Offline-First with Background Supabase Sync
+ *
+ * AGILE SCHEMA: No shift field, TEXT role
  */
 
-import { create } from 'zustand';
-import db from '../data/db/schema';
-import { Employee } from '../data/models/Employee';
+import { create } from "zustand";
+import { db } from "../data/db/schema";
+import {
+  syncEmployeeToSupabase,
+  fetchEmployeesFromSupabase,
+  deleteEmployeeFromSupabase,
+  mapCloudToDexie,
+} from "../services/employeeService";
 
 export const useEmployeeStore = create((set, get) => ({
-    // State
-    employees: [],
-    currentEmployee: null,
-    loading: false,
-    error: null,
+  // State
+  employees: [],
+  currentEmployee: null,
+  loading: false,
+  error: null,
+  syncStatus: "idle", // idle | syncing | synced | error
 
-    // Actions
-    loadEmployees: async () => {
-        set({ loading: true, error: null });
-        try {
-            const employees = await db.employees.toArray();
-            set({ employees: employees.map(e => Employee.fromDB(e)), loading: false });
-        } catch (error) {
-            set({ error: error.message, loading: false });
-        }
-    },
+  // ====================================
+  // LOAD EMPLOYEES (from Dexie)
+  // ====================================
+  loadEmployees: async () => {
+    set({ loading: true, error: null });
+    try {
+      const employees = await db.employees.toArray();
+      set({
+        employees: employees.map((e) => ({
+          id: e.id,
+          name: e.name,
+          role: e.role,
+          pin: e.pin,
+          status: e.status || "ACTIVE",
+          createdAt: e.createdAt,
+          updatedAt: e.updatedAt,
+        })),
+        loading: false,
+      });
+    } catch (error) {
+      console.error("❌ Load employees failed:", error);
+      set({ error: error.message, loading: false });
+    }
+  },
 
-    addEmployee: async (employeeData) => {
-        set({ loading: true, error: null });
-        try {
-            const employee = new Employee(employeeData);
-            const validation = employee.validate();
+  // ====================================
+  // SYNC FROM CLOUD (Supabase -> Dexie)
+  // ====================================
+  syncFromCloud: async () => {
+    set({ syncStatus: "syncing" });
+    try {
+      const cloudEmployees = await fetchEmployeesFromSupabase();
 
-            if (!validation.valid) {
-                throw new Error(validation.errors.join(', '));
-            }
+      if (cloudEmployees.length > 0) {
+        // Map cloud data to Dexie format
+        const dexieEmployees = mapCloudToDexie(cloudEmployees);
 
-            const id = await db.employees.add(employee.toJSON());
-            employee.id = id;
+        // Bulk upsert to Dexie
+        await db.employees.bulkPut(dexieEmployees);
+        console.log(`✅ Synced ${dexieEmployees.length} employees from cloud`);
 
-            set(state => ({
-                employees: [...state.employees, employee],
-                loading: false
-            }));
+        // Reload state
+        await get().loadEmployees();
+      }
 
-            return employee;
-        } catch (error) {
-            set({ error: error.message, loading: false });
-            throw error;
-        }
-    },
+      set({ syncStatus: "synced" });
+    } catch (error) {
+      console.error("❌ Sync from cloud failed:", error);
+      set({ syncStatus: "error" });
+    }
+  },
 
-    updateEmployee: async (id, updates) => {
-        set({ loading: true, error: null });
-        try {
-            const updatedData = { ...updates, updatedAt: new Date().toISOString() };
-            await db.employees.update(id, updatedData);
+  // ====================================
+  // ADD EMPLOYEE (Dexie first, then Sync)
+  // ====================================
+  addEmployee: async (employeeData) => {
+    set({ loading: true, error: null });
+    try {
+      // Generate UUID for new employee
+      const newEmployee = {
+        id: crypto.randomUUID(),
+        name: employeeData.name.trim(),
+        role: employeeData.role.trim(),
+        pin: employeeData.pin,
+        status: "ACTIVE",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-            set(state => ({
-                employees: state.employees.map(emp =>
-                    emp.id === id ? Employee.fromDB({ ...emp.toJSON(), ...updatedData }) : emp
-                ),
-                loading: false
-            }));
-        } catch (error) {
-            set({ error: error.message, loading: false });
-            throw error;
-        }
-    },
+      // Validate
+      if (!newEmployee.name || newEmployee.name.length < 3) {
+        throw new Error("Nama minimal 3 karakter");
+      }
+      if (!newEmployee.pin || !/^\d{4}$/.test(newEmployee.pin)) {
+        throw new Error("PIN harus 4 digit angka");
+      }
 
-    deleteEmployee: async (id) => {
-        set({ loading: true, error: null });
-        try {
-            // Soft delete - set status to INACTIVE
-            await db.employees.update(id, { status: 'INACTIVE' });
+      // Step 1: Save to Dexie (Offline-First)
+      await db.employees.add(newEmployee);
+      console.log("💾 Employee saved to Dexie:", newEmployee.name);
 
-            set(state => ({
-                employees: state.employees.map(emp =>
-                    emp.id === id ? Employee.fromDB({ ...emp.toJSON(), status: 'INACTIVE' }) : emp
-                ),
-                loading: false
-            }));
-        } catch (error) {
-            set({ error: error.message, loading: false });
-            throw error;
-        }
-    },
+      // Step 2: Update local state
+      set((state) => ({
+        employees: [...state.employees, newEmployee],
+        loading: false,
+      }));
 
-    getActiveEmployees: () => {
-        return get().employees.filter(emp => emp.status === 'ACTIVE');
-    },
+      // Step 3: Background Sync to Supabase (non-blocking)
+      syncEmployeeToSupabase(newEmployee).catch((err) => {
+        console.error("⚠️ Background sync failed:", err);
+      });
 
-    getEmployeeById: (id) => {
-        return get().employees.find(emp => emp.id === id);
-    },
+      return newEmployee;
+    } catch (error) {
+      console.error("❌ Add employee failed:", error);
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
 
-    getEmployeesByRole: (role) => {
-        return get().employees.filter(emp => emp.role === role && emp.status === 'ACTIVE');
-    },
+  // ====================================
+  // UPDATE EMPLOYEE (Dexie first, then Sync)
+  // ====================================
+  updateEmployee: async (id, updates) => {
+    set({ loading: true, error: null });
+    try {
+      const updatedData = {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
 
-    setCurrentEmployee: (employee) => {
-        set({ currentEmployee: employee });
-    },
+      // Clean up: remove shift if accidentally passed
+      delete updatedData.shift;
 
-    clearError: () => {
-        set({ error: null });
-    },
+      // Step 1: Update in Dexie
+      await db.employees.update(id, updatedData);
+      console.log("💾 Employee updated in Dexie:", id);
+
+      // Get full employee data for sync
+      const employee = await db.employees.get(id);
+
+      // Step 2: Update local state
+      set((state) => ({
+        employees: state.employees.map((emp) =>
+          emp.id === id ? { ...emp, ...updatedData } : emp,
+        ),
+        loading: false,
+      }));
+
+      // Step 3: Background Sync to Supabase (non-blocking)
+      if (employee) {
+        syncEmployeeToSupabase(employee).catch((err) => {
+          console.error("⚠️ Background sync failed:", err);
+        });
+      }
+    } catch (error) {
+      console.error("❌ Update employee failed:", error);
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
+
+  // ====================================
+  // DELETE EMPLOYEE (Soft delete, then Sync)
+  // ====================================
+  deleteEmployee: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      // Step 1: Soft delete in Dexie
+      await db.employees.update(id, {
+        status: "INACTIVE",
+        updatedAt: new Date().toISOString(),
+      });
+      console.log("💾 Employee soft-deleted in Dexie:", id);
+
+      // Step 2: Update local state
+      set((state) => ({
+        employees: state.employees.map((emp) =>
+          emp.id === id ? { ...emp, status: "INACTIVE" } : emp,
+        ),
+        loading: false,
+      }));
+
+      // Step 3: Background Sync to Supabase (non-blocking)
+      deleteEmployeeFromSupabase(id).catch((err) => {
+        console.error("⚠️ Background delete sync failed:", err);
+      });
+    } catch (error) {
+      console.error("❌ Delete employee failed:", error);
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
+
+  // ====================================
+  // HELPER FUNCTIONS
+  // ====================================
+  getActiveEmployees: () => {
+    return get().employees.filter((emp) => emp.status === "ACTIVE");
+  },
+
+  getEmployeeById: (id) => {
+    return get().employees.find((emp) => emp.id === id);
+  },
+
+  getEmployeesByRole: (role) => {
+    return get().employees.filter(
+      (emp) =>
+        emp.role.toLowerCase() === role.toLowerCase() &&
+        emp.status === "ACTIVE",
+    );
+  },
+
+  setCurrentEmployee: (employee) => {
+    set({ currentEmployee: employee });
+  },
+
+  clearError: () => {
+    set({ error: null });
+  },
 }));

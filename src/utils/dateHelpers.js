@@ -72,7 +72,7 @@ export const formatRelativeTime = (dateString) => {
 // ==========================================
 
 export const calculateWorkHours = (checkInTime, checkOutTime) => {
-  if (!checkInTime || !checkOutTime) return 0;
+  if (!checkInTime || !checkOutTime) return { total: 0, formatted: "0 jam" };
   try {
     const start =
       typeof checkInTime === "string"
@@ -82,11 +82,27 @@ export const calculateWorkHours = (checkInTime, checkOutTime) => {
       typeof checkOutTime === "string"
         ? parseISO(checkOutTime)
         : new Date(checkOutTime);
-    if (!isValid(start) || !isValid(end)) return 0;
-    const diff = (end - start) / (1000 * 60 * 60);
-    return diff > 0 ? Number(diff.toFixed(1)) : 0;
+    if (!isValid(start) || !isValid(end))
+      return { total: 0, formatted: "0 jam" };
+
+    // Calculate diff in hours
+    let diff = (end - start) / (1000 * 60 * 60);
+
+    // FIX: Handle night shift (day crossing)
+    // If check-out is "before" check-in, assume next day
+    if (diff < 0) {
+      diff += 24; // Add 24 hours (e.g., 20:00 to 04:00 = -16 hours + 24 = 8 hours)
+    }
+
+    const totalHours = diff > 0 ? Number(diff.toFixed(1)) : 0;
+    const formatted = `${Math.floor(totalHours)} jam ${Math.round((totalHours % 1) * 60)} menit`;
+
+    return {
+      total: totalHours,
+      formatted,
+    };
   } catch (error) {
-    return 0;
+    return { total: 0, formatted: "0 jam" };
   }
 };
 

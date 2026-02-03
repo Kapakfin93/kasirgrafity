@@ -11,13 +11,13 @@ if (typeof window !== "undefined") {
   db = new Dexie("JogloPOSDatabase");
 
   // Define database schema
-  // VERSION 6: Added status + idempotency_key indexes for STATE 3 sync
-  db.version(6).stores({
+  // VERSION 7: Fixed attendance compound index [employeeId+date]
+  db.version(7).stores({
     // === TRANSACTION DATA ===
     orders:
       "id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName, status, idempotency_key",
     employees: "id, name, role, status",
-    attendance: "id, employeeId, date",
+    attendance: "id, [employeeId+date], employeeId, date, status",
     customers: "id, name, phone",
     settings: "key, value",
 
