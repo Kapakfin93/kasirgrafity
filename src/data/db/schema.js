@@ -5,28 +5,34 @@
 
 import Dexie from "dexie";
 
-export const db = new Dexie("JogloPOSDatabase");
+// SSR-SAFE: Only create Dexie instance in browser
+let db;
+if (typeof window !== "undefined") {
+  db = new Dexie("JogloPOSDatabase");
 
-// Define database schema
-// VERSION 6: Added status + idempotency_key indexes for STATE 3 sync
-db.version(6).stores({
-  // === TRANSACTION DATA ===
-  orders:
-    "id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName, status, idempotency_key",
-  employees: "id, name, role, status",
-  attendance: "id, employeeId, date",
-  customers: "id, name, phone",
-  settings: "key, value",
+  // Define database schema
+  // VERSION 6: Added status + idempotency_key indexes for STATE 3 sync
+  db.version(6).stores({
+    // === TRANSACTION DATA ===
+    orders:
+      "id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName, status, idempotency_key",
+    employees: "id, name, role, status",
+    attendance: "id, employeeId, date",
+    customers: "id, name, phone",
+    settings: "key, value",
 
-  // === FINANCIAL DATA ===
-  expenses: "id, date, category, createdAt",
+    // === FINANCIAL DATA ===
+    expenses: "id, date, category, createdAt",
 
-  // === MASTER DATA ===
-  categories: "id, name, logic_type, sort_order, is_active",
-  products:
-    "id, categoryId, name, price, is_active, input_mode, calc_engine, is_archived",
-  finishings: "id, categoryId, name, price, is_active",
-});
+    // === MASTER DATA ===
+    categories: "id, name, logic_type, sort_order, is_active",
+    products:
+      "id, categoryId, name, price, is_active, input_mode, calc_engine, is_archived",
+    finishings: "id, categoryId, name, price, is_active",
+  });
+}
+
+export { db };
 
 /**
  * SCHEMA DOCUMENTATION
@@ -168,7 +174,9 @@ export const updateSetting = async (key, value) => {
   await db.settings.put({ key, value });
 };
 
-// Initialize database on import
-initializeDefaultSettings().catch(console.error);
+// SSR-SAFE: Initialize database only in browser
+if (typeof window !== "undefined") {
+  initializeDefaultSettings().catch(console.error);
+}
 
 export default db;
