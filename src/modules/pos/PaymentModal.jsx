@@ -29,6 +29,7 @@ export function PaymentModal({
   setProductionPriority,
 }) {
   const inputRef = useRef(null);
+  const [tempoSource, setTempoSource] = React.useState("TUNAI");
 
   const subtotal =
     typeof totalAmount === "object" ? totalAmount.subtotal : totalAmount || 0;
@@ -71,8 +72,19 @@ export function PaymentModal({
   const getStatusText = () => {
     if (paid >= finalAmount) return "KEMBALIAN";
     if (isTempo) return "SISA (MASUK PIUTANG)";
-    return "KURANG BAYAR";
+    if (paid >= finalAmount) return "KURANG BAYAR";
   };
+
+  // Sync Tempo Source with Mode to prevent mismatch
+  useEffect(() => {
+    if (isTempo) {
+      // When in Tempo mode, force the mode to match the local source selector
+      // This ensures 'payment_method' in DB reflects the DP Source (Cash/Transfer)
+      if (mode !== tempoSource) {
+        updatePayment({ mode: tempoSource });
+      }
+    }
+  }, [isTempo, tempoSource, mode, updatePayment]);
 
   useEffect(() => {
     if (isOpen && inputRef.current && isTunai) {
@@ -140,6 +152,8 @@ export function PaymentModal({
           boxShadow:
             "0 0 60px rgba(16, 185, 129, 0.15), 0 25px 50px -12px rgba(0, 0, 0, 0.8)",
           border: "1px solid #334155",
+          display: "flex",
+          flexDirection: "column",
         }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -203,8 +217,9 @@ export function PaymentModal({
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
-            maxHeight: "calc(90vh - 140px)",
-            overflow: "hidden",
+            flex: 1,
+            overflow: "hidden", // Internal scroll handled by columns
+            minHeight: 0, // Flexbox fix
           }}
         >
           {/* LEFT: Summary & Adjustments */}
@@ -213,191 +228,11 @@ export function PaymentModal({
               padding: "20px",
               borderRight: "1px solid #334155",
               overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            {/* Grand Total Display */}
-            <div
-              style={{
-                textAlign: "center",
-                marginBottom: "16px",
-                padding: "20px",
-                background:
-                  "linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%)",
-                borderRadius: "12px",
-                border: "1px solid rgba(16, 185, 129, 0.2)",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  color: "#64748b",
-                  fontSize: "10px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                }}
-              >
-                TOTAL TAGIHAN
-              </p>
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: "42px",
-                  fontWeight: "900",
-                  color: "#10b981",
-                  fontFamily: "monospace",
-                  textShadow: "0 0 40px rgba(16, 185, 129, 0.4)",
-                }}
-              >
-                {formatRupiah(finalAmount)}
-              </p>
-              {appliedDiscount > 0 && (
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    color: "#f43f5e",
-                    fontSize: "11px",
-                  }}
-                >
-                  <s style={{ color: "#475569" }}>{formatRupiah(subtotal)}</s>{" "}
-                  (-{formatRupiah(appliedDiscount)})
-                </p>
-              )}
-            </div>
-
-            {/* ORDER PREVIEW - Safety Feature */}
-            {items.length > 0 && (
-              <div
-                style={{
-                  marginBottom: "16px",
-                  padding: "12px",
-                  background: "rgba(30, 41, 59, 0.5)",
-                  borderRadius: "10px",
-                  border: "1px solid #334155",
-                }}
-              >
-                <p
-                  style={{
-                    margin: "0 0 8px",
-                    color: "#64748b",
-                    fontSize: "10px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    fontWeight: "700",
-                  }}
-                >
-                  📋 Rincian Pesanan ({items.length} item)
-                </p>
-                <div style={{ maxHeight: "100px", overflowY: "auto" }}>
-                  {items.map((item, idx) => (
-                    <div
-                      key={item.id || idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "4px 0",
-                        borderBottom:
-                          idx < items.length - 1 ? "1px solid #334155" : "none",
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: "#e2e8f0",
-                          fontSize: "11px",
-                          flex: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {item.productName || item.name}{" "}
-                        <span style={{ color: "#64748b" }}>(×{item.qty})</span>
-                      </span>
-                      <span
-                        style={{
-                          color: "#10b981",
-                          fontSize: "11px",
-                          fontWeight: "600",
-                          fontFamily: "monospace",
-                          marginLeft: "8px",
-                        }}
-                      >
-                        {formatRupiah(item.totalPrice)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Manual Discount Input - Gold/Yellow */}
-            <div
-              style={{
-                padding: "14px",
-                background: "rgba(251, 191, 36, 0.08)",
-                borderRadius: "10px",
-                border: "1px solid rgba(251, 191, 36, 0.3)",
-                marginBottom: "14px",
-              }}
-            >
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "10px",
-                  fontWeight: "700",
-                  color: "#fbbf24",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  marginBottom: "6px",
-                }}
-              >
-                🎟️ Diskon / Potongan (Rp)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max={subtotal}
-                value={discount === 0 ? "" : discount}
-                onChange={(e) => {
-                  const val = Number(e.target.value) || 0;
-                  setDiscount(Math.min(val, subtotal));
-                }}
-                style={{
-                  width: "100%",
-                  fontSize: "18px",
-                  fontWeight: "800",
-                  textAlign: "right",
-                  color: "#fbbf24",
-                  padding: "10px",
-                  borderRadius: "8px",
-                  border: isHighDiscount
-                    ? "2px solid #f43f5e"
-                    : "1px solid rgba(251, 191, 36, 0.4)",
-                  background: "rgba(15, 23, 42, 0.8)",
-                  outline: "none",
-                  fontFamily: "monospace",
-                }}
-                placeholder="0"
-                onFocus={(e) => e.target.select()}
-              />
-              {isHighDiscount && (
-                <div
-                  style={{
-                    marginTop: "6px",
-                    padding: "6px",
-                    background: "rgba(244, 63, 94, 0.15)",
-                    borderRadius: "6px",
-                    border: "1px solid rgba(244, 63, 94, 0.4)",
-                    fontSize: "10px",
-                    color: "#f43f5e",
-                    fontWeight: "700",
-                  }}
-                >
-                  ⚠️ Diskon tinggi: {discountPercent.toFixed(0)}%
-                </div>
-              )}
-            </div>
-
-            {/* === ENHANCED DEADLINE & PRIORITY SECTION === */}
+            {/* === ENHANCED DEADLINE & PRIORITY SECTION (Moved to Top) === */}
             {targetDate && setTargetDate && (
               <div
                 style={{
@@ -472,7 +307,19 @@ export function PaymentModal({
                           cursor: "pointer",
                         }}
                       >
-                        STANDARD
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "2px",
+                          }}
+                        >
+                          <span>STANDARD</span>
+                          <span style={{ fontSize: "9px", opacity: 0.8 }}>
+                            Rp 0
+                          </span>
+                        </div>
                       </button>
                       <button
                         onClick={() => setProductionPriority("EXPRESS")}
@@ -497,7 +344,19 @@ export function PaymentModal({
                           cursor: "pointer",
                         }}
                       >
-                        EXPRESS
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "2px",
+                          }}
+                        >
+                          <span>EXPRESS</span>
+                          <span style={{ fontSize: "9px", opacity: 0.8 }}>
+                            +{formatRupiah(PRIORITY_CONFIG.FEE_EXPRESS)}
+                          </span>
+                        </div>
                       </button>
                       <button
                         onClick={() => setProductionPriority("URGENT")}
@@ -522,7 +381,19 @@ export function PaymentModal({
                           cursor: "pointer",
                         }}
                       >
-                        URGENT
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "2px",
+                          }}
+                        >
+                          <span>URGENT</span>
+                          <span style={{ fontSize: "9px", opacity: 0.8 }}>
+                            +{formatRupiah(PRIORITY_CONFIG.FEE_URGENT)}
+                          </span>
+                        </div>
                       </button>
                     </div>
                   </div>
@@ -659,10 +530,137 @@ export function PaymentModal({
                 )}
               </div>
             )}
+
+            {/* Manual Discount Input - Gold/Yellow */}
+            <div
+              style={{
+                padding: "14px",
+                background: "rgba(251, 191, 36, 0.08)",
+                borderRadius: "10px",
+                border: "1px solid rgba(251, 191, 36, 0.3)",
+                marginBottom: "14px",
+              }}
+            >
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "10px",
+                  fontWeight: "700",
+                  color: "#fbbf24",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  marginBottom: "6px",
+                }}
+              >
+                🎟️ Diskon / Potongan (Rp)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max={subtotal}
+                value={discount === 0 ? "" : discount}
+                onChange={(e) => {
+                  const val = Number(e.target.value) || 0;
+                  setDiscount(Math.min(val, subtotal));
+                }}
+                style={{
+                  width: "100%",
+                  fontSize: "18px",
+                  fontWeight: "800",
+                  textAlign: "right",
+                  color: "#fbbf24",
+                  padding: "10px",
+                  borderRadius: "8px",
+                  border: isHighDiscount
+                    ? "2px solid #f43f5e"
+                    : "1px solid rgba(251, 191, 36, 0.4)",
+                  background: "rgba(15, 23, 42, 0.8)",
+                  outline: "none",
+                  fontFamily: "monospace",
+                }}
+                placeholder="0"
+                onFocus={(e) => e.target.select()}
+              />
+              {isHighDiscount && (
+                <div
+                  style={{
+                    marginTop: "6px",
+                    padding: "6px",
+                    background: "rgba(244, 63, 94, 0.15)",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(244, 63, 94, 0.4)",
+                    fontSize: "10px",
+                    color: "#f43f5e",
+                    fontWeight: "700",
+                  }}
+                >
+                  ⚠️ Diskon tinggi: {discountPercent.toFixed(0)}%
+                </div>
+              )}
+            </div>
+
+            {/* Spacer */}
+            <div style={{ flex: 1 }} />
+
+            {/* Grand Total Display (Moved to Bottom) */}
+            <div
+              style={{
+                textAlign: "center",
+                marginBottom: "16px",
+                padding: "20px",
+                background:
+                  "linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%)",
+                borderRadius: "12px",
+                border: "1px solid rgba(16, 185, 129, 0.2)",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  color: "#64748b",
+                  fontSize: "10px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.15em",
+                }}
+              >
+                TOTAL TAGIHAN
+              </p>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  fontSize: "42px",
+                  fontWeight: "900",
+                  color: "#10b981",
+                  fontFamily: "monospace",
+                  textShadow: "0 0 40px rgba(16, 185, 129, 0.4)",
+                }}
+              >
+                {formatRupiah(finalAmount)}
+              </p>
+              {appliedDiscount > 0 && (
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "#f43f5e",
+                    fontSize: "11px",
+                  }}
+                >
+                  <s style={{ color: "#475569" }}>{formatRupiah(subtotal)}</s>{" "}
+                  (-{formatRupiah(appliedDiscount)})
+                </p>
+              )}
+            </div>
           </div>
 
           {/* RIGHT: Payment Execution */}
-          <div style={{ padding: "20px", overflowY: "auto" }}>
+          <div
+            style={{
+              padding: "20px",
+              display: "flex",
+              flexDirection: "column",
+              overflowY: "auto",
+            }}
+          >
             {/* Payment Mode Tabs */}
             <div
               style={{
@@ -839,6 +837,78 @@ export function PaymentModal({
               </button>
             </div>
 
+            {/* NEW: Tempo DP Source Selector (Below Input) */}
+            {isTempo && paid > 0 && (
+              <div style={{ marginTop: "12px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    color: "#fbbf24",
+                    marginBottom: "4px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  Metode Bayar DP
+                </label>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "4px",
+                    background: "#020617",
+                    padding: "3px",
+                    borderRadius: "8px",
+                    border: "1px solid #334155",
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setTempoSource("TUNAI");
+                      updatePayment({ mode: "TUNAI" });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background:
+                        tempoSource === "TUNAI" ? "#fbbf24" : "transparent",
+                      color: tempoSource === "TUNAI" ? "#000" : "#94a3b8",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    💵 TUNAI
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTempoSource("NON_TUNAI");
+                      updatePayment({ mode: "NON_TUNAI" });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background:
+                        tempoSource === "NON_TUNAI" ? "#fbbf24" : "transparent",
+                      color: tempoSource === "NON_TUNAI" ? "#000" : "#94a3b8",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    💳 TRANSFER
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Change/Debt Display */}
             <div
               style={{
@@ -919,114 +989,151 @@ export function PaymentModal({
                 </p>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Footer - Confirm Button */}
-        <div
-          style={{
-            padding: "14px 24px",
-            borderTop: "1px solid #334155",
-            background: "rgba(15, 23, 42, 0.8)",
-          }}
-        >
-          {/* Receiver & Tempo Method Input */}
-          {/* Tempo Payment Method Selector (Only overrides if paying DP) */}
-          {isTempo && paid > 0 && (
-            <div style={{ flex: 1 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "10px",
-                  fontWeight: "700",
-                  color: "#fbbf24",
-                  marginBottom: "4px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                Metode Bayar DP
-              </label>
+            {/* === ORDER DETAILS (RIGHT COLUMN COMPACT) === */}
+            {items.length > 0 && (
               <div
                 style={{
-                  display: "flex",
-                  gap: "2px",
-                  background: "#334155",
-                  padding: "2px",
-                  borderRadius: "8px",
+                  marginTop: "14px",
+                  padding: "10px",
+                  background: "rgba(251, 191, 36, 0.05)",
+                  borderRadius: "10px",
+                  border: "1px dashed rgba(251, 191, 36, 0.3)",
                 }}
               >
-                <button
-                  onClick={() => updatePayment({ mode: "TUNAI" })}
+                <div
                   style={{
-                    flex: 1,
-                    padding: "8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: mode === "TUNAI" ? "#fbbf24" : "transparent",
-                    color: mode === "TUNAI" ? "#000" : "#94a3b8",
-                    fontSize: "10px",
-                    fontWeight: "700",
-                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "8px",
                   }}
                 >
-                  TUNAI
-                </button>
-                <button
-                  onClick={() => updatePayment({ mode: "NON_TUNAI" })}
-                  style={{
-                    flex: 1,
-                    padding: "8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background:
-                      mode === "NON_TUNAI" ? "#fbbf24" : "transparent",
-                    color: mode === "NON_TUNAI" ? "#000" : "#94a3b8",
-                    fontSize: "10px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  TRANSFER
-                </button>
-              </div>
-            </div>
-          )}
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: "800",
+                      color: "#fbbf24",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    ⚠️ Cek Barang ({items.length})
+                  </span>
+                </div>
 
-          <button
-            onClick={onConfirmPayment}
-            disabled={!canProceed}
-            style={{
-              width: "100%",
-              padding: "16px",
-              borderRadius: "10px",
-              border: "none",
-              background: canProceed
-                ? isTempo
-                  ? "linear-gradient(135deg, #be123c 0%, #f43f5e 100%)"
-                  : "linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)"
-                : "#475569",
-              color: canProceed ? (isTempo ? "white" : "#022c22") : "#94a3b8",
-              fontSize: "15px",
-              fontWeight: "900",
-              letterSpacing: "0.1em",
-              cursor: canProceed ? "pointer" : "not-allowed",
-              boxShadow: canProceed
-                ? isTempo
-                  ? "0 0 30px rgba(244, 63, 94, 0.4)"
-                  : "0 0 30px rgba(16, 185, 129, 0.4)"
-                : "none",
-              transition: "all 0.3s",
-            }}
-          >
-            {isTempo
-              ? paid > 0
-                ? "PROSES TEMPO (+ DP)"
-                : "PROSES TEMPO (TANPA DP)"
-              : paid >= finalAmount
-                ? "LUNAS & SELESAI"
-                : "SIMPAN SEBAGAI DP"}
-          </button>
+                <div
+                  style={{
+                    maxHeight: "160px",
+                    overflowY: "auto",
+                    paddingRight: "4px",
+                  }}
+                  className="custom-scrollbar"
+                >
+                  {/* Inline Scrollbar Style for this container */}
+                  <style>{`
+                    .custom-scrollbar::-webkit-scrollbar {
+                      width: 4px;
+                    }
+                    .custom-scrollbar::-webkit-scrollbar-track {
+                      background: transparent;
+                    }
+                    .custom-scrollbar::-webkit-scrollbar-thumb {
+                      background: rgba(251, 191, 36, 0.3);
+                      border-radius: 10px;
+                    }
+                    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                      background: rgba(251, 191, 36, 0.6);
+                    }
+                  `}</style>
+                  {items.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "11px",
+                        marginBottom: "4px",
+                        borderBottom: "1px dashed rgba(255,255,255,0.05)",
+                        paddingBottom: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#94a3b8",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: "70%",
+                        }}
+                      >
+                        <span style={{ color: "#fbbf24" }}>{item.qty}x</span>{" "}
+                        {item.productName || item.name}
+                      </span>
+                      <span
+                        style={{
+                          color: "#e2e8f0",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {formatRupiah(item.totalPrice)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer - Confirm Button (Moved to Right Column) */}
+            <div
+              style={{
+                marginTop: "auto",
+                paddingTop: "16px",
+                borderTop: "1px solid #334155",
+              }}
+            >
+              {/* Receiver & Tempo Method Input */}
+
+              <button
+                onClick={onConfirmPayment}
+                disabled={!canProceed}
+                style={{
+                  width: "100%",
+                  padding: "16px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: canProceed
+                    ? isTempo
+                      ? "linear-gradient(135deg, #be123c 0%, #f43f5e 100%)"
+                      : "linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)"
+                    : "#475569",
+                  color: canProceed
+                    ? isTempo
+                      ? "white"
+                      : "#022c22"
+                    : "#94a3b8",
+                  fontSize: "15px",
+                  fontWeight: "900",
+                  letterSpacing: "0.1em",
+                  cursor: canProceed ? "pointer" : "not-allowed",
+                  boxShadow: canProceed
+                    ? isTempo
+                      ? "0 0 30px rgba(244, 63, 94, 0.4)"
+                      : "0 0 30px rgba(16, 185, 129, 0.4)"
+                    : "none",
+                  transition: "all 0.3s",
+                }}
+              >
+                {isTempo
+                  ? paid > 0
+                    ? "PROSES TEMPO (+ DP)"
+                    : "PROSES TEMPO (TANPA DP)"
+                  : paid >= finalAmount
+                    ? "LUNAS & SELESAI"
+                    : "SIMPAN SEBAGAI DP"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

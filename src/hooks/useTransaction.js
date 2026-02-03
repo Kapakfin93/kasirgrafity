@@ -481,7 +481,16 @@ export function useTransaction() {
     const serviceFee = productionService?.fee ?? 0;
 
     // Total before discount
-    const subtotal = itemsSubtotal + serviceFee;
+    // FAIL-SAFE LOGIC: Prevent Double Counting
+    // Check if fee is already itemized (Legacy Logic Protection)
+    const hasFeeItem = tempItems.some(
+      (i) =>
+        i.id === "fee-express" || i.id === "fee-urgent" || i.is_fee === true,
+    );
+    const effectiveServiceFee = hasFeeItem ? 0 : Number(serviceFee) || 0;
+
+    // Total before discount
+    const subtotal = itemsSubtotal + effectiveServiceFee;
 
     // Discount applied to total
     const safeDiscount = Math.min(discount, subtotal);

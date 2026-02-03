@@ -220,7 +220,7 @@ export const useOrderStore = create((set, get) => ({
       let query = supabase
         .from("orders")
         .select(
-          "id, total_amount, grand_total, discount, paid_amount, remaining_amount, payment_status, production_status, items_snapshot, created_at",
+          "id, total_amount, grand_total, discount_amount, paid_amount, remaining_amount, payment_status, production_status, items_snapshot, created_at, meta",
         );
 
       if (dateRange?.start && dateRange.end) {
@@ -313,10 +313,15 @@ export const useOrderStore = create((set, get) => ({
           }
         });
 
+        // --- 💉 SURGICAL PATCH: Add Metadata Fee (Architecture A) ---
+        // Fix for "Invisible Fee" where service revenue is stored in meta only
+        const metaFee = Number(o.meta?.production_service?.fee) || 0;
+        stats.omsetJasa += metaFee;
+
         // --- 2. Hitung Keuangan (INI YANG TADI HILANG!) ---
         let gross = Number(o.total_amount || 0);
         let net = Number(o.grand_total || o.total_amount || 0); // Fallback ke total_amount jika grand_total null
-        const discount = Number(o.discount || 0);
+        const discount = Number(o.discount_amount || 0);
         const paid = Number(o.paid_amount || 0);
 
         // Safety check: Jika header 0 tapi item ada isinya
@@ -334,7 +339,8 @@ export const useOrderStore = create((set, get) => ({
         stats.totalOutstanding += remaining;
 
         // --- 3. Status Counter ---
-        const payStatus = o.payment_status || "UNPAID";
+        let payStatus = o.payment_status || "UNPAID";
+        if (payStatus === "PARTIAL") payStatus = "DP"; // Map PARTIAL to DP for display
         if (stats.countByPayment[payStatus] !== undefined)
           stats.countByPayment[payStatus]++;
 
