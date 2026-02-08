@@ -218,6 +218,8 @@ export function useTransaction() {
       manualPrice,
       finalTotal,
       pricingSnapshot,
+      specs, // 🔥 CTO DIRECTIVE: specs from ADD TO CART
+      pricingType: inputPricingType, // 🔥 CTO DIRECTIVE: pricingType from modal
     } = rawInput;
 
     if (!product?.id)
@@ -281,7 +283,7 @@ export function useTransaction() {
       name: product.name,
       productName: product.name,
       description: description,
-      pricingType: pricingType,
+      pricingType: inputPricingType || pricingType, // 🔥 Use modal pricingType first
       qty: safeQty,
       dimensions: dimensions,
       finishings: finishings.map((f) => ({
@@ -302,6 +304,8 @@ export function useTransaction() {
       // NOTA REVISION: Variant info for human-readable invoice
       variantLabel: dimensions.variantLabel || rawInput.variantLabel || null,
       variantDesc: dimensions.variantDesc || rawInput.variantDesc || null,
+      // 🔥 CTO DIRECTIVE: SPECS FROM ADD TO CART (NOT REBUILT)
+      specs: specs || null,
     };
 
     if (pricingType === "ADVANCED") {
@@ -314,6 +318,16 @@ export function useTransaction() {
         notes: cartItem.notes,
       };
     }
+
+    // 🛒 DEBUG: Log cart item dengan SPECS verification
+    console.log("🛒 CART ITEM CREATED:", {
+      productName: cartItem.productName,
+      pricingType: cartItem.pricingType,
+      hasSpecs: !!cartItem.specs,
+      specsType: cartItem.specs?.type,
+      specsSummary: cartItem.specs?.summary,
+      totalPrice: cartItem.totalPrice,
+    });
 
     return cartItem;
   };
@@ -345,6 +359,9 @@ export function useTransaction() {
             // FASE 2: Pass through finalTotal and pricingSnapshot from UI
             finalTotal: preConfiguredItem.finalTotal,
             pricingSnapshot: preConfiguredItem.pricingSnapshot,
+            // 🔥 CTO DIRECTIVE: SPECS AND PRICINGTYPE FROM ADD TO CART
+            specs: preConfiguredItem.specs,
+            pricingType: preConfiguredItem.pricingType,
           };
         } else {
           // OLD Structure
@@ -653,20 +670,39 @@ export function useTransaction() {
           const safePrice = Number(item.unitPrice || item.price);
           const safeQty = Number(item.qty) || 1;
           const safeProductId = item.productId || item.id || `MANUAL_${index}`;
+
+          // 🔥 CTO DIRECTIVE: VALIDATE SPECS EXISTS
+          if (!item.specs || !item.specs.summary) {
+            console.error("❌ PAYMENT ITEM MISSING SPECS:", item.productName);
+            throw new Error(
+              `INVALID_CART_STATE: specs missing for ${item.productName || item.name}`,
+            );
+          }
+
+          // 💳 DEBUG: Log payment item
+          console.log("💳 PAYMENT ITEM:", {
+            product: item.productName || item.name,
+            hasSpecs: !!item.specs,
+            specsType: item.specs?.type,
+            summary: item.specs?.summary,
+          });
+
           return {
             product_id: safeProductId,
             product_name: item.name || item.productName,
             quantity: safeQty,
             price: safePrice,
-            subtotal: Math.round(item.totalPrice), // Ensure integer
+            subtotal: Math.round(item.totalPrice),
+            // 🔥 CTO DIRECTIVE: SPECS AT ITEM LEVEL (COPY 1:1 FROM CART)
+            specs: item.specs,
+            pricingType: item.pricingType,
+            // LEGACY METADATA (keep for backward compatibility)
             metadata: {
               original_name: item.name,
-              specs_json: item.dimensions,
+              original_specs: item.dimensions, // Legacy
               finishing_list: item.finishings || [],
               notes: item.notes || "",
-              custom_dimensions: item.dimensions?.length
-                ? { w: item.dimensions.width, h: item.dimensions.length }
-                : null,
+              variant_info: item.specs?.summary || item.variantLabel || "",
             },
           };
         }),

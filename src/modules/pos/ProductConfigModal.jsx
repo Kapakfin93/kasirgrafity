@@ -422,9 +422,80 @@ export default function ProductConfigModal({
       });
     }
 
+    // ==========================================================
+    // 🔥 CTO DIRECTIVE: BUILD SPECS AT ADD TO CART (NOT CHECKOUT)
+    // ==========================================================
+    const finishingNames = finishingsArray.map((f) => f.name);
+    let specs = {
+      type: inputMode, // AREA, LINEAR, MATRIX, UNIT, BOOKLET
+      inputs: {},
+      summary: "",
+    };
+
+    // === AREA (Spanduk, Outdoor) ===
+    if (isArea) {
+      specs.inputs = {
+        length: dimensions.length,
+        width: dimensions.width,
+        area: areaCalculation.area,
+        material: selectedVariant?.label || "Standard",
+        finishing: finishingNames,
+      };
+      specs.summary = `${dimensions.length}m x ${dimensions.width}m • ${selectedVariant?.label || "Standard"}`;
+      if (finishingNames.length > 0) {
+        specs.summary += ` • Fin: ${finishingNames.join(", ")}`;
+      }
+    }
+    // === LINEAR (Roll, Stiker Meteran) ===
+    else if (isLinear) {
+      specs.inputs = {
+        length: dimensions.length,
+        width: dimensions.width,
+        material: selectedVariant?.label || "Standard",
+      };
+      specs.summary = `${dimensions.length}m • ${selectedVariant?.label || "Standard"}`;
+    }
+    // === MATRIX (Poster A0/A1) ===
+    else if (isMatrix) {
+      specs.inputs = {
+        size: matrixSelection.step1,
+        material: matrixSelection.step2,
+      };
+      specs.summary = variantLabel;
+    }
+    // === BOOKLET ===
+    else if (isBooklet) {
+      specs.inputs = {
+        sheets: sheetsPerBook,
+        paper: selectedVariant?.label || "Standard",
+        printMode: printMode?.label || "Standard",
+      };
+      specs.summary = `${sheetsPerBook} lembar • ${selectedVariant?.label || "Standard"} • ${printMode?.label || ""}`;
+    }
+    // === UNIT / TIERED / MANUAL ===
+    else {
+      specs.inputs = {
+        variant: selectedVariant?.label || "Standard",
+      };
+      specs.summary = selectedVariant?.label || variantLabel || "Standard";
+    }
+
+    // SAFETY: Ensure summary is never empty
+    if (!specs.summary || specs.summary.trim() === "") {
+      specs.summary = safeProduct.name || "Item";
+    }
+
+    console.log("🛒 ADD TO CART - SPECS CREATED:", {
+      product: safeProduct.name,
+      type: specs.type,
+      summary: specs.summary,
+      inputs: specs.inputs,
+    });
+
     onAddToCart({
       product: { ...safeProduct, pricing_model: inputMode },
       qty,
+      // === LEGACY FIELDS (keep for backward compatibility) ===
       dimensions:
         isArea || isLinear
           ? {
@@ -450,6 +521,12 @@ export default function ProductConfigModal({
         grandTotal,
         qty,
       },
+      // === 🔥 NEW: SPECS (CTO DIRECTIVE) ===
+      specs: specs,
+      pricingType: inputMode, // AREA, LINEAR, MATRIX, UNIT, BOOKLET
+      // 🔥 FIX: EXPLICIT UNIT PRICE FOR PAYLOAD construction
+      unitPrice: finalUnitPrice,
+      price: finalUnitPrice,
     });
     onClose();
   };

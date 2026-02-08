@@ -1,14 +1,18 @@
 /**
  * src/components/MainLayout.jsx
- * (INTEGRATED VERSION)
+ * (INTEGRATED VERSION - FIXED PERMISSIONS)
  */
 import React, { useState, useEffect } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
 import { useAuthStore } from "../stores/useAuthStore";
 import { useThemeStore } from "../stores/useThemeStore";
+import { useExpenseStore } from "../stores/useExpenseStore";
+import { useAttendanceStore } from "../stores/useAttendanceStore";
 import { LogoutConfirmModal } from "./LogoutConfirmModal";
 import { ThemeToggle } from "./ThemeToggle";
+import { useEmployeeStore } from "../stores/useEmployeeStore";
+
 // 👇 IMPORT INI HARUS SESUAI DENGAN FILE TAHAP 1
 import { useAutoLock } from "../hooks/useAutoLock";
 
@@ -46,6 +50,21 @@ export function MainLayout() {
           setRealUser(profile);
           setRealRole(profile.role);
 
+          // ✅ PERBAIKAN DIMULAI DI SINI
+          // 1️⃣ Definisikan logic permissions
+          let permissions = [];
+
+          if (profile.role === "admin") {
+            permissions = [
+              "view_orders",
+              "use_kasir",
+              "view_inbox",
+              "manage_expenses",
+              "view_attendance",
+              "update_status",
+            ];
+          }
+
           // INJECT KE STORE (Tahap 2)
           useAuthStore.setState({
             currentUser: {
@@ -53,10 +72,19 @@ export function MainLayout() {
               name: profile.name,
               role: profile.role,
               email: user.email,
-              permissions: [], // Default kosong biar gak undefined
+              // 2️⃣ Masukkan variable permissions ke sini
+              permissions,
             },
             isAuthenticated: true,
           });
+          // ✅ PERBAIKAN SELESAI
+
+          // 🔄 AUTO-SYNC DATA UNTUK ADMIN (BACKGROUND, SEKALI SAAT LOGIN)
+          if (profile.role === "admin") {
+            useEmployeeStore.getState().syncFromCloud();
+            useExpenseStore.getState().syncFromCloud();
+            useAttendanceStore.getState().syncFromCloud();
+          }
         } else {
           setRealRole("guest");
         }
@@ -66,6 +94,11 @@ export function MainLayout() {
     };
 
     fetchRealProfile();
+
+    // 3. GLOBAL PRE-LOAD & SYNC QUEUE (Offline Resilience)
+    useEmployeeStore.getState().loadEmployees();
+    useAttendanceStore.getState().processSyncQueue();
+    useExpenseStore.getState().processSyncQueue();
   }, []);
 
   const handleLogoutClick = () => setShowLogoutModal(true);
@@ -78,6 +111,7 @@ export function MainLayout() {
   const handleLogoutCancel = () => setShowLogoutModal(false);
 
   const isOwner = realRole === "owner";
+  const isAdmin = realRole === "admin";
   const isCashier = realRole === "cashier" || realRole === "kasir";
 
   const navItems = [];
@@ -92,6 +126,14 @@ export function MainLayout() {
       { path: "/employees", icon: "👥", label: "Karyawan" },
       { path: "/attendance", icon: "⏰", label: "Absensi" },
       { path: "/settings/data", icon: "💾", label: "Backup Data" },
+    );
+  } else if (isAdmin) {
+    navItems.push(
+      { path: "/pos", icon: "💰", label: "Kasir" },
+      { path: "/orders", icon: "📋", label: "Order" },
+      { path: "/web-inbox", icon: "📩", label: "Inbox" },
+      { path: "/expenses", icon: "💸", label: "Pengeluaran" },
+      { path: "/attendance", icon: "⏰", label: "Absensi" },
     );
   } else if (isCashier) {
     navItems.push(

@@ -103,7 +103,7 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
                   )}
 
                   <div style={{ textAlign: "right" }}>
-                    {formatRupiah(item.totalPrice)}
+                    {formatRupiah(item.subtotal || 0)}
                   </div>
                 </div>
               );

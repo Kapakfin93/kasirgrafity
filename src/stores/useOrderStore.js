@@ -20,7 +20,7 @@ import {
 // Import Mesin Cerdas (Core)
 import { getOwnerDailySnapshot } from "../core/ownerDecisionEngine";
 
-// === 1. FINAL NORMALIZER ===
+// === 1. FINAL NORMALIZER (PIPA PERBAIKAN) ===
 const internalNormalizeOrder = (dbOrder) => {
   if (!dbOrder) return null;
 
@@ -43,32 +43,44 @@ const internalNormalizeOrder = (dbOrder) => {
     rawItems = dbOrder.items;
   }
 
-  // B. DESCRIPTION BUILDER
+  // B. DESCRIPTION BUILDER (LOGIKA BARU - LEBIH PINTAR)
   const buildDescription = (item) => {
     const meta = item.meta || item.metadata || {};
     const parts = [];
+
+    // [FIX 1] Cari Ukuran di 'original_specs' dulu (sesuai log terakhir)
     const dims =
+      meta.original_specs ||
       meta.custom_dimensions ||
       meta.dimensions ||
       (meta.specs_json ? meta.specs_json : null);
-    if (dims && (dims.length || dims.width || dims.h || dims.w)) {
-      const l = dims.length || dims.h || 0;
-      const w = dims.width || dims.w || 0;
-      if (l > 0 && w > 0) parts.push(`${l}x${w}m`);
+
+    // Logic Tampilan Ukuran (5m x 1m)
+    if (dims) {
+      const l = parseFloat(dims.length || dims.h || 0);
+      const w = parseFloat(dims.width || dims.w || 0);
+
+      // Jika ada Variant Label (Flexi 280gr..), pakai itu
+      if (dims.variantLabel) {
+        parts.push(dims.variantLabel);
+      } else if (l > 0 && w > 0) {
+        // Jika tidak ada label, pakai ukuran manual
+        parts.push(`${l}m x ${w}m`);
+      }
     }
-    const variant =
-      meta.variantLabel ||
-      meta.variant_label ||
-      (meta.specs_json ? meta.specs_json.variantLabel : null);
-    if (variant) parts.push(variant);
+
+    // Logic Tampilan Finishing
     const finish =
+      meta.finishing_names || // Prioritas 1: Nama dari SQL Label Fix
       meta.finishing ||
-      (meta.specs_json ? meta.specs_json.finishing_list : null);
-    if (Array.isArray(finish) && finish.length > 0) {
-      parts.push(`Fin: ${finish.join(", ")}`);
-    } else if (typeof finish === "string" && finish) {
+      (meta.finishing_ids && Array.isArray(meta.finishing_ids)
+        ? meta.finishing_ids.join(", ")
+        : null);
+
+    if (finish && finish !== "") {
       parts.push(`Fin: ${finish}`);
     }
+
     return parts.join(" | ");
   };
 
@@ -93,6 +105,10 @@ const internalNormalizeOrder = (dbOrder) => {
       dbOrder.discount_amount || dbOrder.discountAmount || 0,
     ),
 
+    // [FIX 2] Angkat Service Fee keluar dari Meta agar Nota mudah baca
+    serviceFee: Number(dbOrder.meta?.service_fee || 0),
+    productionPriority: dbOrder.meta?.production_priority || "STANDARD",
+
     // Status
     productionStatus:
       dbOrder.production_status || dbOrder.productionStatus || "PENDING",
@@ -103,9 +119,6 @@ const internalNormalizeOrder = (dbOrder) => {
 
     cancelReason: dbOrder.cancel_reason || dbOrder.cancelReason,
     cancelledAt: dbOrder.cancelled_at || dbOrder.cancelledAt,
-
-    // ✅ FIX: Map financial_action dari database (snake_case) ke app (camelCase)
-    // Needed untuk kolom "Dana" di Dashboard Riwayat Pembatalan
     financialAction:
       dbOrder.financial_action || dbOrder.financialAction || "NONE",
 
@@ -120,8 +133,20 @@ const internalNormalizeOrder = (dbOrder) => {
       qty: Number(item.quantity || item.qty || 0),
       price: Number(item.price || item.unit_price || 0),
       totalPrice: Number(item.subtotal || item.total_price || 0),
-      notes: item.notes || "",
+      notes:
+        item.dimensions?.note ||
+        item.meta?.notes ||
+        item.metadata?.notes ||
+        item.notes ||
+        "", // Prioritas: Dimensions (Smart Merge) -> Meta -> Direct
+
+      // INI YANG AKAN DITAMPILKAN DI NOTA
       description: buildDescription(item),
+
+      // 🔥 FIX: DATA CARRIER (Jangan Buang Dimensions!)
+      dimensions: item.dimensions || {},
+      specs: item.dimensions || item.specs || {}, // Fallback for safety
+
       meta: item.meta || item.metadata || {},
     })),
   };
@@ -406,8 +431,144 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
+  // === SPECS STANDARDIZER (KONTRAK FINAL) ===
+  // Fungsi tunggal untuk translate semua variasi produk ke format specs
+  // buildSpecsFromProduct: (item) => { ... } - Defined inline below for access
+
   // 3. CREATE ORDER (V2 - ATOMIC RPC)
   createOrder: async (payload) => {
+    // === SPECS STANDARDIZER (KONTRAK FINAL) ===
+    const buildSpecsFromProduct = (item) => {
+      // 🔍 DEBUG: Log item structure to see what fields exist
+      console.log("🏗️ buildSpecsFromProduct INPUT:", {
+        has_pricingType: !!item.pricingType,
+        pricingType_value: item.pricingType,
+        has_pricing_model: !!item.pricing_model,
+        pricing_model_value: item.pricing_model,
+        has_inputMode: !!item.inputMode,
+        inputMode_value: item.inputMode,
+        has_dimensions: !!item.dimensions,
+        dimensions_keys: item.dimensions ? Object.keys(item.dimensions) : null,
+        item_keys: Object.keys(item).slice(0, 15), // First 15 keys
+      });
+
+      const pricingType =
+        item.pricingType ||
+        item.pricing_model ||
+        item.product?.pricing_model ||
+        item.inputMode ||
+        "MANUAL";
+
+      console.log("🏗️ DETECTED pricingType:", pricingType);
+
+      let specs = {
+        type: pricingType,
+        inputs: {},
+        summary: "",
+      };
+
+      // === AREA (Spanduk, Outdoor, MMT) ===
+      if (pricingType === "AREA") {
+        const dims = item.dimensions || {};
+        const length = parseFloat(dims.length || 0);
+        const width = parseFloat(dims.width || 0);
+        const area = parseFloat(dims.area || length * width || 0);
+        const material = dims.variantLabel || dims.material || "Standard";
+        const finishingNames = (
+          item.finishings ||
+          item.metadata?.finishing_list ||
+          []
+        )
+          .map((f) => f.name || f.id)
+          .filter(Boolean);
+
+        specs.inputs = {
+          length,
+          width,
+          area,
+          material,
+          finishing: finishingNames,
+        };
+
+        specs.summary = `${length}m x ${width}m • ${material}`;
+        if (finishingNames.length > 0) {
+          specs.summary += ` • Fin: ${finishingNames.join(", ")}`;
+        }
+      }
+
+      // === LINEAR (Roll, Stiker Meteran) ===
+      else if (pricingType === "LINEAR" || pricingType === "LINEAR_METER") {
+        const dims = item.dimensions || {};
+        const length = parseFloat(dims.length || 0);
+        const width = parseFloat(dims.width || 1);
+        const material = dims.variantLabel || dims.material || "Standard";
+
+        specs.inputs = {
+          length,
+          width,
+          material,
+        };
+
+        specs.summary = `${length}m • ${material}`;
+      }
+
+      // === MATRIX (Poster A0/A1, Plakat) ===
+      else if (pricingType === "MATRIX") {
+        const size =
+          item.dimensions?.sizeKey || item.selected_details?.size || "Custom";
+        const material =
+          item.dimensions?.material ||
+          item.selected_details?.variant ||
+          "Standard";
+
+        specs.inputs = {
+          size,
+          material,
+        };
+
+        specs.summary = `${size} • ${material}`;
+      }
+
+      // === TIERED (Qty-based pricing) ===
+      else if (pricingType === "TIERED") {
+        const variant =
+          item.dimensions?.variantLabel || item.variantLabel || "Standard";
+
+        specs.inputs = {
+          variant,
+          tier: item.pricingSnapshot?.tier || "standard",
+        };
+
+        specs.summary = `${variant}`;
+      }
+
+      // === UNIT / MANUAL / MIXED (Jasa, Merch, Dokumen) ===
+      else {
+        const variant =
+          item.dimensions?.variantLabel ||
+          item.variantLabel ||
+          item.selected_details?.variant ||
+          "Standard";
+
+        specs.inputs = {
+          variant,
+        };
+
+        specs.summary = variant !== "Standard" ? variant : "";
+      }
+
+      // SAFETY NET: Fallback to description or product name
+      if (!specs.summary || specs.summary.trim() === "") {
+        specs.summary =
+          item.description ||
+          item.productName ||
+          item.product_name ||
+          item.name ||
+          "Item";
+      }
+
+      return specs;
+    };
     set({ isLoading: true, error: null });
     try {
       const { items, ...orderHeader } = payload;
@@ -417,23 +578,118 @@ export const useOrderStore = create((set, get) => ({
       const { supabase } = await import("../services/supabaseClient");
       const { v4: uuid } = await import("uuid");
 
-      // === BUILD RAW_INTENT PAYLOAD ===
-      const rawItems = items.map((item) => ({
-        product_id: item.productId || item.product_id,
-        material_id:
-          item.dimensions?.materialId ||
-          item.dimensions?.variantId ||
-          item.selected_details?.material_id ||
-          null,
-        size_id:
-          item.dimensions?.sizeKey ||
-          item.dimensions?.selectedVariant?.label ||
-          item.selected_details?.size_id ||
-          null,
-        quantity: item.qty || item.quantity || 1,
-        finishing_ids: (item.finishings || []).map((f) => f.id),
-        notes: item.notes || "",
-      }));
+      // === BUILD RAW_INTENT PAYLOAD (FIXED: USE CART SPECS DIRECTLY) ===
+      const rawItems = items.map((item) => {
+        // 1. CALCULATE FINISHING TOTAL (keep for legacy)
+        const sourceFinishings =
+          item.finishings || item.metadata?.finishing_list || [];
+
+        const finishingTotal = sourceFinishings.reduce(
+          (sum, f) => sum + (f.price || 0),
+          0,
+        );
+
+        // 2. UNIT PRICE
+        let baseUnitPrice = Number(item.unitPrice || item.price || 0);
+
+        // 🔥 FIX: FALLBACK CALCULATION
+        // If unitPrice is 0 but we have subtotal, derive it.
+        if (baseUnitPrice === 0 && (item.totalPrice || item.subtotal)) {
+          const sub = Number(item.totalPrice || item.subtotal || 0);
+          const q = Number(item.qty || item.quantity || 1);
+          if (q > 0) baseUnitPrice = sub / q;
+        }
+
+        const finalUnitPrice = baseUnitPrice;
+
+        // 3. PRODUCT NAME
+        const productName =
+          item.product_name ||
+          item.productName ||
+          item.name ||
+          "Unknown Product";
+
+        // 4. 🔥 CTO DIRECTIVE: USE CART SPECS OR FALLBACK
+        let specs = item.specs;
+
+        // 5. 🔥 FALLBACK (CTO REVISION: NO CRASH)
+        if (!specs || !specs.summary) {
+          console.warn(
+            "⚠️ LEGACY_CART_STATE: specs missing for:",
+            productName,
+            "Using fallback.",
+          );
+          specs = {
+            type: "LEGACY",
+            summary: productName,
+            inputs: {},
+          };
+        }
+
+        // 6. LEGACY SPECS (for backward compatibility only)
+        const foundSpecs =
+          item.dimensions ||
+          item.metadata?.specs_json ||
+          item.metadata?.original_specs ||
+          null;
+        // 7. BUILD ITEM (specs AT ITEM LEVEL, not inside metadata)
+
+        // 🔥 FIX: STANDARDIZE QUANTITY VARIABLE (Calculated ONCE)
+        const finalQty = Number(item.qty || item.quantity || 1);
+
+        // 🔥 FIX: MERGE METADATA INTO SPECS/DIMENSIONS TO SURVIVE DB RPC
+        // The RPC only saves 'specs' -> 'dimensions'. It DROPS 'metadata'.
+        // So we must embed all critical info into 'specs'.
+        const richSpecs = {
+          ...specs,
+          // Inject Metadata Helpers
+          variant_info: specs.summary,
+          finishing_list: sourceFinishings,
+          original_specs: foundSpecs,
+          note: item.notes || "", // Use 'note' key for Smart Merge compatibility
+          notes: item.notes || "",
+        };
+
+        return {
+          product_id: item.productId || item.product_id,
+          product_name: productName,
+
+          material_id:
+            item.dimensions?.materialId ||
+            item.dimensions?.variantId ||
+            item.selected_details?.material_id ||
+            null,
+          size_id:
+            item.dimensions?.sizeKey ||
+            item.dimensions?.selectedVariant?.label ||
+            item.selected_details?.size_id ||
+            null,
+          quantity: finalQty,
+
+          unit_price: finalUnitPrice,
+          // 🔥 FIX: FORCE RECALCULATE SUBTOTAL (Trust Math, Not Input)
+          subtotal: finalUnitPrice * finalQty,
+
+          // 🔥 SPECS MAPPING (Legacy Table Support)
+          dimensions: richSpecs, // Map richSpecs -> dimensions column
+          specs: richSpecs, // Keep specs key for RPC
+
+          // LEGACY METADATA (keep for backward compatibility - local only)
+          metadata: {
+            is_manual_price: true,
+            original_specs: foundSpecs,
+            variant_info: specs.summary,
+            finishing_ids: sourceFinishings.map((f) => f.id || f.name),
+            finishing_total: finishingTotal,
+            finishing_list: sourceFinishings,
+            price_source: "frontend_calculator",
+            notes: item.notes || "",
+            calc_debug: `qty(${finalQty}) * unit(${finalUnitPrice}) = ${finalUnitPrice * finalQty}`,
+          },
+
+          notes: item.notes || "",
+        };
+      });
 
       const rawIntent = {
         idempotency_key: uuid(),
@@ -441,15 +697,25 @@ export const useOrderStore = create((set, get) => ({
         customer: {
           name: payload.customer_name,
           phone: payload.customer_phone || "-",
-          address: payload.customer_address || null,
         },
 
         items: rawItems,
 
-        payment_attempt: {
+        payment: {
           amount: parseFloat(payload.paid_amount || 0),
           method: payload.payment_method || "TUNAI",
+          received_by: payload.received_by || "System",
         },
+
+        // 🔥 FRONTEND AUTHORITY (Financial State)
+        // Values calculated by useTransaction.js are now TRUSTED by the Backend.
+        total_amount: parseFloat(payload.total_amount || 0),
+        tax_amount: parseFloat(payload.tax_amount || 0),
+        discount_amount: parseFloat(payload.discount_amount || 0),
+        remaining_amount: parseFloat(payload.remaining_amount || 0),
+        payment_status: payload.payment_status || "UNPAID",
+        is_tempo: payload.is_tempo || false,
+        production_status: payload.production_status || "PENDING",
 
         meta: {
           received_by: payload.received_by || "Kasir",
@@ -457,15 +723,39 @@ export const useOrderStore = create((set, get) => ({
             payload.meta?.production_service?.priority || "STANDARD",
           target_date: payload.target_date,
           discount_request: parseFloat(payload.discount_amount || 0),
-          source_version: "atomic_rpc_v1",
+          service_fee: parseFloat(payload.meta?.production_service?.fee || 0), // Explicitly store fee in meta
+          source_version: "frontend_authority_v1",
         },
       };
 
       // === ONLINE PATH: Single RPC Call ===
       try {
+        // 🏗️ DEBUG: Log specs untuk setiap item (NOW AT ITEM LEVEL)
+        console.log(
+          "🏗️ CHECKOUT PAYLOAD SPECS:",
+          rawItems.map((item) => ({
+            product: item.product_name,
+            specs_type: item.specs.type,
+            specs_summary: item.specs.summary,
+            specs_inputs: item.specs.inputs,
+            has_metadata_specs: !!item.metadata?.specs, // Should be undefined now
+          })),
+        );
+
+        // 🔍 DEBUG: Log payload sebelum kirim ke RPC
+        console.log(
+          "🔍 PAYLOAD SENT TO RPC:",
+          JSON.stringify(rawIntent, null, 2),
+        );
+
+        // 🔥 GUARD: Validate Payment Payload
+        if (!rawIntent.payment || rawIntent.payment.amount === undefined) {
+          throw new Error("INVALID_PAYMENT_PAYLOAD: Payment object missing");
+        }
+
         const { data: rpcResult, error: rpcError } = await supabase.rpc(
-          "create_pos_order_atomic",
-          { p_raw_intent: rawIntent },
+          "create_pos_order_notary",
+          { p_payload: rawIntent },
         );
 
         if (rpcError) throw rpcError;
@@ -518,7 +808,7 @@ export const useOrderStore = create((set, get) => ({
           orderNumber: `LOCAL-${Date.now()}`,
           customer: rawIntent.customer,
           items: rawItems,
-          payment_attempt: rawIntent.payment_attempt,
+          payment: rawIntent.payment,
           meta: {
             ...rawIntent.meta,
             source_version: "offline_fallback",
@@ -545,7 +835,7 @@ export const useOrderStore = create((set, get) => ({
           customerPhone: offlineIntent.customer.phone,
           items: items,
           totalAmount: 0,
-          paidAmount: offlineIntent.payment_attempt.amount,
+          paidAmount: offlineIntent.payment.amount,
           remainingAmount: 0,
           paymentStatus: "PENDING_LOCAL",
           productionStatus: "PENDING",
@@ -559,7 +849,73 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // 4. UPDATE ORDER
+  // 4. REALTIME SUBSCRIPTION (LIVE UPDATE) 📡
+  subscribeToOrders: async () => {
+    const { supabase } = await import("../services/supabaseClient");
+    if (!supabase) return;
+
+    // Prevent duplicate subscription
+    if (get().realtimeSubscription) return;
+
+    console.log("📡 Subscribing to Realtime Orders...");
+
+    const subscription = supabase
+      .channel("public:orders")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders" },
+        (payload) => {
+          console.log("🔔 New Order Received:", payload.new);
+          const newOrder = internalNormalizeOrder(payload.new);
+
+          set((state) => ({
+            orders: [newOrder, ...state.orders],
+            // Update filtered if it matches current filter (simplified: just add it)
+            filteredOrders: [newOrder, ...state.filteredOrders],
+            totalOrders: state.totalOrders + 1,
+          }));
+
+          // Refresh Summary to update badges
+          get().loadSummary();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        (payload) => {
+          console.log("🔔 Order Updated:", payload.new);
+          // Partial update to avoid full re-normalization overhead if possible,
+          // but safer to normalize to ensure consistency
+          const updatedOrder = internalNormalizeOrder(payload.new);
+
+          set((state) => ({
+            orders: state.orders.map((o) =>
+              o.id === updatedOrder.id ? updatedOrder : o,
+            ),
+            filteredOrders: state.filteredOrders.map((o) =>
+              o.id === updatedOrder.id ? updatedOrder : o,
+            ),
+          }));
+
+          // Refresh Summary to update badges/totals
+          get().loadSummary();
+        },
+      )
+      .subscribe();
+
+    set({ realtimeSubscription: subscription });
+  },
+
+  unsubscribeFromOrders: () => {
+    const sub = get().realtimeSubscription;
+    if (sub) {
+      console.log("🔕 Unsubscribing from Realtime Orders...");
+      sub.unsubscribe();
+      set({ realtimeSubscription: null });
+    }
+  },
+
+  // 5. UPDATE ORDER
   updateOrder: async (id, updates) => {
     set({ loading: true, error: null });
     try {
@@ -697,14 +1053,29 @@ export const useOrderStore = create((set, get) => ({
     logOrderStatusChanged(orderId, oldStatus, status, assignedTo || "Operator");
   },
 
-  cancelOrder: async (orderId, reason, financialAction = "NONE") => {
+  cancelOrder: async (
+    orderId,
+    reason,
+    financialAction = "NONE",
+    actorName = "Operator",
+  ) => {
+    // 1. Fetch existing meta first to preserve data
+    const oldOrder = get().orders.find((o) => o.id === orderId);
+    const oldMeta = oldOrder?.meta || {};
+
     await get().updateOrder(orderId, {
       productionStatus: "CANCELLED",
       cancelReason: reason,
       cancelledAt: new Date().toISOString(),
       // ✅ FIX: Force snake_case key to match Supabase column exact name
-      // Bypass auto-mapper by using direct column name
       financial_action: financialAction,
+      // 🔥 SECURITY FIX: RECORD ACTOR
+      meta: {
+        ...oldMeta,
+        cancelled_by: actorName,
+        cancel_reason_log: reason,
+        cancelled_at_log: new Date().toISOString(),
+      },
     });
 
     logEvent(
@@ -712,8 +1083,12 @@ export const useOrderStore = create((set, get) => ({
       "ORDER_BOARD",
       orderId,
       "orders",
-      { reason: reason, financial_action: financialAction },
-      "Operator",
+      {
+        reason: reason,
+        financial_action: financialAction,
+        cancelled_by: actorName,
+      },
+      actorName,
     );
   },
 
@@ -803,7 +1178,7 @@ export const useOrderStore = create((set, get) => ({
             idempotency_key: localOrder.idempotency_key,
             customer: localOrder.customer,
             items: localOrder.items,
-            payment_attempt: localOrder.payment_attempt,
+            payment: localOrder.payment || localOrder.payment_attempt,
             meta: {
               ...localOrder.meta,
               source_version: "sync_recovery",
@@ -820,9 +1195,10 @@ export const useOrderStore = create((set, get) => ({
           }
 
           // F. Call RPC
+          // F. Call RPC for Sync
           const { data: rpcResult, error: rpcError } = await supabase.rpc(
-            "create_pos_order_atomic",
-            { p_raw_intent: rawIntent },
+            "create_pos_order_notary",
+            { p_payload: rawIntent },
           );
 
           if (rpcError) throw rpcError;

@@ -13,6 +13,7 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useAuthStore } from "../../stores/useAuthStore";
 import { ORDER_STATUS } from "../../core/constants";
 import { formatRupiah } from "../../core/formatters";
 import { formatDateTime } from "../../utils/dateHelpers";
@@ -24,6 +25,7 @@ import { AuditLogModal } from "../../components/AuditLogModal";
 
 export function OrderCard({ order }) {
   const { updateProductionStatus, addPayment, cancelOrder } = useOrderStore();
+  const { user } = useAuthStore();
   const permissions = usePermissions();
   const canUpdateOrderStatus = permissions.canUpdateOrderStatus();
   const [updating, setUpdating] = useState(false);
@@ -217,7 +219,12 @@ export function OrderCard({ order }) {
     setFinalConfirmModal({ show: false, reason: "", financialAction: "NONE" });
     setUpdating(true);
     try {
-      await cancelOrder(order.id, reason.trim(), financialAction);
+      await cancelOrder(
+        order.id,
+        reason.trim(),
+        financialAction,
+        user?.name || "Operator",
+      );
     } catch (error) {
       alert("❌ Gagal batal.");
     } finally {

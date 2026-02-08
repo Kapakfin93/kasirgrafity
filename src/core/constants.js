@@ -60,7 +60,7 @@ export const ROLES = {
   CASHIER: {
     id: "CASHIER",
     name: "Kasir",
-    permissions: ["transaction", "view_orders"],
+    permissions: ["transaction", "view_orders", "update_status"],
   },
   PRODUCTION: {
     id: "PRODUCTION",

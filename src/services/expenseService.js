@@ -27,7 +27,8 @@ export const syncExpenseToSupabase = async (expenseData) => {
           amount: expenseData.amount,
           category: expenseData.category,
           description: expenseData.description || null,
-          employee_name: expenseData.employeeName || null,
+          employee_id: expenseData.employeeId || null, // NEW: UUID binding
+          employee_name: expenseData.employeeName || null, // Denormalized display
           created_by: expenseData.createdBy,
           created_at: expenseData.createdAt || new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -94,7 +95,8 @@ export const mapCloudToDexie = (cloudExpenses) => {
     amount: Number(exp.amount),
     category: exp.category,
     description: exp.description,
-    employeeName: exp.employee_name,
+    employeeId: exp.employee_id, // NEW: UUID binding
+    employeeName: exp.employee_name, // Denormalized display
     createdBy: exp.created_by,
     createdAt: exp.created_at,
   }));

@@ -39,6 +39,21 @@ export const NotaPreview = React.forwardRef(
     // --- 1. SMART DATA EXTRACTION (Logic Omnivore) ---
     const items = order?.items || [];
 
+    // 💰 NOTA TOTALS DEBUG
+    console.log("💰 NOTA TOTALS DEBUG:", {
+      order_totalAmount: order?.totalAmount,
+      order_total_amount: order?.total_amount,
+      order_paidAmount: order?.paidAmount,
+      order_paid_amount: order?.paid_amount,
+      order_remainingAmount: order?.remainingAmount,
+      order_remaining_amount: order?.remaining_amount,
+      order_serviceFee: order?.serviceFee,
+      order_meta_service_fee: order?.meta?.service_fee,
+      order_discountAmount: order?.discountAmount,
+      order_discount_amount: order?.discount_amount,
+      items_length: order?.items?.length,
+    });
+
     // Header Fallback
     const custName =
       order?.customerName || order?.customerSnapshot?.name || "Pelanggan Umum";
@@ -51,28 +66,50 @@ export const NotaPreview = React.forwardRef(
 
     const orderNumber = order?.orderNumber || "DRAFT";
 
-    // Financial Fallback
-    // Ambil finalAmount jika ada, kalau 0/null ambil totalAmount
-    const rawTotal =
-      Number(order?.finalAmount) || Number(order?.totalAmount) || 0;
-    const safeTotal = rawTotal;
+    // TOTALS (Read from order, jangan hitung ulang!)
+    const itemsTotal = items.reduce((sum, item) => {
+      return sum + (Number(item.subtotal) || Number(item.totalPrice) || 0);
+    }, 0);
 
-    const paid = Number(order?.paidAmount || paymentState?.amountPaid || 0);
-    const sisaBayar = safeTotal - paid;
-    // ✅ FIX: Strict Database Read. Jangan hitung manual!
-    // Hanya tampilkan LUNAS jika DB bilang 'PAID'.
+    const serviceFee = Number(
+      order?.meta?.service_fee || order?.serviceFee || 0,
+    );
+    const discount = Number(
+      order?.discountAmount || order?.discount_amount || 0,
+    );
+
+    // Grand total = dari database (authority)
+    const grandTotal = Number(
+      order?.totalAmount ||
+        order?.total_amount ||
+        itemsTotal + serviceFee - discount,
+    );
+
+    const paidAmount = Number(order?.paidAmount || order?.paid_amount || 0);
+    const remainingAmount = Number(
+      order?.remainingAmount ||
+        order?.remaining_amount ||
+        grandTotal - paidAmount,
+    );
+
+    // const safeTotal = rawTotal; // DEPRECATED
+    const safeTotal = grandTotal;
+
+    // RESTORED MISSING DEFINITIONS
     const statusText =
       order?.paymentStatus === "PAID" ? "LUNAS" : "BELUM LUNAS";
     const mode = order?.paymentMethod || paymentState?.mode || "TUNAI";
 
-    // Service Fee Logic
-    const prodService =
-      order?.meta?.production_service || order?.production_service || {};
-    const serviceFee = Number(prodService.fee || 0);
-    const serviceLabel = prodService.label || "Layanan Produksi";
+    // Legacy mapping for existing code compatibility
+    const serviceLabel =
+      order?.meta?.production_priority === "EXPRESS"
+        ? "Biaya Express"
+        : order?.meta?.production_priority === "URGENT"
+          ? "Biaya Urgent"
+          : "Biaya Layanan";
 
     // --- SPK LOGIC EXTRACTION ---
-    const priorityLevel = prodService.priority || "STANDARD"; // EXPRESS / STANDARD
+    const priorityLevel = order?.meta?.production_priority || "STANDARD"; // EXPRESS / STANDARD
     const orderDate = order?.createdAt ? new Date(order.createdAt) : new Date();
 
     // Format Waktu: "Sabtu, 25/01/2026 - 14:30 WIB"
@@ -86,15 +123,6 @@ export const NotaPreview = React.forwardRef(
         minute: "2-digit",
         hour12: false,
       }) + " WIB";
-
-    // Subtotal Produk Only
-    const subtotalProducts = items.reduce(
-      (sum, item) => sum + (Number(item.subtotal || item.totalPrice) || 0),
-      0,
-    );
-
-    // Discount
-    const discount = Number(order?.discountAmount || 0);
 
     // --- 2. REF MERGING LOGIC (PENTING UNTUK PRINT) ---
     const internalRef = useRef(null);
@@ -115,7 +143,8 @@ export const NotaPreview = React.forwardRef(
     const [printMode, setPrintMode] = useState(type); // Use type prop as initial
 
     // REF Element for overlay (outside click)
-    const overlayRef = useRef(null);
+    // Unused sisaBayar removed
+    // Unused overlayRef removed
 
     // === EVENT LISTENERS (Modal & Keys) ===
     useEffect(() => {
@@ -450,8 +479,8 @@ export const NotaPreview = React.forwardRef(
                         textTransform: "uppercase",
                       }}
                     >
-                      {prodService.estimate_date
-                        ? new Date(prodService.estimate_date).toLocaleString(
+                      {order?.meta?.estimate_date
+                        ? new Date(order.meta.estimate_date).toLocaleString(
                             "id-ID",
                             {
                               weekday: "long",
@@ -527,102 +556,130 @@ export const NotaPreview = React.forwardRef(
             {/* Items Loop */}
             <div className="nota-items">
               {items.map((item, idx) => {
-                // 1. Logic Harga Satuan (Pertahankan yang sudah fix)
-                const safeUnitPrice = Number(
-                  item.unitPrice ||
-                    item.price ||
-                    item.totalPrice / item.qty ||
-                    0,
+                // 🕵️ FORENSIC LOG START
+                console.group(
+                  `🔍 AUDIT ITEM: ${item.product_name || "Unknown Product"}`,
                 );
+                console.log("1. RAW ITEM KEYS:", Object.keys(item)); // Apa saja yg dibawa?
+                console.log("2. RAW DIMENSIONS:", item.dimensions); // Apakah Null?
+                console.log("3. RAW SPECS:", item.specs); // Apakah ada di sini?
+                console.log("4. RAW META:", item.meta); // Atau di sini?
+                console.log("5. RAW SUBTOTAL:", item.subtotal); // 0 atau undefined?
+                console.log("6. RAW PRICE & QTY:", item.price, item.quantity);
+                // Cek Logika Ekstraksi (Simulasi)
+                const checkVariant =
+                  item.dimensions?.variant_info ||
+                  item.specs?.variant_info ||
+                  "❌ NOT FOUND";
+                console.log("7. EXTRACTION CHECK (Variant):", checkVariant);
+                console.groupEnd();
+                // 🕵️ FORENSIC LOG END
+                // 1. Logic Harga Satuan & Qty (STRICT: DB READ ONLY)
+                const displayPrice = Number(
+                  item.unit_price || item.unitPrice || item.price || 0,
+                );
+                // --- SURGICAL FIX START ---
+                // Map incoming 'qty' to 'quantity'
+                const quantity = item.quantity || item.qty || 0;
+                const displayQty = Number(quantity);
 
-                // 2. Ekstraksi Meta & Specs (SUMBER DATA BARU)
-                const meta = item.meta || item.metadata || {};
-                const specs = meta.specs_json || {};
+                // Map incoming 'totalPrice' to 'subtotal'
+                const subtotal =
+                  item.subtotal ||
+                  item.totalPrice ||
+                  item.price * quantity ||
+                  0;
+                const displaySubtotal = Number(subtotal);
+                // --- SURGICAL FIX END ---
 
-                // 3. Logic "Varian Label" (Bahan/Tipe) - Cek Root lalu Cek Specs
-                let primarySpec = item.variantLabel || specs.variantLabel || "";
+                // 2. Ekstraksi Meta & Specs (USER REQUEST: SINGLE SOURCE OF TRUTH)
+                // Ambil satu saja yang paling lengkap. ABAIKAN sumber lain.
+                const finalSpecs = item.dimensions || item.specs || {};
 
-                // Fallback khusus Poster/Sticker (SizeKey)
-                if (!primarySpec && specs.sizeKey) {
-                  primarySpec = specs.sizeKey;
+                // Use finalSpecs as the authority
+                const specs = finalSpecs;
+
+                // 🔍 DEBUG: Log extracted specs
+                console.log("📋 NOTA ITEM DEEP SEARCH:", {
+                  productName: item.productName,
+                  source_dimensions: item.dimensions,
+                  extracted_variant_info: specs.variant_info,
+                  extracted_finishings: specs.finishing_list?.length,
+                  quantity,
+                  subtotal,
+                });
+
+                // 3. Logic "Display Priority" (Mutually Exclusive)
+                // USER REQUEST: PRIORITAS 1 > 2 > 3
+                let finalDescription = "";
+
+                // Prioritas 1: variant_info (from dimensions/specs)
+                if (specs.variant_info) {
+                  finalDescription = specs.variant_info;
+                }
+                // Prioritas 2: summary (from dimensions/specs)
+                else if (specs.summary) {
+                  finalDescription = specs.summary;
+                }
+                // Prioritas 3: Manual Inputs (Length x Width)
+                else {
+                  const inputs = specs.inputs || {};
+                  const origSpecs = specs.original_specs || {};
+
+                  let w = 0,
+                    h = 0;
+                  if (inputs.length && inputs.width) {
+                    w = inputs.length;
+                    h = inputs.width;
+                  } else if (origSpecs.length && origSpecs.width) {
+                    w = parseFloat(origSpecs.length);
+                    h = parseFloat(origSpecs.width);
+                  } else if (specs.length && specs.width) {
+                    w = specs.length;
+                    h = specs.width;
+                  }
+
+                  if (w > 0 && h > 0) {
+                    finalDescription = `${w}m x ${h}m`;
+                  } else if (specs.variantLabel) {
+                    finalDescription = specs.variantLabel;
+                  } else if (
+                    item.description &&
+                    item.description !== item.productName
+                  ) {
+                    finalDescription = item.description;
+                  }
                 }
 
-                // Fallback ke description jika bukan nama produk
-                if (
-                  !primarySpec &&
-                  item.description &&
-                  item.description !== item.productName
-                ) {
-                  primarySpec = item.description;
-                }
+                // 4. Finishing (Allowed Separate)
+                const finishingList = specs.finishing_list || [];
 
-                // 4. Logic "Varian Desc" (Isi/Spek Detail) - TARGET UTAMA
-                // Prioritaskan yang ada di specs_json (hasil fix input tadi)
-                let secondarySpec = specs.variantDesc || item.variantDesc || "";
-
-                // Fallback khusus Poster (Material)
-                if (!secondarySpec && specs.material) {
-                  secondarySpec = specs.material;
-                }
-
-                // 5. Finishing & Dimensi
-                const finishingList =
-                  item.finishings || meta.finishing_list || [];
-                const dimensions = meta.custom_dimensions || null;
-                const detailOpts = meta.detail_options || {};
-                // Fix Notes extraction: prioritize item note, then meta
-                const notes =
-                  item.notes || meta.notes || detailOpts.notes || "";
-
-                // EKTRAKSI KHUSUS BOOKLET
+                // 5. Notes & Booklet Info
+                const notes = specs.note || specs.notes || item.notes || "";
                 const sheets = specs.sheetsPerBook || 0;
                 const printMode = specs.printModeLabel || "";
+
+                const detailOpts = specs.detail_options || {};
+                const showPrices = type !== "SPK";
 
                 return (
                   <div key={item.id || idx} className="nota-item">
                     {/* Baris 1: Qty & Nama Produk */}
                     <div className="nota-item-title">
-                      {item.qty}x {item.productName}
+                      {displayQty}x {item.productName}
                     </div>
 
-                    {/* Baris 2: Primary Spec (Bahan/Varian) */}
-                    {primarySpec && (
+                    {/* Baris 2: Final Description (SINGLE SOURCE) */}
+                    {finalDescription && (
                       <div
                         style={{
                           fontSize: "10px",
-                          fontWeight: "600",
+                          fontWeight: "500", // Agak tebal tapi tidak bold
                           color: "#333",
                           paddingLeft: "10px",
                         }}
                       >
-                        📦 {primarySpec}
-                      </div>
-                    )}
-
-                    {/* Baris 3: Secondary Spec (Detail/Isi) - TARGET FIX */}
-                    {secondarySpec && (
-                      <div
-                        style={{
-                          fontSize: "10px",
-                          fontStyle: "italic",
-                          color: "#555",
-                          paddingLeft: "10px",
-                        }}
-                      >
-                        ℹ️ {secondarySpec}
-                      </div>
-                    )}
-
-                    {/* Baris 4: Ukuran Custom */}
-                    {dimensions && (
-                      <div
-                        style={{
-                          fontSize: "10px",
-                          color: "#444",
-                          paddingLeft: "10px",
-                        }}
-                      >
-                        📐 {dimensions.w}m x {dimensions.h}m
+                        {finalDescription}
                       </div>
                     )}
 
@@ -656,7 +713,6 @@ export const NotaPreview = React.forwardRef(
                       )}
 
                     {/* Baris 6: Catatan Item */}
-                    {/* BARIS NOTES: HANYA TAMPIL DI SPK, DI NOTA CUSTOMER DISEMBUNYIKAN */}
                     {printMode === "SPK" && notes && (
                       <div
                         style={{
@@ -694,11 +750,11 @@ export const NotaPreview = React.forwardRef(
                       </div>
                     )}
 
-                    {/* Baris Harga */}
+                    {/* Baris Harga (STRICT: DB READ ONLY) */}
                     {showPrices && (
                       <div className="nota-item-price">
-                        <span>@ {formatRupiah(safeUnitPrice)}</span>
-                        <span>{formatRupiah(item.totalPrice)}</span>
+                        <span>@ {formatRupiah(displayPrice)}</span>
+                        <span>{formatRupiah(displaySubtotal)}</span>
                       </div>
                     )}
                   </div>
@@ -707,76 +763,50 @@ export const NotaPreview = React.forwardRef(
             </div>
 
             {/* Service Fee Render */}
-            {serviceFee > 0 && (
-              <div
-                className="nota-items"
-                style={{
-                  marginTop: "8px",
-                  paddingTop: "8px",
-                  borderTop: "1px dashed #ccc",
-                }}
-              >
-                <div className="nota-item">
-                  <div className="nota-item-title" style={{ color: "#000" }}>
-                    {serviceLabel}
-                  </div>
-                  {showPrices && (
-                    <div className="nota-item-price">
-                      <span>1 x {formatRupiah(serviceFee)}</span>
-                      <span>{formatRupiah(serviceFee)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            <div className="receipt-divider"></div>
-
-            {/* Footer Summary */}
+            {/* Footer Summary (FIXED DISPLAY ORDER) */}
             {showPrices ? (
-              <div className="nota-summary">
+              <div className="nota-summary" style={{ marginTop: "10px" }}>
+                {/* Subtotal produk */}
                 <div className="nota-row">
                   <span>Subtotal Produk</span>
-                  <span>{formatRupiah(subtotalProducts)}</span>
+                  <span>{formatRupiah(itemsTotal)}</span>
                 </div>
 
+                {/* Service fee (jika ada) */}
                 {serviceFee > 0 && (
                   <div className="nota-row">
-                    <span>Layanan Produksi</span>
+                    <span>{serviceLabel}</span>
                     <span>{formatRupiah(serviceFee)}</span>
                   </div>
                 )}
 
+                {/* Diskon (jika ada) */}
                 {discount > 0 && (
-                  <div className="nota-row" style={{ color: "#f43f5e" }}>
+                  <div className="nota-row" style={{ color: "red" }}>
                     <span>DISKON / POTONGAN</span>
                     <span>- {formatRupiah(discount)}</span>
                   </div>
                 )}
 
-                <div
-                  className="receipt-divider"
-                  style={{ margin: "5px 0" }}
-                ></div>
-
                 <div className="nota-total-row">
                   <span>TOTAL</span>
-                  <span>{formatRupiah(safeTotal)}</span>
+                  <span>{formatRupiah(grandTotal)}</span>
                 </div>
 
-                <div className="nota-row">
-                  <span>Bayar ({mode})</span>
-                  <span>{formatRupiah(paid)}</span>
+                <div className="nota-remaining">
+                  <span>Bayar ({mode || "TUNAI"})</span>
+                  <span>{formatRupiah(paidAmount)}</span>
                 </div>
-                {sisaBayar > 0 && (
-                  <div className="nota-remaining" style={{ color: "#c00" }}>
-                    <span>SISA BAYAR</span>
-                    <span>{formatRupiah(sisaBayar)}</span>
+
+                {remainingAmount > 0 ? (
+                  <div className="nota-remaining" style={{ color: "red" }}>
+                    <span>BELUM LUNAS</span>
+                    <span>Sisa: {formatRupiah(remainingAmount)}</span>
                   </div>
+                ) : (
+                  <div className="nota-status-stempel">LUNAS ✓</div>
                 )}
-
-                {/* Stempel Status */}
-                <div className="nota-status-stempel">{statusText}</div>
               </div>
             ) : (
               <div
@@ -826,6 +856,7 @@ export const NotaPreview = React.forwardRef(
               style={{ height: "40mm", display: "block", width: "100%" }}
             ></div>
           </div>
+
           {/* === END AREA PRINT === */}
 
           {/* TOMBOL AKSI */}

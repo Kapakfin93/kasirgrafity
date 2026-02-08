@@ -50,10 +50,25 @@ export const useEmployeeStore = create((set, get) => ({
 
   // ====================================
   // SYNC FROM CLOUD (Supabase -> Dexie)
+  //With Time-Based Caching
   // ====================================
-  syncFromCloud: async () => {
+  syncFromCloud: async (force = false) => {
     set({ syncStatus: "syncing" });
     try {
+      // 1. Check Cache (24h)
+      const lastSync = localStorage.getItem("lastEmployeeSync");
+      const now = new Date();
+
+      if (!force && lastSync) {
+        const lastSyncDate = new Date(lastSync);
+        const hoursDiff = (now - lastSyncDate) / (1000 * 60 * 60);
+        if (hoursDiff < 24) {
+          console.log("⏳ Employee Sync: Skipping (Last sync < 24h ago)");
+          set({ syncStatus: "idle" });
+          return;
+        }
+      }
+
       const cloudEmployees = await fetchEmployeesFromSupabase();
 
       if (cloudEmployees.length > 0) {
@@ -68,6 +83,8 @@ export const useEmployeeStore = create((set, get) => ({
         await get().loadEmployees();
       }
 
+      // 2. Update Timestamp
+      localStorage.setItem("lastEmployeeSync", now.toISOString());
       set({ syncStatus: "synced" });
     } catch (error) {
       console.error("❌ Sync from cloud failed:", error);

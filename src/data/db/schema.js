@@ -11,18 +11,25 @@ if (typeof window !== "undefined") {
   db = new Dexie("JogloPOSDatabase");
 
   // Define database schema
-  // VERSION 7: Fixed attendance compound index [employeeId+date]
-  db.version(7).stores({
+  // VERSION 8: Update Expenses (add employeeId) & Ensure Attendance Index
+  db.version(8).stores({
     // === TRANSACTION DATA ===
     orders:
       "id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName, status, idempotency_key",
-    employees: "id, name, role, status",
-    attendance: "id, [employeeId+date], employeeId, date, status",
+
+    // Updated: Added pin, createdAt, updatedAt
+    employees: "id, name, role, pin, status, createdAt, updatedAt",
+
+    // Critical: Compound index [employeeId+date] for unique daily check-in
+    attendance:
+      "id, [employeeId+date], employeeId, date, status, shift, isSynced",
+
     customers: "id, name, phone",
     settings: "key, value",
 
     // === FINANCIAL DATA ===
-    expenses: "id, date, category, createdAt",
+    // NEW: Added 'employeeId' for strict linking (CCTV Feature)
+    expenses: "id, date, category, createdAt, employeeId, isSynced",
 
     // === MASTER DATA ===
     categories: "id, name, logic_type, sort_order, is_active",

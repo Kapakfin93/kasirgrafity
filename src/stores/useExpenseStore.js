@@ -29,6 +29,7 @@ export const useExpenseStore = create((set, get) => ({
   loading: false,
   error: null,
   syncStatus: "idle", // idle | syncing | synced | error
+  realtimeSubscription: null,
 
   // ====================================
   // LOAD EXPENSES
@@ -58,43 +59,77 @@ export const useExpenseStore = create((set, get) => ({
         amount: Number(expenseData.amount),
         category: expenseData.category,
         description: expenseData.description || "",
+        employeeId: expenseData.employeeId || null,
         employeeName: expenseData.employeeName || null,
         createdBy: expenseData.createdBy || "System",
         createdAt: new Date().toISOString(),
+        isSynced: 0, // Default: Not synced
       };
 
-      // Validate amount
-      if (newExpense.amount <= 0) {
-        throw new Error("Jumlah harus lebih dari 0");
-      }
-
-      // Validate category
-      if (!Object.keys(EXPENSE_CATEGORIES).includes(newExpense.category)) {
+      if (newExpense.amount <= 0) throw new Error("Jumlah harus lebih dari 0");
+      if (!Object.keys(EXPENSE_CATEGORIES).includes(newExpense.category))
         throw new Error("Kategori tidak valid");
+      if (
+        (newExpense.category === "SALARY" || newExpense.category === "BON") &&
+        !newExpense.employeeId
+      ) {
+        throw new Error("Pilih karyawan untuk kategori Gaji/Kasbon");
       }
 
       // Step 1: Save to Dexie (Offline-First)
       await db.expenses.add(newExpense);
       console.log("💾 Expense saved to Dexie:", newExpense.category);
 
-      // Step 2: Update local state
       set((state) => ({
         expenses: [newExpense, ...state.expenses],
       }));
 
-      // Step 3: Background Sync to Supabase (non-blocking)
-      syncExpenseToSupabase(newExpense).catch((err) => {
-        console.error("⚠️ Expense sync failed:", err);
-      });
-
-      // TODO: Cash Drawer Deduction
-      // NOTE: No cashier shift system found in codebase
-      // When implemented, call: deductCashDrawer(newExpense.amount)
+      // Step 2: Background Sync
+      syncExpenseToSupabase(newExpense)
+        .then(() => {
+          // Update Sync Status on Success
+          db.expenses.update(newExpense.id, { isSynced: 1 });
+        })
+        .catch((err) => {
+          console.error("⚠️ Expense sync failed (saved locally):", err);
+          // Remains isSynced: 0, will be picked up by processSyncQueue
+        });
 
       return newExpense;
     } catch (error) {
       console.error("❌ Add expense failed:", error);
       throw error;
+    }
+  },
+
+  // ====================================
+  // PROCESS SYNC QUEUE (Auto-Retry)
+  // ====================================
+  processSyncQueue: async () => {
+    if (!navigator.onLine) return;
+
+    try {
+      const pending = await db.expenses.where("isSynced").equals(0).toArray();
+      if (pending.length === 0) return;
+
+      console.log(`🔄 Processing ${pending.length} pending type expenses...`);
+
+      let syncedCount = 0;
+      for (const record of pending) {
+        try {
+          await syncExpenseToSupabase(record);
+          await db.expenses.update(record.id, { isSynced: 1 });
+          syncedCount++;
+        } catch (err) {
+          console.error(`❌ Failed to sync expense ${record.id}:`, err);
+        }
+      }
+
+      if (syncedCount > 0) {
+        console.log(`✅ Successfully synced ${syncedCount} queued expenses.`);
+      }
+    } catch (error) {
+      console.error("❌ Process sync queue failed:", error);
     }
   },
 
@@ -123,13 +158,23 @@ export const useExpenseStore = create((set, get) => ({
     set({ syncStatus: "syncing" });
     try {
       const today = new Date();
+      // SAFETY FIX: Add 24h buffer to prevent "Ghost Data" if Admin PC is ahead of Owner PC
+      const limitDate = new Date(today);
+      limitDate.setDate(limitDate.getDate() + 1);
+
       const monthAgo = new Date(today);
       monthAgo.setMonth(monthAgo.getMonth() - 1);
 
-      const cloudExpenses = await fetchExpensesFromSupabase(monthAgo, today);
+      const cloudExpenses = await fetchExpensesFromSupabase(
+        monthAgo,
+        limitDate,
+      );
 
       if (cloudExpenses.length > 0) {
-        const dexieExpenses = mapCloudToDexie(cloudExpenses);
+        const dexieExpenses = mapCloudToDexie(cloudExpenses).map((e) => ({
+          ...e,
+          isSynced: 1, // Mark as synced since it came from cloud
+        }));
         await db.expenses.bulkPut(dexieExpenses);
         console.log(`✅ Synced ${dexieExpenses.length} expenses from cloud`);
         await get().loadExpenses();
@@ -139,6 +184,75 @@ export const useExpenseStore = create((set, get) => ({
     } catch (error) {
       console.error("❌ Sync from cloud failed:", error);
       set({ syncStatus: "error" });
+    }
+  },
+
+  // ====================================
+  // REALTIME SUBSCRIPTION (LIVE UPDATE) 📡
+  // ====================================
+  subscribeToExpenses: async () => {
+    const { supabase } = await import("../services/supabaseClient");
+    if (!supabase) return;
+
+    if (get().realtimeSubscription) return;
+
+    console.log("📡 Subscribing to Realtime Expenses...");
+
+    const subscription = supabase
+      .channel("public:expenses")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "expenses" },
+        (payload) => {
+          console.log("🔔 New Expense Received:", payload.new);
+          // Manual mapping to match Dexie/Store format (camelCase)
+          const newExpense = {
+            id: payload.new.id,
+            date: payload.new.date,
+            amount: Number(payload.new.amount),
+            category: payload.new.category,
+            description: payload.new.description,
+            employeeId: payload.new.employee_id,
+            employeeName: payload.new.employee_name,
+            createdBy: payload.new.created_by,
+            createdAt: payload.new.created_at,
+            isSynced: 1, // From server = synced
+          };
+
+          // Update Store
+          set((state) => ({
+            expenses: [newExpense, ...state.expenses],
+          }));
+
+          // Update Dexie (Mirror)
+          db.expenses.put(newExpense);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "expenses" },
+        (payload) => {
+          console.log("🔔 Expense Deleted:", payload.old);
+          const id = payload.old.id;
+
+          set((state) => ({
+            expenses: state.expenses.filter((e) => e.id !== id),
+          }));
+
+          db.expenses.delete(id);
+        },
+      )
+      .subscribe();
+
+    set({ realtimeSubscription: subscription });
+  },
+
+  unsubscribeFromExpenses: () => {
+    const sub = get().realtimeSubscription;
+    if (sub) {
+      console.log("🔕 Unsubscribing from Realtime Expenses...");
+      sub.unsubscribe();
+      set({ realtimeSubscription: null });
     }
   },
 

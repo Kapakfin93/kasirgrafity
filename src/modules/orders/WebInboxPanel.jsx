@@ -9,7 +9,7 @@ import { supabase } from "../../services/supabaseClient";
 import { usePermissions } from "../../hooks/usePermissions";
 
 export function WebInboxPanel() {
-  const { isOwner } = usePermissions();
+  const { isOwner, hasPermission } = usePermissions();
 
   // State
   const [orders, setOrders] = useState([]);
@@ -256,11 +256,11 @@ JOGLO PRINTING`;
   };
 
   // Permission check
-  if (!isOwner) {
+  if (!isOwner && !hasPermission("view_inbox")) {
     return (
       <div className="access-denied">
         <h2>❌ Akses Ditolak</h2>
-        <p>Hanya Owner yang bisa mengakses Web Inbox.</p>
+        <p>Anda tidak memiliki izin untuk mengakses Web Inbox.</p>
       </div>
     );
   }

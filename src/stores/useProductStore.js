@@ -7,6 +7,7 @@
  * 3. Handles Cross-Reference Materials
  * 4. AGGRESSIVE GHOSTBUSTER: Auto-deletes duplicate local products
  * 5. ✅ NEW: Fetches 'product_price_tiers' & Injects into advanced_features
+ * 6. 🛠️ FIX: Added Payload Sanitizer & Universal Router for Split-Brain Fix
  */
 
 import { create } from "zustand";
@@ -22,6 +23,7 @@ export const useProductStore = create((set, get) => ({
   loading: false,
   error: null,
   isInitialized: false,
+  realtimeChannel: null, // ✅ NEW: Realtime subscription reference
 
   /**
    * Initialize: Load master data from DB
@@ -31,6 +33,10 @@ export const useProductStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const categories = await get().fetchMasterData();
+
+      // ✅ NEW: Start realtime subscription after initial load
+      await get().subscribeToRealtimeUpdates();
+
       set({ isInitialized: true, loading: false });
       return categories;
     } catch (error) {
@@ -382,24 +388,127 @@ export const useProductStore = create((set, get) => ({
     await db.products.put(new Product({ ...d, categoryId: catId }).toJSON());
     await get().fetchMasterData();
   },
+
+  // =========================================================================
+  // 🚨 CRITICAL UPDATE: FIXED SPLIT-BRAIN + SANITIZER + UNIVERSAL ROUTER 🚨
+  // =========================================================================
   updateProduct: async (id, d) => {
+    // 1. Update Database Lokal (Dexie) - Agar UI responsif duluan
     await db.products.update(id, d);
 
-    // 💉 INJECTION: Surgical Sync for Matrix Prices
-    // Only triggers if 'variants' data is present in the payload (Efficiency Check)
+    // =========================================================
+    // 🕵️ FORENSIC TRAP START (ENHANCED WITH SANITIZER)
+    // =========================================================
+    const { supabase } = await import("../services/supabaseClient");
+    const productId = id;
+    const updates = d;
+
+    console.group("🚨 AUDIT EDIT PRODUK: " + productId);
+
+    // A. LOG DATA MENTAH (YANG BIKIN ERROR MERAH)
+    console.log("1. 🔴 PAYLOAD MENTAH (UI):", updates);
+
+    // B. JALANKAN PEMBERSIH (SANITIZER)
+    // Pastikan fungsi preparePayloadForDB ada di paling bawah file ini!
+    let cleanPayload = {};
+    try {
+      cleanPayload = preparePayloadForDB(updates);
+      console.log("2. 🟢 PAYLOAD BERSIH (DB):", cleanPayload);
+    } catch (err) {
+      console.warn(
+        "⚠️ Sanitizer belum dipasang di bawah, pakai raw data.",
+        err,
+      );
+      cleanPayload = updates; // Fallback jika fungsi lupa dipasang
+    }
+
+    // C. UPDATE TABEL PRODUCTS (KULIT)
+    const { data: logData, error: logError } = await supabase
+      .from("products")
+      .update(cleanPayload) // 👈 KITA KIRIM DATA BERSIH
+      .eq("id", productId)
+      .select();
+
+    // D. LAPORAN HASIL
+    if (logError) {
+      console.error("3. ❌ GAGAL UPDATE METADATA:", logError.message);
+      console.error(" DETAILS:", logError);
+    } else {
+      console.log("3. ✅ SUKSES UPDATE METADATA (Tabel Product Aman)");
+
+      // Verifikasi Data Balikan
+      if (logData && logData[0]) {
+        const serverPrice = logData[0].base_price || logData[0].price;
+        const sentPrice = cleanPayload.base_price || cleanPayload.price;
+
+        console.log(
+          `4. ⚖️ VERIFIKASI: Kirim ${sentPrice} vs Terima ${serverPrice} -> ${sentPrice == serverPrice ? "MATCH ✅" : "MISMATCH ❌"}`,
+        );
+      }
+    }
+    // 🕵️ FORENSIC TRAP END
+
+    // =========================================================
+    // 🚦 UNIVERSAL TRAFFIC ROUTER (The Logic Fix)
+    // Menangani update Harga Material (Linear) & Matrix
+    // =========================================================
     if (d.variants) {
       try {
-        // This sends ONLY the price matrix data, saving bandwidth.
-        await syncMatrixPricesToSupabase(id, d.variants);
-        console.log("✅ Matrix Prices synced to Supabase (Surgical)");
+        // 1. Get Context (Calc Engine)
+        const currentProduct = await db.products.get(id);
+        const engine =
+          currentProduct?.calc_engine || d.calc_engine || "UNKNOWN";
+
+        console.log(`🚦 ROUTER ENGINE: ${engine}`);
+
+        // PATH A: LINEAR / AREA / UNIT (Update ke product_materials)
+        if (
+          ["LINEAR_METER", "AREA_METER", "LINEAR", "AREA", "UNIT"].includes(
+            engine,
+          )
+        ) {
+          console.log("➡️ ROUTE: LINEAR/AREA -> Updating product_materials...");
+
+          for (const variant of d.variants) {
+            if (variant.id && variant.price !== undefined) {
+              const { error: matError } = await supabase
+                .from("product_materials")
+                .update({ price_per_unit: Number(variant.price) }) // Target Kolom Benar
+                .eq("id", variant.id);
+
+              if (matError) {
+                console.error(
+                  `❌ Material Update Failed (${variant.id}):`,
+                  matError.message,
+                );
+              } else {
+                console.log(
+                  `✅ Material Updated: ${variant.id} -> ${variant.price}`,
+                );
+              }
+            }
+          }
+        }
+        // PATH B: MATRIX (Update ke product_price_matrix)
+        else if (
+          ["MATRIX", "MATRIX_FIXED"].includes(engine) ||
+          currentProduct?.category_id === "CAT_POSTER"
+        ) {
+          console.log("➡️ ROUTE: MATRIX -> Syncing Matrix Prices...");
+          await syncMatrixPricesToSupabase(id, d.variants);
+          console.log("✅ Matrix Sync Service Called");
+        } else {
+          console.log("➡️ ROUTE: STANDARD/OTHER (No Sub-table update needed)");
+        }
       } catch (err) {
-        console.error("⚠️ Failed to sync matrix to cloud (Offline?):", err);
-        // We do NOT throw error here, so the local save remains valid (Offline First)
+        console.error("⚠️ Router Sync Logic Error:", err);
       }
     }
 
-    await get().fetchMasterData();
+    console.groupEnd(); // Tutup Group Log
+    await get().fetchMasterData(); // Refresh Data Lokal
   },
+
   deleteProduct: async (id) => {
     await db.products.update(id, { is_active: false });
     await get().fetchMasterData();
@@ -418,6 +527,85 @@ export const useProductStore = create((set, get) => ({
     await db.finishings.update(id, { is_active: false });
     await get().fetchMasterData();
   },
+  /**
+   * ⚡ REALTIME SUBSCRIPTION - With Debounce Guard
+   * Subscribe to 5 price tables, trigger full sync on any change
+   * Debounce: Wait 2 seconds of silence before syncing (Anti-Thundering Herd)
+   */
+  subscribeToRealtimeUpdates: async () => {
+    const { supabase } = await import("../services/supabaseClient");
+
+    // Prevent duplicate subscriptions
+    if (get().realtimeChannel) {
+      console.log("⚡ Realtime already subscribed");
+      return;
+    }
+
+    console.log("⚡ Starting Realtime Subscription...");
+
+    let debounceTimer = null;
+
+    // HANDLER DENGAN DEBOUNCE (PENGAMAN ANTI-THUNDERING HERD)
+    const handleRealtimeEvent = (payload) => {
+      console.log(`🔔 Change detected in ${payload.table}:`, payload.eventType);
+
+      // Reset timer jika ada event baru masuk beruntun
+      if (debounceTimer) clearTimeout(debounceTimer);
+
+      // Tunggu 2 detik hening, baru Sync
+      debounceTimer = setTimeout(() => {
+        console.log("🔄 Triggering Full Sync after debounce...");
+        get().syncCloudProducts();
+      }, 2000);
+    };
+
+    const channel = supabase
+      .channel("product-price-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        handleRealtimeEvent,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "product_materials" },
+        handleRealtimeEvent,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "product_price_matrix" },
+        handleRealtimeEvent,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "product_price_tiers" },
+        handleRealtimeEvent,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "finishing_options" },
+        handleRealtimeEvent,
+      )
+      .subscribe((status) => {
+        console.log("⚡ Realtime Status:", status);
+      });
+
+    set({ realtimeChannel: channel });
+  },
+
+  /**
+   * Unsubscribe from realtime (for cleanup)
+   */
+  unsubscribeFromRealtime: async () => {
+    const channel = get().realtimeChannel;
+    if (channel) {
+      const { supabase } = await import("../services/supabaseClient");
+      await supabase.removeChannel(channel);
+      set({ realtimeChannel: null });
+      console.log("⚡ Realtime unsubscribed");
+    }
+  },
+
   clearError: () => set({ error: null }),
 }));
 
@@ -426,3 +614,55 @@ if (typeof window !== "undefined") {
 }
 
 export default useProductStore;
+
+// =========================================================
+// 🛠️ UTILITY: PAYLOAD SANITIZER (SI PEMBERSIH & PENERJEMAH)
+// =========================================================
+const preparePayloadForDB = (frontendData) => {
+  const cleanData = {};
+
+  // 1. DAFTAR BLACKLIST (Barang Terlarang masuk Tabel Products)
+  // Ditambah 'price_tiers' & 'print_modes' sesuai temuan error
+  const forbiddenFields = [
+    "materials",
+    "variants",
+    "finishing_groups",
+    "matrix",
+    "sales",
+    "prices",
+    "sizes",
+    "price_matrix",
+    "price_tiers", // 👈 DIBLOKIR (Mencegah error price_tiers not found)
+    "print_modes", // 👈 DIBLOKIR (Jaga-jaga)
+    "advanced_features", // Opsional: Jika logicnya kompleks, kadang perlu diblokir atau dibiarkan (tergantung kebutuhan)
+  ];
+
+  Object.keys(frontendData).forEach((key) => {
+    // A. Buang field terlarang
+    if (forbiddenFields.includes(key)) return;
+
+    // B. Mapping Manual (Kamus Penerjemah CamelCase -> Snake_case)
+    if (key === "categoryId") cleanData["category_id"] = frontendData[key];
+    else if (key === "inputMode") cleanData["input_mode"] = frontendData[key];
+    else if (key === "isActive") cleanData["is_active"] = frontendData[key];
+    else if (key === "basePrice") cleanData["base_price"] = frontendData[key];
+    else if (key === "pricingModel")
+      cleanData["pricing_model"] = frontendData[key];
+    else if (key === "calcEngine") cleanData["calc_engine"] = frontendData[key];
+    // Mapping 'price' -> 'base_price' (Penyelamat Error Price)
+    else if (key === "price") {
+      cleanData["base_price"] = frontendData[key];
+    }
+
+    // C. Salin sisanya yang aman
+    else {
+      cleanData[key] = frontendData[key];
+    }
+  });
+
+  // 🚨 REVISI PENTING:
+  // HAPUS baris 'updated_at' karena tabel Anda TIDAK PUNYA kolom ini.
+  // cleanData["updated_at"] = new Date();  <-- INI PENYEBAB ERROR, SAYA MATIKAN.
+
+  return cleanData;
+};

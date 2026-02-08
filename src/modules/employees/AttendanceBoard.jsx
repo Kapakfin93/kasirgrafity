@@ -1,14 +1,12 @@
 /**
- * AttendanceBoard Component - WALL STREET TERMINAL AESTHETIC
- * High-efficiency dark professional UI for employee check-in/out
- *
- * Visual Metaphor: Employees = Traders | Check-in = Opening Position | Check-out = Closing Position
+ * AttendanceBoard Component - DARK WALL STREET STYLE
+ * Simple Indonesian UI with Dark Mode Trading Floor aesthetic
  */
 
 import React, { useEffect, useState } from "react";
 import { useAttendanceStore } from "../../stores/useAttendanceStore";
 import { useEmployeeStore } from "../../stores/useEmployeeStore";
-import { formatTime, getCurrentShift } from "../../utils/dateHelpers";
+import { formatTime } from "../../utils/dateHelpers";
 
 export function AttendanceBoard() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -16,9 +14,9 @@ export function AttendanceBoard() {
   const [actionType, setActionType] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const {
-    todayAttendances,
     loadTodayAttendances,
     checkIn,
     checkOut,
@@ -27,40 +25,40 @@ export function AttendanceBoard() {
     syncStatus,
   } = useAttendanceStore();
 
-  const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
+  const { getActiveEmployees } = useEmployeeStore(); // Removed loadEmployees
 
   useEffect(() => {
-    loadEmployees();
+    // loadEmployees(); // HANDLED BY MAIN LAYOUT (Global Pre-load)
     loadTodayAttendances();
-    syncFromCloud();
-  }, [loadEmployees, loadTodayAttendances, syncFromCloud]);
+    syncFromCloud(); // Smart Sync (Checks 24h cache)
+  }, [loadTodayAttendances, syncFromCloud]);
+
+  // Update clock every minute
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const activeEmployees = getActiveEmployees();
-  const currentShift = getCurrentShift();
-  const now = new Date();
 
-  // Calculate ticker stats
-  const totalStaff = activeEmployees.length;
-  const liveOnFloor = todayAttendances.filter(
-    (a) => a.checkInTime && !a.checkOutTime,
-  ).length;
-  const closedSessions = todayAttendances.filter((a) => a.checkOutTime).length;
-
-  const handleEmployeeClick = (employee) => {
+  const handleEmployeeClick = (employee, action) => {
     const attendance = getTodayAttendanceByEmployee(employee.id);
     setSelectedEmployee(employee);
     setError("");
 
-    if (attendance && !attendance.checkOutTime) {
-      setActionType("checkout");
-    } else if (!attendance) {
+    if (action === "checkin" && !attendance) {
       setActionType("checkin");
-    } else {
-      setError("Session already closed today");
-      return;
+      setShowConfirmModal(true);
+    } else if (
+      action === "checkout" &&
+      attendance &&
+      !attendance.checkOutTime
+    ) {
+      setActionType("checkout");
+      setShowConfirmModal(true);
     }
-
-    setShowConfirmModal(true);
   };
 
   const handleConfirm = async () => {
@@ -72,7 +70,7 @@ export function AttendanceBoard() {
         await checkIn(selectedEmployee.id, selectedEmployee.name);
       } else if (actionType === "checkout") {
         const attendance = getTodayAttendanceByEmployee(selectedEmployee.id);
-        const workHours = await checkOut(attendance.id);
+        await checkOut(attendance.id);
       }
 
       setShowConfirmModal(false);
@@ -97,7 +95,6 @@ export function AttendanceBoard() {
     return { status: "checked-in", attendance };
   };
 
-  // Helper: Generate initials from name
   const getInitials = (name) => {
     return name
       .split(" ")
@@ -107,62 +104,81 @@ export function AttendanceBoard() {
       .slice(0, 2);
   };
 
-  // Helper: Calculate work hours for display
-  const calculateCurrentHours = (checkInTime) => {
-    const start = new Date(checkInTime);
-    const diff = (now - start) / 1000 / 60 / 60;
-    return diff.toFixed(1);
+  const calculateTotalHours = (attendance) => {
+    if (!attendance.totalHours) return "0";
+    return Math.floor(attendance.totalHours);
   };
 
-  const calculateTotalHours = (attendance) => {
-    if (!attendance.totalHours) return "0.0";
-    return attendance.totalHours.toFixed(1);
+  const formatDate = (date) => {
+    const days = [
+      "Minggu",
+      "Senin",
+      "Selasa",
+      "Rabu",
+      "Kamis",
+      "Jumat",
+      "Sabtu",
+    ];
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "Mei",
+      "Jun",
+      "Jul",
+      "Agu",
+      "Sep",
+      "Okt",
+      "Nov",
+      "Des",
+    ];
+    const dayName = days[date.getDay()];
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    const time = formatTime(date);
+    return `${dayName}, ${day} ${month} ${year} - ${time}`;
   };
 
   return (
-    <div style={styles.terminal}>
-      {/* MARKET TICKER HEADER */}
-      <div style={styles.tickerBar}>
-        <div style={styles.tickerGroup}>
-          <div style={styles.tickerBox}>
-            <div style={styles.tickerLabel}>TOTAL STAFF</div>
-            <div style={styles.tickerValue}>{totalStaff}</div>
-          </div>
-          <div style={{ ...styles.tickerBox, ...styles.tickerLive }}>
-            <div style={styles.tickerLabel}>
-              <span style={styles.greenDot}>●</span> LIVE ON FLOOR
-            </div>
-            <div style={{ ...styles.tickerValue, color: "#10b981" }}>
-              {liveOnFloor}
-            </div>
-          </div>
-          <div style={{ ...styles.tickerBox, ...styles.tickerClosed }}>
-            <div style={styles.tickerLabel}>
-              <span style={styles.blueDot}>●</span> CLOSED SESSIONS
-            </div>
-            <div style={{ ...styles.tickerValue, color: "#3b82f6" }}>
-              {closedSessions}
-            </div>
-          </div>
-        </div>
-        <div style={styles.shiftInfo}>
-          <span style={styles.shiftText}>
-            SHIFT: <strong>{currentShift}</strong>
-          </span>
-          <span style={styles.timeText}>{formatTime(now)}</span>
-          {syncStatus === "syncing" && (
-            <span style={styles.syncBadge}>SYNCING...</span>
+    <div style={styles.container}>
+      {/* HEADER */}
+      <div style={styles.header}>
+        <h1 style={styles.title}>⏰ Absensi Harian</h1>
+        <div style={styles.datetime}>{formatDate(currentTime)}</div>
+
+        {/* MANUAL SYNC BUTTON */}
+        <button
+          onClick={() => syncFromCloud(true)}
+          disabled={syncStatus === "syncing"}
+          style={{
+            marginTop: "12px",
+            background: "transparent",
+            border: "1px solid #334155",
+            color: syncStatus === "syncing" ? "#fbbf24" : "#94a3b8",
+            padding: "6px 12px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "12px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            margin: "12px auto 0",
+          }}
+        >
+          {syncStatus === "syncing" ? (
+            <>⏳ Sinkronisasi Data...</>
+          ) : (
+            <>🔄 Sync Data Manual</>
           )}
-          {syncStatus === "synced" && (
-            <span style={styles.syncedBadge}>SYNCED</span>
-          )}
-        </div>
+        </button>
       </div>
 
-      {/* TRADER CARDS GRID */}
-      <div style={styles.tradersGrid}>
+      {/* EMPLOYEE CARDS GRID */}
+      <div style={styles.grid}>
         {activeEmployees.length === 0 && (
-          <div style={styles.emptyState}>No active traders on roster</div>
+          <div style={styles.emptyState}>Belum ada karyawan aktif</div>
         )}
 
         {activeEmployees.map((employee) => {
@@ -172,64 +188,80 @@ export function AttendanceBoard() {
             <div
               key={employee.id}
               style={{
-                ...styles.traderCard,
-                ...(status === "not-checked-in" && styles.cardOffDuty),
-                ...(status === "checked-in" && styles.cardLive),
-                ...(status === "checked-out" && styles.cardClosed),
+                ...styles.card,
+                ...(status === "not-checked-in" && styles.cardNotIn),
+                ...(status === "checked-in" && styles.cardActive),
+                ...(status === "checked-out" && styles.cardDone),
               }}
-              onClick={() => handleEmployeeClick(employee)}
             >
               {/* Avatar */}
-              <div style={styles.avatarSection}>
-                <div
-                  style={{
-                    ...styles.avatar,
-                    ...(status === "not-checked-in" && styles.avatarOff),
-                    ...(status === "checked-in" && styles.avatarLive),
-                    ...(status === "checked-out" && styles.avatarClosed),
-                  }}
-                >
-                  {getInitials(employee.name)}
-                </div>
+              <div
+                style={{
+                  ...styles.avatar,
+                  ...(status === "not-checked-in" && styles.avatarNotIn),
+                  ...(status === "checked-in" && styles.avatarActive),
+                  ...(status === "checked-out" && styles.avatarDone),
+                }}
+              >
+                {getInitials(employee.name)}
               </div>
 
-              {/* Info Section */}
-              <div style={styles.infoSection}>
-                <div style={styles.traderName}>{employee.name}</div>
-                <div style={styles.traderRole}>{employee.role}</div>
+              {/* Info */}
+              <div style={styles.info}>
+                <div style={styles.name}>{employee.name}</div>
+                <div style={styles.role}>{employee.role}</div>
 
-                {/* STATE A: NOT CHECKED IN */}
+                {/* STATE 1: Belum Masuk */}
                 {status === "not-checked-in" && (
-                  <div style={styles.statusBadgeOff}>OFF DUTY</div>
+                  <button
+                    style={styles.btnMasuk}
+                    onClick={() => handleEmployeeClick(employee, "checkin")}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.boxShadow =
+                        "0 0 20px rgba(16, 185, 129, 0.5)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 12px rgba(16, 185, 129, 0.3)";
+                    }}
+                  >
+                    ✅ MASUK KERJA
+                  </button>
                 )}
 
-                {/* STATE B: ACTIVE/WORKING */}
+                {/* STATE 2: Sedang Kerja */}
                 {status === "checked-in" && attendance && (
                   <>
-                    <div style={styles.statusBadgeLive}>● LIVE</div>
-                    <div style={styles.startTime}>
-                      START: {formatTime(new Date(attendance.checkInTime))}
+                    <div style={styles.timeInfo}>
+                      Masuk: {formatTime(new Date(attendance.checkInTime))}
                     </div>
-                    <div style={styles.hoursCounter}>
-                      {calculateCurrentHours(attendance.checkInTime)} HRS
-                    </div>
+                    <button
+                      style={styles.btnPulang}
+                      onClick={() => handleEmployeeClick(employee, "checkout")}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "translateY(-2px)";
+                        e.currentTarget.style.boxShadow =
+                          "0 0 20px rgba(239, 68, 68, 0.5)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow =
+                          "0 4px 12px rgba(239, 68, 68, 0.3)";
+                      }}
+                    >
+                      🏠 PULANG
+                    </button>
                   </>
                 )}
 
-                {/* STATE C: CHECKED OUT */}
+                {/* STATE 3: Sudah Pulang */}
                 {status === "checked-out" && attendance && (
                   <>
-                    <div style={styles.statusBadgeClosed}>SESSION CLOSED</div>
-                    <div style={styles.sessionSummary}>
-                      <div style={styles.sessionRow}>
-                        IN: {formatTime(new Date(attendance.checkInTime))}
-                      </div>
-                      <div style={styles.sessionRow}>
-                        OUT: {formatTime(new Date(attendance.checkOutTime))}
-                      </div>
-                      <div style={styles.totalHours}>
-                        {calculateTotalHours(attendance)} HRS
-                      </div>
+                    <div style={styles.badgeSelesai}>SELESAI</div>
+                    <div style={styles.timeInfo}>
+                      Total: {calculateTotalHours(attendance)} Jam
                     </div>
                   </>
                 )}
@@ -239,60 +271,49 @@ export function AttendanceBoard() {
         })}
       </div>
 
-      {/* ORDER EXEC TERMINAL MODAL */}
+      {/* CONFIRMATION MODAL */}
       {showConfirmModal && selectedEmployee && (
         <div style={styles.modalOverlay} onClick={handleCancel}>
-          <div
-            style={styles.modalTerminal}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={styles.modalHeader}>
-              <div style={styles.modalTitle}>
-                {actionType === "checkin"
-                  ? "⚡ EXECUTE CHECK-IN"
-                  : "🛑 FINISH SHIFT & REPORT"}
-              </div>
-              <button style={styles.closeBtn} onClick={handleCancel}>
-                ✕
-              </button>
-            </div>
-
-            <div style={styles.modalBody}>
-              <div style={styles.confirmText}>
-                <div style={styles.employeeName}>{selectedEmployee.name}</div>
-                <div style={styles.actionText}>
-                  {actionType === "checkin"
-                    ? "Open position and start shift?"
-                    : "Close position and finish shift?"}
-                </div>
-                <div style={styles.timestamp}>{formatTime(now)}</div>
-              </div>
-              {error && <div style={styles.errorBox}>{error}</div>}
-            </div>
-
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>Halo, {selectedEmployee.name}! 👋</h2>
+            <p style={styles.modalQuestion}>
+              Apakah Anda ingin{" "}
+              <strong>
+                {actionType === "checkin" ? "Masuk Kerja" : "Pulang"}
+              </strong>{" "}
+              sekarang?
+            </p>
+            {error && <div style={styles.errorBox}>{error}</div>}
             <div style={styles.modalActions}>
               <button
-                style={styles.btnSecondary}
+                style={styles.btnBatal}
                 onClick={handleCancel}
                 disabled={loading}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#475569";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "#334155";
+                }}
               >
-                CANCEL
+                Batal
               </button>
               <button
-                style={{
-                  ...styles.btnPrimary,
-                  ...(actionType === "checkin"
-                    ? styles.btnCheckin
-                    : styles.btnCheckout),
-                }}
+                style={styles.btnKonfirmasi}
                 onClick={handleConfirm}
                 disabled={loading}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow =
+                    "0 8px 20px rgba(59, 130, 246, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 12px rgba(59, 130, 246, 0.3)";
+                }}
               >
-                {loading
-                  ? "⏳ PROCESSING..."
-                  : actionType === "checkin"
-                    ? "EXECUTE CHECK-IN"
-                    : "FINISH SHIFT & REPORT"}
+                {loading ? "⏳ Memproses..." : "Ya, Konfirmasi"}
               </button>
             </div>
           </div>
@@ -303,132 +324,47 @@ export function AttendanceBoard() {
 }
 
 // ============================================================================
-// WALL STREET TERMINAL STYLES
+// DARK WALL STREET STYLES
 // ============================================================================
 
 const styles = {
-  terminal: {
-    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+  container: {
     minHeight: "100vh",
+    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
     padding: "24px",
-    fontFamily: "'Roboto Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace",
-    color: "#e2e8f0",
+    fontFamily: "'Inter', 'Segoe UI', sans-serif",
   },
 
-  // TICKER BAR
-  tickerBar: {
-    background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-    borderRadius: "12px",
-    padding: "20px 24px",
-    marginBottom: "24px",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: "16px",
+  // HEADER
+  header: {
+    marginBottom: "32px",
+    textAlign: "center",
   },
 
-  tickerGroup: {
-    display: "flex",
-    gap: "16px",
-    flexWrap: "wrap",
-  },
-
-  tickerBox: {
-    background: "rgba(15, 23, 42, 0.8)",
-    border: "1px solid rgba(255, 255, 255, 0.15)",
-    borderRadius: "8px",
-    padding: "12px 20px",
-    minWidth: "140px",
-  },
-
-  tickerLive: {
-    borderColor: "rgba(16, 185, 129, 0.5)",
-    boxShadow: "0 0 15px rgba(16, 185, 129, 0.2)",
-  },
-
-  tickerClosed: {
-    borderColor: "rgba(59, 130, 246, 0.5)",
-    boxShadow: "0 0 15px rgba(59, 130, 246, 0.2)",
-  },
-
-  tickerLabel: {
-    fontSize: "11px",
-    fontWeight: "600",
-    color: "#94a3b8",
-    letterSpacing: "0.5px",
-    marginBottom: "4px",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-
-  tickerValue: {
-    fontSize: "28px",
+  title: {
+    fontSize: "32px",
     fontWeight: "700",
     color: "#f1f5f9",
-    lineHeight: "1",
+    marginBottom: "8px",
+    textShadow: "0 2px 10px rgba(255, 255, 255, 0.1)",
   },
 
-  greenDot: {
-    color: "#10b981",
-    fontSize: "16px",
-    animation: "pulse 2s infinite",
-  },
-
-  blueDot: {
-    color: "#3b82f6",
-    fontSize: "16px",
-  },
-
-  shiftInfo: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: "4px",
-  },
-
-  shiftText: {
-    fontSize: "13px",
-    color: "#cbd5e1",
-    letterSpacing: "0.3px",
-  },
-
-  timeText: {
+  datetime: {
     fontSize: "18px",
-    fontWeight: "600",
-    color: "#f1f5f9",
-  },
-
-  syncBadge: {
-    fontSize: "10px",
-    padding: "4px 8px",
-    background: "rgba(251, 191, 36, 0.2)",
-    border: "1px solid rgba(251, 191, 36, 0.4)",
-    borderRadius: "4px",
-    color: "#fbbf24",
-    letterSpacing: "0.5px",
-    fontWeight: "600",
-  },
-
-  syncedBadge: {
-    fontSize: "10px",
-    padding: "4px 8px",
-    background: "rgba(16, 185, 129, 0.2)",
-    border: "1px solid rgba(16, 185, 129, 0.4)",
-    borderRadius: "4px",
     color: "#10b981",
-    letterSpacing: "0.5px",
     fontWeight: "600",
+    fontFamily: "'Roboto Mono', 'Courier New', monospace",
+    letterSpacing: "0.5px",
+    textShadow: "0 0 10px rgba(16, 185, 129, 0.3)",
   },
 
-  // TRADERS GRID
-  tradersGrid: {
+  // GRID
+  grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
     gap: "20px",
+    maxWidth: "1200px",
+    margin: "0 auto",
   },
 
   emptyState: {
@@ -437,175 +373,136 @@ const styles = {
     padding: "60px 20px",
     fontSize: "16px",
     color: "#64748b",
-    letterSpacing: "0.5px",
   },
 
-  // TRADER CARD BASE
-  traderCard: {
+  // CARD BASE
+  card: {
     background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
     borderRadius: "12px",
-    padding: "20px",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-    border: "2px solid rgba(255, 255, 255, 0.1)",
+    padding: "24px",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5)",
     display: "flex",
     gap: "16px",
-    "&:hover": {
-      transform: "translateY(-2px)",
-      boxShadow: "0 8px 25px rgba(0, 0, 0, 0.6)",
-    },
+    alignItems: "center",
+    transition: "all 0.3s ease",
+    border: "1px solid #334155",
   },
 
-  // CARD STATES
-  cardOffDuty: {
-    border: "2px solid rgba(100, 116, 139, 0.3)",
-    opacity: "0.7",
+  cardNotIn: {
+    borderColor: "#334155",
   },
 
-  cardLive: {
-    border: "2px solid #10b981",
+  cardActive: {
+    borderColor: "#10b981",
     boxShadow:
       "0 0 25px rgba(16, 185, 129, 0.3), 0 4px 20px rgba(0, 0, 0, 0.5)",
   },
 
-  cardClosed: {
-    border: "2px solid #3b82f6",
-    boxShadow:
-      "0 0 20px rgba(59, 130, 246, 0.25), 0 4px 20px rgba(0, 0, 0, 0.5)",
+  cardDone: {
+    borderColor: "#475569",
+    opacity: "0.6",
   },
 
   // AVATAR
-  avatarSection: {
-    flexShrink: 0,
-  },
-
   avatar: {
-    width: "64px",
-    height: "64px",
+    width: "60px",
+    height: "60px",
     borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: "20px",
     fontWeight: "700",
-    letterSpacing: "1px",
+    flexShrink: 0,
+    border: "2px solid",
   },
 
-  avatarOff: {
+  avatarNotIn: {
     background: "rgba(71, 85, 105, 0.3)",
     color: "#94a3b8",
-    border: "2px solid rgba(100, 116, 139, 0.4)",
+    borderColor: "#475569",
   },
 
-  avatarLive: {
+  avatarActive: {
     background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
     color: "#fff",
-    border: "2px solid #34d399",
+    borderColor: "#34d399",
     boxShadow: "0 0 20px rgba(16, 185, 129, 0.5)",
   },
 
-  avatarClosed: {
-    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-    color: "#fff",
-    border: "2px solid #60a5fa",
+  avatarDone: {
+    background: "rgba(71, 85, 105, 0.3)",
+    color: "#64748b",
+    borderColor: "#475569",
   },
 
-  // INFO SECTION
-  infoSection: {
+  // INFO
+  info: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "8px",
   },
 
-  traderName: {
+  name: {
     fontSize: "18px",
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#f1f5f9",
-    letterSpacing: "0.3px",
   },
 
-  traderRole: {
-    fontSize: "12px",
+  role: {
+    fontSize: "13px",
     color: "#94a3b8",
     textTransform: "uppercase",
     letterSpacing: "0.5px",
-    fontWeight: "600",
   },
 
-  statusBadgeOff: {
-    fontSize: "11px",
-    padding: "4px 10px",
-    background: "rgba(71, 85, 105, 0.3)",
-    border: "1px solid rgba(100, 116, 139, 0.4)",
-    borderRadius: "4px",
-    color: "#94a3b8",
-    letterSpacing: "0.5px",
-    fontWeight: "600",
-    alignSelf: "flex-start",
-    marginTop: "4px",
-  },
-
-  statusBadgeLive: {
-    fontSize: "11px",
-    padding: "4px 10px",
-    background: "rgba(16, 185, 129, 0.2)",
-    border: "1px solid rgba(16, 185, 129, 0.5)",
-    borderRadius: "4px",
-    color: "#10b981",
-    letterSpacing: "0.5px",
-    fontWeight: "700",
-    alignSelf: "flex-start",
-    marginTop: "4px",
-  },
-
-  statusBadgeClosed: {
-    fontSize: "11px",
-    padding: "4px 10px",
-    background: "rgba(59, 130, 246, 0.2)",
-    border: "1px solid rgba(59, 130, 246, 0.5)",
-    borderRadius: "4px",
-    color: "#3b82f6",
-    letterSpacing: "0.5px",
-    fontWeight: "600",
-    alignSelf: "flex-start",
-    marginTop: "4px",
-  },
-
-  startTime: {
-    fontSize: "13px",
+  timeInfo: {
+    fontSize: "14px",
     color: "#cbd5e1",
     fontWeight: "500",
-    marginTop: "4px",
   },
 
-  hoursCounter: {
-    fontSize: "22px",
-    fontWeight: "700",
-    color: "#10b981",
-    marginTop: "4px",
-    letterSpacing: "0.5px",
-  },
-
-  sessionSummary: {
-    marginTop: "8px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-  },
-
-  sessionRow: {
+  badgeSelesai: {
     fontSize: "12px",
-    color: "#94a3b8",
-    fontWeight: "500",
+    padding: "4px 12px",
+    background: "linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)",
+    color: "#fff",
+    borderRadius: "6px",
+    fontWeight: "600",
+    alignSelf: "flex-start",
+    boxShadow: "0 2px 8px rgba(14, 165, 233, 0.3)",
   },
 
-  totalHours: {
-    fontSize: "20px",
+  // BUTTONS
+  btnMasuk: {
+    width: "100%",
+    padding: "12px 20px",
+    background: "linear-gradient(135deg, #10b981 0%, #14b8a6 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "15px",
     fontWeight: "700",
-    color: "#3b82f6",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
     marginTop: "4px",
-    letterSpacing: "0.5px",
+    boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
+  },
+
+  btnPulang: {
+    width: "100%",
+    padding: "12px 20px",
+    background: "linear-gradient(135deg, #f43f5e 0%, #ef4444 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "15px",
+    fontWeight: "700",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    marginTop: "4px",
+    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)",
   },
 
   // MODAL
@@ -615,7 +512,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(0, 0, 0, 0.85)",
+    background: "rgba(0, 0, 0, 0.75)",
     backdropFilter: "blur(4px)",
     display: "flex",
     alignItems: "center",
@@ -624,134 +521,71 @@ const styles = {
     padding: "20px",
   },
 
-  modalTerminal: {
+  modal: {
     background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
     borderRadius: "16px",
-    maxWidth: "500px",
+    padding: "32px",
+    maxWidth: "400px",
     width: "100%",
-    border: "2px solid rgba(255, 255, 255, 0.2)",
     boxShadow: "0 25px 50px rgba(0, 0, 0, 0.8)",
-    overflow: "hidden",
-  },
-
-  modalHeader: {
-    background: "rgba(15, 23, 42, 0.8)",
-    padding: "20px 24px",
-    borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    border: "1px solid #334155",
   },
 
   modalTitle: {
-    fontSize: "20px",
-    fontWeight: "700",
-    color: "#f1f5f9",
-    letterSpacing: "0.5px",
-  },
-
-  closeBtn: {
-    background: "transparent",
-    border: "none",
-    color: "#94a3b8",
     fontSize: "24px",
-    cursor: "pointer",
-    padding: "0",
-    width: "32px",
-    height: "32px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "4px",
-    transition: "all 0.2s ease",
-    "&:hover": {
-      background: "rgba(255, 255, 255, 0.1)",
-      color: "#f1f5f9",
-    },
-  },
-
-  modalBody: {
-    padding: "32px 24px",
-  },
-
-  confirmText: {
-    textAlign: "center",
-  },
-
-  employeeName: {
-    fontSize: "28px",
     fontWeight: "700",
     color: "#f1f5f9",
     marginBottom: "12px",
-    letterSpacing: "0.5px",
+    textAlign: "center",
   },
 
-  actionText: {
+  modalQuestion: {
     fontSize: "16px",
     color: "#cbd5e1",
-    marginBottom: "16px",
-  },
-
-  timestamp: {
-    fontSize: "20px",
-    fontWeight: "600",
-    color: "#10b981",
-    letterSpacing: "0.5px",
+    marginBottom: "24px",
+    textAlign: "center",
+    lineHeight: "1.6",
   },
 
   errorBox: {
-    marginTop: "16px",
-    padding: "12px 16px",
+    padding: "12px",
     background: "rgba(239, 68, 68, 0.1)",
     border: "1px solid rgba(239, 68, 68, 0.5)",
     borderRadius: "8px",
-    color: "#ef4444",
+    color: "#f87171",
     fontSize: "14px",
+    marginBottom: "16px",
     textAlign: "center",
   },
 
   modalActions: {
-    padding: "20px 24px",
-    borderTop: "1px solid rgba(255, 255, 255, 0.15)",
     display: "grid",
     gridTemplateColumns: "1fr 2fr",
     gap: "12px",
   },
 
-  btnSecondary: {
-    background: "rgba(71, 85, 105, 0.3)",
-    border: "2px solid rgba(100, 116, 139, 0.5)",
-    borderRadius: "8px",
-    padding: "16px 24px",
-    fontSize: "14px",
-    fontWeight: "700",
+  btnBatal: {
+    padding: "12px 20px",
+    background: "#334155",
     color: "#cbd5e1",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    letterSpacing: "0.5px",
-    textTransform: "uppercase",
-  },
-
-  btnPrimary: {
-    borderRadius: "8px",
-    padding: "16px 24px",
-    fontSize: "14px",
-    fontWeight: "700",
-    color: "#fff",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    letterSpacing: "0.5px",
-    textTransform: "uppercase",
     border: "none",
+    borderRadius: "8px",
+    fontSize: "15px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
   },
 
-  btnCheckin: {
-    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-    boxShadow: "0 8px 20px rgba(16, 185, 129, 0.4)",
-  },
-
-  btnCheckout: {
-    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-    boxShadow: "0 8px 20px rgba(239, 68, 68, 0.4)",
+  btnKonfirmasi: {
+    padding: "12px 20px",
+    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "15px",
+    fontWeight: "700",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
   },
 };

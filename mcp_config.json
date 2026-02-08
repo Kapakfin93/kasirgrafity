@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-supabase"],
+      "env": {
+        "SUPABASE_URL": "https://batipgbnlfakwmbtdmdt.supabase.co",
+        "SUPABASE_PROJECT_REF": "batipgbnlfakwmbtdmdt",
+        "SUPABASE_ACCESS_TOKEN": "sbp_69ce19dfe12d38779c9a1529861d45087ae566aa",
+        "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhdGlwZ2JubGZha3dtYnRkbWR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODc1NjI0MiwiZXhwIjoyMDg0MzMyMjQyfQ.OCan8fcpJQMX2BuOCGjfKGQlk0BJdwFZzTpBqgftMaw"
+      }
+    }
+  }
+}
