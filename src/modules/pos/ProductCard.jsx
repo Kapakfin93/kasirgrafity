@@ -417,7 +417,6 @@ export const ProductCard = ({ product, onClick }) => {
       </div>
     );
   }
-
   // --- 4. STANDARD CARD LAYOUT ---
   const visibleVariants = product.variants?.slice(0, 4) || [];
   const remainingCount =

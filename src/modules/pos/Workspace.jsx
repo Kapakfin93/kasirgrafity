@@ -700,7 +700,16 @@ export function Workspace() {
 
       {/* --- KOMPONEN RAHASIA (STRUK THERMAL) --- */}
       {/* Ini tidak terlihat di layar, tapi inilah yang dicetak oleh printer */}
-      <div style={{ display: "none" }}>
+      {/* FIX: Gunakan visibility hidden & fixed position agar ref tetap terbaca oleh react-to-print */}
+      <div
+        style={{
+          position: "fixed",
+          top: "-9999px",
+          left: "-9999px",
+          visibility: "hidden",
+          pointerEvents: "none",
+        }}
+      >
         <ReceiptTemplate ref={componentRef} order={receiptData} />
       </div>
     </div>

@@ -143,6 +143,72 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
             <span>{formatRupiah(order.finalAmount || order.totalAmount)}</span>
           </div>
 
+          {/* 🔥 PAYMENT TRANSPARENCY LOGIC (MATCHING NOTA PREVIEW) */}
+          {(() => {
+            // Robust Mode Extraction
+            const mode =
+              order.paymentMethod ||
+              order.payment_method ||
+              order.payment?.method ||
+              "TUNAI";
+
+            const paidAmount = Number(order.paidAmount || 0);
+            const grandTotal = Number(
+              order.finalAmount || order.totalAmount || 0,
+            );
+            const remaining = Number(order.remainingAmount || 0);
+
+            return (
+              <>
+                <div style={styles.row}>
+                  <span>
+                    BAYAR (
+                    {mode === "NON_TUNAI" || mode === "TRANSFER"
+                      ? "TRANSFER"
+                      : "TUNAI"}
+                    ):
+                  </span>
+                  <span>{formatRupiah(paidAmount)}</span>
+                </div>
+
+                {remaining > 0 ? (
+                  <div
+                    style={{
+                      ...styles.row,
+                      ...styles.bold,
+                      marginTop: "4px",
+                      borderTop: "1px dashed #000",
+                      paddingTop: "4px",
+                    }}
+                  >
+                    <span>SISA TAGIHAN:</span>
+                    <span>{formatRupiah(remaining)}</span>
+                  </div>
+                ) : (
+                  <div style={styles.row}>
+                    <span>KEMBALI:</span>
+                    <span>
+                      {formatRupiah(Math.max(0, paidAmount - grandTotal))}
+                    </span>
+                  </div>
+                )}
+
+                {/* BANK INFO BLOCK (PERMANENT) */}
+                <div style={{ marginTop: "10px", textAlign: "center" }}>
+                  <div style={styles.line} />
+                  <div style={{ fontWeight: "bold", marginBottom: "2px" }}>
+                    Transfer Pembayaran ke:
+                  </div>
+                  <div>BCA: 0097085203</div>
+                  <div>BRI: 008301090560509</div>
+                  <div style={{ fontStyle: "italic", fontSize: "9px" }}>
+                    a.n Muhtarudin Nurul Habibi
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
           <div style={styles.line} />
 
           <div style={styles.center}>*** TERIMA KASIH ***</div>

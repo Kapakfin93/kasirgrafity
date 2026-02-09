@@ -98,15 +98,18 @@ export const NotaPreview = React.forwardRef(
     // RESTORED MISSING DEFINITIONS
     const statusText =
       order?.paymentStatus === "PAID" ? "LUNAS" : "BELUM LUNAS";
-    const mode = order?.paymentMethod || paymentState?.mode || "TUNAI";
 
-    // Legacy mapping for existing code compatibility
-    const serviceLabel =
-      order?.meta?.production_priority === "EXPRESS"
-        ? "Biaya Express"
-        : order?.meta?.production_priority === "URGENT"
-          ? "Biaya Urgent"
-          : "Biaya Layanan";
+    // 🔥 FORENSIC FIX: Handle All Possible Data Paths
+    // 1. Root Snake (DB default): order.payment_method
+    // 2. Root Camel (Legacy/Front): order.paymentMethod
+    // 3. Nested Object (User evidence): order.payment?.method
+    // 4. Fallback State: paymentState?.mode
+    const mode =
+      order?.payment_method ||
+      order?.paymentMethod ||
+      order?.payment?.method ||
+      paymentState?.mode ||
+      "TUNAI";
 
     // --- SPK LOGIC EXTRACTION ---
     const priorityLevel = order?.meta?.production_priority || "STANDARD"; // EXPRESS / STANDARD
@@ -316,7 +319,6 @@ export const NotaPreview = React.forwardRef(
       internalRef,
     ]);
 
-    const showPrices = printMode === "NOTA";
     // --- 4. RENDER JSX ---
     const modalContent = (
       <div className="nota-preview-overlay" onClick={onClose}>
@@ -498,358 +500,370 @@ export const NotaPreview = React.forwardRef(
               </div>
             )}
 
-            {/* HEADER NOTA BIASA (Kondisi Else) */}
-            {printMode === "NOTA" && (
-              <div className="nota-header">
-                <h1
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: "900",
-                    letterSpacing: "1px",
-                    marginBottom: "6px",
-                  }}
-                >
-                  JOGLO PRINTING
-                </h1>
-                <p style={{ fontSize: "11px" }}>
-                  Jl. Diponegoro, Rw. 4, Jogoloyo
-                </p>
-                <p style={{ fontSize: "11px" }}>Demak, Jawa Tengah</p>
-                <p style={{ fontSize: "11px" }}>Telp: 0813-9028-6826</p>
-                <p
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                    marginTop: "4px",
-                  }}
-                >
-                  BUKA 24 JAM
-                </p>
-              </div>
-            )}
-
-            <div className="receipt-divider"></div>
-
-            <div className="nota-datetime">
-              <span>{new Date().toLocaleDateString("id-ID")}</span>
-              <span>{orderNumber}</span>
-            </div>
-
-            {custName && (
+            {printMode === "NOTA" ? (
               <div
-                className="nota-row"
-                style={{ fontWeight: "bold", marginBottom: "8px" }}
+                className="nota-font-wrapper"
+                style={{
+                  fontFamily: '"Courier New", Courier, monospace',
+                  fontSize: "12px",
+                  lineHeight: "1.4",
+                  color: "#000",
+                  textAlign: "left",
+                  background: "#fff",
+                  padding: "10px",
+                }}
               >
-                <span>Cust: {custName}</span>
-                {custWA && <span>WA: {custWA}</span>}
-              </div>
-            )}
+                {/* 1. HEADER (CENTERED) */}
+                <div style={{ textAlign: "center", marginBottom: "10px" }}>
+                  <h1
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                      textTransform: "uppercase",
+                      margin: "0 0 5px 0",
+                      letterSpacing: "1px",
+                    }}
+                  >
+                    JOGLO PRINTING
+                  </h1>
+                  <p style={{ margin: "2px 0", fontSize: "11px" }}>
+                    Jl. Diponegoro, Rw. 4, Jogoloyo
+                  </p>
+                  <p style={{ margin: "2px 0", fontSize: "11px" }}>
+                    Demak, Jawa Tengah
+                  </p>
+                  <p style={{ margin: "2px 0", fontSize: "11px" }}>
+                    Telp: 0813-9028-6826
+                  </p>
+                  <p
+                    style={{
+                      margin: "2px 0",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    BUKA . 24 JAM
+                  </p>
+                </div>
 
-            {/* CS Name (HUMANIZED) */}
-            <div className="nota-row" style={{ marginBottom: "8px" }}>
-              <span>Kasir</span>
-              <span>: {csName}</span>
-            </div>
+                <div style={{ textAlign: "center", margin: "10px 0" }}>
+                  ------------------------------------------
+                </div>
 
-            <div className="receipt-divider"></div>
+                {/* 2. META INFO (2 COLUMNS) */}
+                {/* 2. META INFO (STACKED) */}
+                <div style={{ fontSize: "11px", marginBottom: "10px" }}>
+                  {/* Line 1: Tgl & Kasir */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "3px",
+                    }}
+                  >
+                    <span>
+                      <span style={{ fontStyle: "italic", marginRight: "3px" }}>
+                        Tgl:
+                      </span>
+                      {new Date().toLocaleString("id-ID", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span style={{ textTransform: "capitalize" }}>
+                      Admin: {csName}
+                    </span>
+                  </div>
 
-            {/* Items Loop */}
-            <div className="nota-items">
-              {items.map((item, idx) => {
-                // 🕵️ FORENSIC LOG START
-                console.group(
-                  `🔍 AUDIT ITEM: ${item.product_name || "Unknown Product"}`,
-                );
-                console.log("1. RAW ITEM KEYS:", Object.keys(item)); // Apa saja yg dibawa?
-                console.log("2. RAW DIMENSIONS:", item.dimensions); // Apakah Null?
-                console.log("3. RAW SPECS:", item.specs); // Apakah ada di sini?
-                console.log("4. RAW META:", item.meta); // Atau di sini?
-                console.log("5. RAW SUBTOTAL:", item.subtotal); // 0 atau undefined?
-                console.log("6. RAW PRICE & QTY:", item.price, item.quantity);
-                // Cek Logika Ekstraksi (Simulasi)
-                const checkVariant =
-                  item.dimensions?.variant_info ||
-                  item.specs?.variant_info ||
-                  "❌ NOT FOUND";
-                console.log("7. EXTRACTION CHECK (Variant):", checkVariant);
-                console.groupEnd();
-                // 🕵️ FORENSIC LOG END
-                // 1. Logic Harga Satuan & Qty (STRICT: DB READ ONLY)
-                const displayPrice = Number(
-                  item.unit_price || item.unitPrice || item.price || 0,
-                );
-                // --- SURGICAL FIX START ---
-                // Map incoming 'qty' to 'quantity'
-                const quantity = item.quantity || item.qty || 0;
-                const displayQty = Number(quantity);
+                  {/* Line 2: No Order */}
+                  <div style={{ marginBottom: "3px" }}>
+                    <span style={{ fontStyle: "italic", marginRight: "3px" }}>
+                      No:
+                    </span>
+                    <span style={{ fontWeight: "bold" }}>
+                      {orderNumber?.replace("ORD", "JGL") || "JGL-000"}
+                    </span>
+                  </div>
 
-                // Map incoming 'totalPrice' to 'subtotal'
-                const subtotal =
-                  item.subtotal ||
-                  item.totalPrice ||
-                  item.price * quantity ||
-                  0;
-                const displaySubtotal = Number(subtotal);
-                // --- SURGICAL FIX END ---
-
-                // 2. Ekstraksi Meta & Specs (USER REQUEST: SINGLE SOURCE OF TRUTH)
-                // Ambil satu saja yang paling lengkap. ABAIKAN sumber lain.
-                const finalSpecs = item.dimensions || item.specs || {};
-
-                // Use finalSpecs as the authority
-                const specs = finalSpecs;
-
-                // 🔍 DEBUG: Log extracted specs
-                console.log("📋 NOTA ITEM DEEP SEARCH:", {
-                  productName: item.productName,
-                  source_dimensions: item.dimensions,
-                  extracted_variant_info: specs.variant_info,
-                  extracted_finishings: specs.finishing_list?.length,
-                  quantity,
-                  subtotal,
-                });
-
-                // 3. Logic "Display Priority" (Mutually Exclusive)
-                // USER REQUEST: PRIORITAS 1 > 2 > 3
-                let finalDescription = "";
-
-                // Prioritas 1: variant_info (from dimensions/specs)
-                if (specs.variant_info) {
-                  finalDescription = specs.variant_info;
-                }
-                // Prioritas 2: summary (from dimensions/specs)
-                else if (specs.summary) {
-                  finalDescription = specs.summary;
-                }
-                // Prioritas 3: Manual Inputs (Length x Width)
-                else {
-                  const inputs = specs.inputs || {};
-                  const origSpecs = specs.original_specs || {};
-
-                  let w = 0,
-                    h = 0;
-                  if (inputs.length && inputs.width) {
-                    w = inputs.length;
-                    h = inputs.width;
-                  } else if (origSpecs.length && origSpecs.width) {
-                    w = parseFloat(origSpecs.length);
-                    h = parseFloat(origSpecs.width);
-                  } else if (specs.length && specs.width) {
-                    w = specs.length;
-                    h = specs.width;
-                  }
-
-                  if (w > 0 && h > 0) {
-                    finalDescription = `${w}m x ${h}m`;
-                  } else if (specs.variantLabel) {
-                    finalDescription = specs.variantLabel;
-                  } else if (
-                    item.description &&
-                    item.description !== item.productName
-                  ) {
-                    finalDescription = item.description;
-                  }
-                }
-
-                // 4. Finishing (Allowed Separate)
-                const finishingList = specs.finishing_list || [];
-
-                // 5. Notes & Booklet Info
-                const notes = specs.note || specs.notes || item.notes || "";
-                const sheets = specs.sheetsPerBook || 0;
-                const printMode = specs.printModeLabel || "";
-
-                const detailOpts = specs.detail_options || {};
-                const showPrices = type !== "SPK";
-
-                return (
-                  <div key={item.id || idx} className="nota-item">
-                    {/* Baris 1: Qty & Nama Produk */}
-                    <div className="nota-item-title">
-                      {displayQty}x {item.productName}
-                    </div>
-
-                    {/* Baris 2: Final Description (SINGLE SOURCE) */}
-                    {finalDescription && (
-                      <div
-                        style={{
-                          fontSize: "10px",
-                          fontWeight: "500", // Agak tebal tapi tidak bold
-                          color: "#333",
-                          paddingLeft: "10px",
-                        }}
-                      >
-                        {finalDescription}
-                      </div>
+                  {/* Line 3: Customer Info */}
+                  <div>
+                    <span style={{ fontStyle: "italic", marginRight: "3px" }}>
+                      Cust:
+                    </span>
+                    <span style={{ fontWeight: "bold" }}>
+                      {custName.substring(0, 20)}
+                    </span>
+                    {custWA && (
+                      <span style={{ marginLeft: "8px" }}>
+                        <span
+                          style={{ fontStyle: "italic", marginRight: "3px" }}
+                        >
+                          WA:
+                        </span>
+                        {custWA}
+                      </span>
                     )}
+                  </div>
+                </div>
 
-                    {/* BARIS KHUSUS BOOKLET: JUMLAH LEMBAR & WARNA */}
-                    {(sheets > 0 || printMode) && (
+                <div style={{ textAlign: "center", margin: "10px 0" }}>
+                  ------------------------------------------
+                </div>
+
+                {/* 3. ITEM LIST (COMPACT & DETAILED) */}
+                <div className="nota-items">
+                  {items.map((item, idx) => {
+                    const quantity = item.quantity || item.qty || 0;
+                    const subtotal =
+                      item.subtotal ||
+                      item.totalPrice ||
+                      item.price * quantity ||
+                      0;
+                    const unitPrice =
+                      item.unit_price || item.unitPrice || item.price || 0;
+
+                    // Descriptions Logic (Reconstruct)
+                    const specs = item.dimensions || item.specs || {};
+                    let variantName = "";
+                    if (specs.variant_name) variantName = specs.variant_name;
+                    else if (specs.variant_info)
+                      variantName = specs.variant_info;
+                    else if (item.variantName) variantName = item.variantName;
+
+                    // Construct Detailed Specs Line
+                    const specParts = [
+                      specs.size_summary ||
+                        (specs.length && specs.width
+                          ? `${specs.length}m x ${specs.width}m`
+                          : "") ||
+                        item.size_summary,
+                      variantName,
+                      specs.finishing ||
+                        (specs.finishing_list
+                          ? specs.finishing_list.map((f) => f.name).join(", ")
+                          : "") ||
+                        item.finishing,
+                    ].filter(Boolean); // Hapus yang kosong
+
+                    return (
                       <div
-                        style={{
-                          fontSize: "10px",
-                          color: "#444",
-                          paddingLeft: "10px",
-                        }}
+                        key={idx}
+                        style={{ marginBottom: "8px", fontSize: "11px" }}
                       >
-                        📖 {sheets > 0 ? `${sheets} Lembar` : ""}{" "}
-                        {printMode ? `(${printMode})` : ""}
-                      </div>
-                    )}
-
-                    {/* Baris 5: Finishing List */}
-                    {Array.isArray(finishingList) &&
-                      finishingList.length > 0 && (
+                        {/* Line 1: Qty x Name ... Total */}
                         <div
                           style={{
-                            fontSize: "10px",
+                            display: "flex",
+                            justifyContent: "space-between",
                             fontWeight: "bold",
-                            color: "#000",
-                            paddingLeft: "10px",
                           }}
                         >
-                          ✨ {finishingList.map((f) => f.name).join(", ")}
+                          <span>
+                            {quantity}x {item.productName}
+                          </span>
+                          <span>{formatRupiah(subtotal)}</span>
                         </div>
-                      )}
 
-                    {/* Baris 6: Catatan Item */}
-                    {printMode === "SPK" && notes && (
-                      <div
-                        style={{
-                          fontSize: "10px",
-                          fontStyle: "italic",
-                          color: "#000",
-                          paddingLeft: "10px",
-                          marginTop: "2px",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        📝 Note: {notes}
-                      </div>
-                    )}
-
-                    {/* Custom Inputs (SPK Only) */}
-                    {printMode === "SPK" && detailOpts.custom_inputs && (
-                      <div
-                        style={{
-                          fontSize: "9px",
-                          fontFamily: "monospace",
-                          background: "#eee",
-                          padding: "4px",
-                          margin: "4px 0 0 10px",
-                        }}
-                      >
-                        <strong>DETAIL:</strong>
-                        {Object.entries(detailOpts.custom_inputs).map(
-                          ([k, v]) => (
-                            <div key={k}>
-                              {k}: {v}
-                            </div>
-                          ),
+                        {/* Line 2: Dynamic Specs (Join relevant fields) */}
+                        {specParts.length > 0 && (
+                          <div
+                            style={{
+                              paddingLeft: "15px",
+                              fontStyle: "italic",
+                              color: "#000",
+                              fontSize: "10px",
+                            }}
+                          >
+                            {specParts.join(" • ")}
+                          </div>
                         )}
+
+                        {/* Line 3: Unit Price (Explicit) */}
+                        <div
+                          style={{
+                            paddingLeft: "15px",
+                            fontSize: "10px",
+                            color: "#000",
+                          }}
+                        >
+                          @ {formatRupiah(unitPrice)}
+                        </div>
                       </div>
-                    )}
-
-                    {/* Baris Harga (STRICT: DB READ ONLY) */}
-                    {showPrices && (
-                      <div className="nota-item-price">
-                        <span>@ {formatRupiah(displayPrice)}</span>
-                        <span>{formatRupiah(displaySubtotal)}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Service Fee Render */}
-
-            {/* Footer Summary (FIXED DISPLAY ORDER) */}
-            {showPrices ? (
-              <div className="nota-summary" style={{ marginTop: "10px" }}>
-                {/* Subtotal produk */}
-                <div className="nota-row">
-                  <span>Subtotal Produk</span>
-                  <span>{formatRupiah(itemsTotal)}</span>
+                    );
+                  })}
                 </div>
 
-                {/* Service fee (jika ada) */}
-                {serviceFee > 0 && (
-                  <div className="nota-row">
-                    <span>{serviceLabel}</span>
-                    <span>{formatRupiah(serviceFee)}</span>
-                  </div>
-                )}
-
-                {/* Diskon (jika ada) */}
-                {discount > 0 && (
-                  <div className="nota-row" style={{ color: "red" }}>
-                    <span>DISKON / POTONGAN</span>
-                    <span>- {formatRupiah(discount)}</span>
-                  </div>
-                )}
-
-                <div className="nota-total-row">
-                  <span>TOTAL</span>
-                  <span>{formatRupiah(grandTotal)}</span>
+                <div style={{ textAlign: "center", margin: "10px 0" }}>
+                  ------------------------------------------
                 </div>
 
-                <div className="nota-remaining">
-                  <span>Bayar ({mode || "TUNAI"})</span>
-                  <span>{formatRupiah(paidAmount)}</span>
+                {/* 4. SUMMARY (FIXED LOGIC ORDER) */}
+                <div className="nota-summary" style={{ fontSize: "11px" }}>
+                  {/* 1. SUBTOTAL */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "3px",
+                    }}
+                  >
+                    <span>Subtotal:</span>
+                    <span>{formatRupiah(itemsTotal)}</span>
+                  </div>
+
+                  {/* 2. BIAYA LAYANAN (Jika Ada) */}
+                  {serviceFee > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "3px",
+                      }}
+                    >
+                      <span>
+                        {priorityLevel === "EXPRESS"
+                          ? "Biaya Express"
+                          : priorityLevel === "URGENT"
+                            ? "Biaya Urgent"
+                            : "Biaya Layanan"}
+                      </span>
+                      <span>{formatRupiah(serviceFee)}</span>
+                    </div>
+                  )}
+
+                  {/* 3. DISKON (Jika Ada - NEGATIF) */}
+                  {discount > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "3px",
+                      }}
+                    >
+                      <span>Diskon:</span>
+                      <span>-{formatRupiah(discount)}</span>
+                    </div>
+                  )}
+
+                  <div style={{ textAlign: "center", margin: "5px 0" }}>
+                    ------------------------------------------
+                  </div>
+
+                  {/* 4. TOTAL (GRAND TOTAL) */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      margin: "5px 0",
+                    }}
+                  >
+                    <span>TOTAL:</span>
+                    <span>{formatRupiah(grandTotal)}</span>
+                  </div>
+
+                  {/* 5. BAYAR (TUNAI / TRANSFER) */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "3px",
+                    }}
+                  >
+                    <span>
+                      BAYAR (
+                      {mode === "NON_TUNAI" || mode === "TRANSFER"
+                        ? "TRANSFER"
+                        : "TUNAI"}
+                      ):
+                    </span>
+                    <span>{formatRupiah(paidAmount)}</span>
+                  </div>
+
+                  {/* 6. KEMBALI / SISA TAGIHAN */}
+                  {remainingAmount > 0 ? (
+                    // KASUS: BELUM LUNAS (SISA TAGIHAN)
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontWeight: "bold",
+                        marginTop: "5px",
+                        borderTop: "1px dashed black",
+                        paddingTop: "5px",
+                      }}
+                    >
+                      <span>SISA TAGIHAN:</span>
+                      <span>{formatRupiah(remainingAmount)}</span>
+                    </div>
+                  ) : (
+                    // KASUS: LUNAS (KEMBALIAN)
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      <span>KEMBALI:</span>
+                      <span>
+                        {formatRupiah(Math.max(0, paidAmount - grandTotal))}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 7. BANK INFO (PERMANENT) */}
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      textAlign: "center",
+                      fontSize: "10px",
+                    }}
+                  >
+                    <div style={{ marginBottom: "5px" }}>
+                      ------------------------------------------
+                    </div>
+                    <p style={{ margin: "2px 0", fontWeight: "bold" }}>
+                      Transfer Pembayaran ke:
+                    </p>
+                    <p style={{ margin: "2px 0" }}>BCA: 0097085203</p>
+                    <p style={{ margin: "2px 0" }}>BRI: 008301090560509</p>
+                    <p style={{ margin: "2px 0", fontStyle: "italic" }}>
+                      a.n Muhtarudin Nurul Habibi
+                    </p>
+                  </div>
                 </div>
 
-                {remainingAmount > 0 ? (
-                  <div className="nota-remaining" style={{ color: "red" }}>
-                    <span>BELUM LUNAS</span>
-                    <span>Sisa: {formatRupiah(remainingAmount)}</span>
-                  </div>
-                ) : (
-                  <div className="nota-status-stempel">LUNAS ✓</div>
-                )}
+                <div style={{ textAlign: "center", margin: "15px 0" }}>
+                  ------------------------------------------
+                </div>
+
+                {/* 5. FOOTER */}
+                <div style={{ textAlign: "center", fontSize: "11px" }}>
+                  <p style={{ margin: "5px 0", fontWeight: "bold" }}>
+                    TERIMA KASIH
+                  </p>
+                  <p style={{ margin: "2px 0", fontSize: "10px" }}>
+                    Barang yang sudah dibeli
+                  </p>
+                  <p style={{ margin: "0", fontSize: "10px" }}>
+                    tidak dapat ditukar/dikembalikan
+                  </p>
+                </div>
               </div>
             ) : (
-              <div
-                className="nota-status"
-                style={{ textAlign: "center", padding: "10px 0" }}
-              >
-                <p style={{ fontWeight: "bold", fontSize: "14px" }}>
-                  MOHON SEGERA DIKERJAKAN
-                </p>
-                <p style={{ marginTop: "5px" }}>
-                  Total Item:{" "}
-                  {items.reduce(
-                    (sum, item) => sum + (Number(item.qty) || 1),
-                    0,
-                  )}{" "}
-                  Pcs
-                </p>
+              // --- SPK / INTERNAL DOC MODE (KEEP AS IS OR MINIMALIZE) ---
+              <div style={{ textAlign: "center", padding: "20px" }}>
+                <h1 style={{ fontSize: "20px", fontWeight: "bold" }}>
+                  DOKUMEN INTERNAL
+                </h1>
+                <p>Gunakan Mode "Nota" untuk struk belanja.</p>
               </div>
             )}
-
-            <div className="receipt-divider"></div>
-
-            {/* Footer Text */}
-            <div
-              className="nota-footer"
-              style={{
-                textAlign: "center",
-                fontSize: "11px",
-                marginTop: "8px",
-              }}
-            >
-              {printMode === "NOTA" ? (
-                <>
-                  <p style={{ fontWeight: "bold" }}>
-                    Terima Kasih - BUKA 24 JAM
-                  </p>
-                  <p>Pembayaran via Transfer:</p>
-                  <p>BCA 1234567890 / BRI 0987654321</p>
-                </>
-              ) : (
-                <p>Dokumen Internal - JOGLO PRINTING</p>
-              )}
-            </div>
 
             {/* Cutter Spacer */}
             <div
