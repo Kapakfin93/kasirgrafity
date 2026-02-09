@@ -193,15 +193,32 @@ export const useProductStore = create((set, get) => ({
         }
 
         const variants = finalVariants
-          .map((m) => ({
-            id: m.id,
-            label: m.label || m.name,
-            name: m.name || m.label,
-            price: m.price_per_unit || 0,
-            specs: m.specs || "",
-            display_order: m.display_order || 99,
-            width: m.width,
-          }))
+          .map((m) => {
+            // --- C.2. JAHIT MATRIX PRICE LIST (The Missing Link) ---
+            let priceList = undefined;
+            if (isMatrix && productMatrix.length > 0) {
+              const relevantMatrixRows = productMatrix.filter(
+                (pm) => pm.material_id === m.id,
+              );
+              if (relevantMatrixRows.length > 0) {
+                priceList = {};
+                relevantMatrixRows.forEach((row) => {
+                  priceList[row.size_id] = row.price;
+                });
+              }
+            }
+
+            return {
+              id: m.id,
+              label: m.label || m.name,
+              name: m.name || m.label,
+              price: m.price_per_unit || 0,
+              specs: m.specs || "",
+              display_order: m.display_order || 99,
+              width: m.width,
+              price_list: priceList, // ✅ INJECTED: Allow Matrix Editor to render inputs
+            };
+          })
           .sort((a, b) => a.display_order - b.display_order);
 
         // --- B. JAHIT FINISHING ---
@@ -393,6 +410,9 @@ export const useProductStore = create((set, get) => ({
   // 🚨 CRITICAL UPDATE: FIXED SPLIT-BRAIN + SANITIZER + UNIVERSAL ROUTER 🚨
   // =========================================================================
   updateProduct: async (id, d) => {
+    // 0. CAPTURE RAW PAYLOAD (Prevents Sanitizer Stripping)
+    // const productData = d; // REMOVED: Refactored to use 'd' directly in generic router
+
     // 1. Update Database Lokal (Dexie) - Agar UI responsif duluan
     await db.products.update(id, d);
 
@@ -448,61 +468,64 @@ export const useProductStore = create((set, get) => ({
     }
     // 🕵️ FORENSIC TRAP END
 
+    // 🚦 UNIVERSAL TRAFFIC ROUTER (FINAL GENERIC VERSION)
     // =========================================================
-    // 🚦 UNIVERSAL TRAFFIC ROUTER (The Logic Fix)
-    // Menangani update Harga Material (Linear) & Matrix
-    // =========================================================
-    if (d.variants) {
-      try {
-        // 1. Get Context (Calc Engine)
-        const currentProduct = await db.products.get(id);
-        const engine =
-          currentProduct?.calc_engine || d.calc_engine || "UNKNOWN";
 
-        console.log(`🚦 ROUTER ENGINE: ${engine}`);
+    // 1. Capture Raw Variants directly from Argument (d)
+    const rawVariants = d.variants || [];
 
-        // PATH A: LINEAR / AREA / UNIT (Update ke product_materials)
-        if (
-          ["LINEAR_METER", "AREA_METER", "LINEAR", "AREA", "UNIT"].includes(
-            engine,
-          )
-        ) {
-          console.log("➡️ ROUTE: LINEAR/AREA -> Updating product_materials...");
+    // 2. Identify Context
+    const currentProduct = await db.products.get(id);
+    const engine = currentProduct?.calc_engine || d.calc_engine || "UNKNOWN";
+    console.log(`🚦 ROUTER ENGINE: ${engine}`);
 
-          for (const variant of d.variants) {
-            if (variant.id && variant.price !== undefined) {
-              const { error: matError } = await supabase
-                .from("product_materials")
-                .update({ price_per_unit: Number(variant.price) }) // Target Kolom Benar
-                .eq("id", variant.id);
+    // 3. LOGIC BRANCHING
+    const isMatrix =
+      ["MATRIX", "MATRIX_FIXED"].includes(engine) ||
+      d.categoryId === "CAT_POSTER";
+    const hasVariantsToUpdate = rawVariants.length > 0;
 
-              if (matError) {
-                console.error(
-                  `❌ Material Update Failed (${variant.id}):`,
-                  matError.message,
-                );
-              } else {
-                console.log(
-                  `✅ Material Updated: ${variant.id} -> ${variant.price}`,
-                );
-              }
-            }
+    // BRANCH A: MATRIX PRODUCTS (Complex Grid)
+    if (isMatrix) {
+      console.log("➡️ ROUTE: MATRIX -> Syncing Matrix Prices...");
+      await syncMatrixPricesToSupabase(id, rawVariants);
+      console.log("✅ Matrix Sync Service Called");
+    }
+
+    // BRANCH B: ALL OTHER PRODUCTS WITH VARIANTS (Linear, Area, Unit, Stationery, etc.)
+    // This covers ALL 7 Categories automatically if they have variants.
+    else if (hasVariantsToUpdate) {
+      console.log("➡️ ROUTE: MATERIAL/VARIANT UPDATE (Generic)...");
+      console.log(
+        `📦 Updating ${rawVariants.length} variants in product_materials...`,
+      );
+
+      for (const variant of rawVariants) {
+        if (variant.id && variant.price !== undefined) {
+          // Sanitasi Harga: "1.234.567" -> 1234567 (Integer)
+          const rawPrice = variant.price.toString().replace(/\D/g, "");
+          const cleanPrice = rawPrice ? parseInt(rawPrice, 10) : 0;
+
+          const { error: matError } = await supabase
+            .from("product_materials")
+            .update({ price_per_unit: cleanPrice })
+            .eq("id", variant.id);
+
+          if (matError) {
+            console.error(
+              `❌ Material Update Failed (${variant.id}):`,
+              matError.message,
+            );
+          } else {
+            console.log(`✅ Material Updated: ${variant.id} -> ${cleanPrice}`);
           }
         }
-        // PATH B: MATRIX (Update ke product_price_matrix)
-        else if (
-          ["MATRIX", "MATRIX_FIXED"].includes(engine) ||
-          currentProduct?.category_id === "CAT_POSTER"
-        ) {
-          console.log("➡️ ROUTE: MATRIX -> Syncing Matrix Prices...");
-          await syncMatrixPricesToSupabase(id, d.variants);
-          console.log("✅ Matrix Sync Service Called");
-        } else {
-          console.log("➡️ ROUTE: STANDARD/OTHER (No Sub-table update needed)");
-        }
-      } catch (err) {
-        console.error("⚠️ Router Sync Logic Error:", err);
       }
+    }
+
+    // BRANCH C: NO VARIANTS (Standard Metadata Only)
+    else {
+      console.log("➡️ ROUTE: STANDARD METADATA ONLY (No sub-table updates)");
     }
 
     console.groupEnd(); // Tutup Group Log

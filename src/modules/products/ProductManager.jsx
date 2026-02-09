@@ -148,7 +148,8 @@ function ProductFormModal({
   // Check if product has LINEAR or AREA mode with variants
   const hasVariantPricing =
     (formData.input_mode === "LINEAR" || formData.input_mode === "AREA") &&
-    formData.variants?.length > 0;
+    formData.variants?.length > 0 &&
+    formData.calc_engine !== "MATRIX";
 
   // ============================================
   // FINISHING GROUPS HELPERS
@@ -439,11 +440,13 @@ function ProductFormModal({
             <div className="tab-content">
               {/* PRIORITY 1: TIERED MODE (Hybrid: Variants + Tiers) */}
               {/* MODIFIED: Check TIERED string OR Structural Traits (Variants + Tiers) */}
-              {formData.input_mode === "TIERED" ||
-              // Fallback for legacy data: treat as TIERED if it behaves like one
-              (formData.variants?.length > 0 &&
-                (formData.price_tiers?.length > 0 ||
-                  formData.advanced_features?.wholesale_rules?.length > 0)) ? (
+              {(formData.input_mode === "TIERED" ||
+                // Fallback for legacy data: treat as TIERED if it behaves like one
+                (formData.variants?.length > 0 &&
+                  (formData.price_tiers?.length > 0 ||
+                    formData.advanced_features?.wholesale_rules?.length >
+                      0))) &&
+              formData.calc_engine !== "MATRIX" ? (
                 <div className="space-y-6">
                   {/* SECTION A: Variant Editor (Always Visible for TIERED) */}
                   <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
@@ -506,15 +509,24 @@ function ProductFormModal({
                                     Rp
                                   </span>
                                   <input
-                                    type="number"
-                                    value={variant.price}
-                                    onChange={(e) =>
+                                    type="text"
+                                    value={
+                                      variant.price
+                                        ? new Intl.NumberFormat("id-ID").format(
+                                            variant.price,
+                                          )
+                                        : ""
+                                    }
+                                    onChange={(e) => {
+                                      const rawValue = Number(
+                                        e.target.value.replace(/\D/g, ""),
+                                      );
                                       updateVariant(
                                         idx,
                                         "price",
-                                        Number(e.target.value),
-                                      )
-                                    }
+                                        isNaN(rawValue) ? 0 : rawValue,
+                                      );
+                                    }}
                                     className="w-full bg-slate-800 border border-slate-700 rounded pl-8 pr-2 py-1 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
                                     placeholder="0"
                                   />
@@ -690,20 +702,26 @@ function ProductFormModal({
                             Harga Satuan (Rp)
                           </label>
                           <input
-                            type="number"
+                            type="text"
                             className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
-                            value={variant.price}
-                            onChange={(e) =>
+                            value={
+                              variant.price
+                                ? new Intl.NumberFormat("id-ID").format(
+                                    variant.price,
+                                  )
+                                : ""
+                            }
+                            onChange={(e) => {
+                              const rawValue = Number(
+                                e.target.value.replace(/\D/g, ""),
+                              );
                               updateVariant(
                                 index,
                                 "price",
-                                Number(e.target.value),
-                              )
-                            }
+                                isNaN(rawValue) ? 0 : rawValue,
+                              );
+                            }}
                           />
-                          <span className="text-[10px] text-slate-600 mt-1 block text-right">
-                            {formatNumber(variant.price)}
-                          </span>
                         </div>
                         {/* Delete Button */}
                         <button
@@ -735,7 +753,8 @@ function ProductFormModal({
               ) : /* PRIORITY 3: SHEET mode with tiers */
               formData.input_mode === "SHEET" &&
                 (formData.price_tiers?.length > 0 ||
-                  formData.advanced_features?.wholesale_rules?.length > 0) ? (
+                  formData.advanced_features?.wholesale_rules?.length > 0) &&
+                formData.calc_engine !== "MATRIX" ? (
                 /* SHEET PRICING (Legacy TIERED without variants) */
                 <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-6">
                   <h3 className="text-emerald-400 font-bold mb-4 flex items-center gap-2">
@@ -829,7 +848,8 @@ function ProductFormModal({
                   </p>
                 </div>
               ) : /* PRIORITY 4: MATRIX products */
-              formData.input_mode === "MATRIX" &&
+              (formData.input_mode === "MATRIX" ||
+                  formData.calc_engine === "MATRIX") &&
                 formData.variants?.length > 0 ? (
                 /* DEEP MATRIX EDITOR (For POSTER with price_list) */
                 <div className="space-y-6">
@@ -900,13 +920,26 @@ function ProductFormModal({
                                               ? "1 Folio (21x33)"
                                               : materialName === "FOLIO_1"
                                                 ? "1 Folio (21x33)"
-                                                : materialName}
+                                                : materialName === "SIDE_1"
+                                                  ? "1 Sisi"
+                                                  : materialName === "SIDE_2"
+                                                    ? "2 Sisi"
+                                                    : materialName}
                                     </span>
                                     <input
-                                      type="number"
+                                      type="text"
                                       className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right text-yellow-400 text-sm focus:border-cyan-500 outline-none"
-                                      value={price}
+                                      value={
+                                        price
+                                          ? new Intl.NumberFormat(
+                                              "id-ID",
+                                            ).format(price)
+                                          : ""
+                                      }
                                       onChange={(e) => {
+                                        const rawValue = Number(
+                                          e.target.value.replace(/\D/g, ""),
+                                        );
                                         const newVariants = [
                                           ...formData.variants,
                                         ];
@@ -917,7 +950,7 @@ function ProductFormModal({
                                         }
                                         newVariants[vIndex].price_list[
                                           materialName
-                                        ] = Number(e.target.value);
+                                        ] = isNaN(rawValue) ? 0 : rawValue;
                                         setFormData({
                                           ...formData,
                                           variants: newVariants,
@@ -1141,16 +1174,25 @@ function ProductFormModal({
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-slate-500">Rp</span>
                               <input
-                                type="number"
-                                value={opt.price}
-                                onChange={(e) =>
+                                type="text"
+                                value={
+                                  opt.price
+                                    ? new Intl.NumberFormat("id-ID").format(
+                                        opt.price,
+                                      )
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  const rawValue = Number(
+                                    e.target.value.replace(/\D/g, ""),
+                                  );
                                   updateOption(
                                     gIndex,
                                     oIndex,
                                     "price",
-                                    Number(e.target.value),
-                                  )
-                                }
+                                    isNaN(rawValue) ? 0 : rawValue,
+                                  );
+                                }}
                                 className="w-28 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-sm text-yellow-400 text-right font-mono focus:border-cyan-500 outline-none"
                                 placeholder="0"
                               />
@@ -1244,15 +1286,24 @@ function ProductFormModal({
                               Harga Cetak per Lembar (Rp)
                             </label>
                             <input
-                              type="number"
-                              value={mode.price}
-                              onChange={(e) =>
+                              type="text"
+                              value={
+                                mode.price
+                                  ? new Intl.NumberFormat("id-ID").format(
+                                      mode.price,
+                                    )
+                                  : ""
+                              }
+                              onChange={(e) => {
+                                const rawValue = Number(
+                                  e.target.value.replace(/\D/g, ""),
+                                );
                                 updatePrintMode(
                                   idx,
                                   "price",
-                                  Number(e.target.value),
-                                )
-                              }
+                                  isNaN(rawValue) ? 0 : rawValue,
+                                );
+                              }}
                               className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-right text-yellow-400 font-mono text-sm focus:border-cyan-500 outline-none"
                               placeholder="0"
                             />
