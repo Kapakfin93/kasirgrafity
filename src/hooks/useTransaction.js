@@ -696,6 +696,8 @@ export function useTransaction() {
             // 🔥 CTO DIRECTIVE: SPECS AT ITEM LEVEL (COPY 1:1 FROM CART)
             specs: item.specs,
             pricingType: item.pricingType,
+            // 🔥 FIX: ADD selected_details to payload for notes extraction
+            selected_details: item.selected_details || null,
             // LEGACY METADATA (keep for backward compatibility)
             metadata: {
               original_name: item.name,

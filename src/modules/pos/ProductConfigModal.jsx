@@ -492,6 +492,14 @@ export default function ProductConfigModal({
       inputs: specs.inputs,
     });
 
+    // 🔍 DEBUG: Verify notes before adding to cart
+    console.log("🛒 PRE-ADD TO CART - NOTES CHECK:", {
+      notes: notes,
+      notesType: typeof notes,
+      notesLength: notes?.length,
+      selected_details: { variant: variantLabel, notes },
+    });
+
     onAddToCart({
       product: { ...safeProduct, pricing_model: inputMode },
       qty,

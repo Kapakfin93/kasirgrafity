@@ -62,13 +62,11 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
 
     try {
       const { data, error } = await supabase
-
         .from("event_logs")
-
         .select("*")
-
-        .eq("ref_id", orderId)
-
+        .or(
+          `ref_id.eq.${orderId},metadata->>ref_local_id.eq.${orderId},metadata->>order_id.eq.${orderId}`,
+        )
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -94,13 +92,10 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
           </span>
         );
 
-      case "payment_recorded":
+      case "payment_recorded": {
         // 🔥 LOGIKA BARU: DETEKTIF NAMA 🔥
-
         // Cari nama di metadata dulu (Asepp).
-
         // Jika tidak ada di metadata, baru ambil nama user login (log.actor).
-
         // Kita cek 'received_by', 'receiver', atau 'receivedBy' untuk jaga-jaga variasi penulisan.
 
         const realReceiver =
@@ -122,6 +117,7 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
             </div>
           </div>
         );
+      }
 
       case "order_status_changed":
         return (

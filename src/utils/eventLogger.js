@@ -22,14 +22,28 @@ export const logEvent = async (
   actor = null,
 ) => {
   try {
+    // Validate UUID
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuid = refId && uuidRegex.test(refId);
+
+    // If ID is not UUID (Local ID), move it to metadata
+    const safeRefId = isUuid ? refId : null;
+    const safeMetadata = { ...metadata };
+
+    if (refId && !isUuid) {
+      safeMetadata.ref_local_id = refId;
+      safeMetadata.note = "Logged with Local ID";
+    }
+
     // Insert to event_logs table
     await supabase.from("event_logs").insert({
       event_name: eventName,
       source: source,
-      ref_id: refId,
+      ref_id: safeRefId, // Safe (UUID or Null)
       ref_table: refTable,
-      metadata: metadata, // <-- Data "Gemini" akan aman disini
-      actor: actor, // <-- Data ini sering tertimpa sistem
+      metadata: safeMetadata, // Contains local ID if applicable
+      actor: actor,
       created_at: new Date().toISOString(),
     });
 

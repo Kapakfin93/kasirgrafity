@@ -11,32 +11,55 @@ if (typeof window !== "undefined") {
   db = new Dexie("JogloPOSDatabase");
 
   // Define database schema
-  // VERSION 8: Update Expenses (add employeeId) & Ensure Attendance Index
-  db.version(8).stores({
-    // === TRANSACTION DATA ===
-    orders:
-      "id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName, status, idempotency_key",
+  // VERSION 9: Offline Sync & Resilience
+  // Added: sync_status, server_id, ref_local_id, server_order_number, sync_attempts, last_sync_error
+  db.version(9)
+    .stores({
+      // === TRANSACTION DATA ===
+      orders:
+        "id, orderNumber, customerId, paymentStatus, productionStatus, createdAt, customerName, status, idempotency_key, sync_status, server_id, ref_local_id",
 
-    // Updated: Added pin, createdAt, updatedAt
-    employees: "id, name, role, pin, status, createdAt, updatedAt",
+      // Updated: Added pin, createdAt, updatedAt
+      employees: "id, name, role, pin, status, createdAt, updatedAt",
 
-    // Critical: Compound index [employeeId+date] for unique daily check-in
-    attendance:
-      "id, [employeeId+date], employeeId, date, status, shift, isSynced",
+      // Critical: Compound index [employeeId+date] for unique daily check-in
+      attendance:
+        "id, [employeeId+date], employeeId, date, status, shift, isSynced",
 
-    customers: "id, name, phone",
-    settings: "key, value",
+      customers: "id, name, phone",
+      settings: "key, value",
 
-    // === FINANCIAL DATA ===
-    // NEW: Added 'employeeId' for strict linking (CCTV Feature)
-    expenses: "id, date, category, createdAt, employeeId, isSynced",
+      // === FINANCIAL DATA ===
+      // NEW: Added 'employeeId' for strict linking (CCTV Feature)
+      expenses: "id, date, category, createdAt, employeeId, isSynced",
 
-    // === MASTER DATA ===
-    categories: "id, name, logic_type, sort_order, is_active",
-    products:
-      "id, categoryId, name, price, is_active, input_mode, calc_engine, is_archived",
-    finishings: "id, categoryId, name, price, is_active",
-  });
+      // === MASTER DATA ===
+      categories: "id, name, logic_type, sort_order, is_active",
+      products:
+        "id, categoryId, name, price, is_active, input_mode, calc_engine, is_archived",
+      finishings: "id, categoryId, name, price, is_active",
+    })
+    .upgrade((tx) => {
+      // MIGRATION LOGIC: Initialize sync status for existing orders
+      return tx
+        .table("orders")
+        .toCollection()
+        .modify((order) => {
+          if (!order.sync_status) {
+            // Local Intent (PENDING_LOCAL) -> Needs Sync
+            // Server Order (Done) -> Already Synced
+            if (order.status === "PENDING_LOCAL") {
+              order.sync_status = "PENDING";
+              order.ref_local_id = order.id; // Mark self as local ref
+            } else {
+              order.sync_status = "SYNCED";
+              order.server_id = order.id; // Assume current ID is server ID
+              order.server_order_number = order.orderNumber;
+            }
+            order.sync_attempts = 0;
+          }
+        });
+    });
 }
 
 export { db };

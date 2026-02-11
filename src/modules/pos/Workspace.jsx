@@ -156,6 +156,14 @@ export function Workspace() {
       return;
     }
 
+    // 🔥 SECURITY LOCK: Prevent checkout if name is not locked
+    if (!locked) {
+      alert(
+        "⚠️ AKSES DITOLAK: Harap klik tombol GEMBOK (🔒) untuk mengunci Nama CS sebelum melakukan pembayaran.",
+      );
+      return;
+    }
+
     try {
       const success = confirmPayment(isTempo);
       if (!success) return;
@@ -311,9 +319,10 @@ export function Workspace() {
             <div
               style={{
                 display: "flex",
-                justifyContent: "space-between",
+                justifyContent: "flex-start", // Group tightly
                 alignItems: "center",
                 marginBottom: "6px",
+                gap: "10px", // Visual separation
               }}
             >
               <label

@@ -63,7 +63,15 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
             <div>
               Plg: {order.customerName || order.customer_name || "Guest"}
             </div>
-            <div>CS : {order.receivedBy || order.received_by || "-"}</div>
+            {/* 🔥 FIX 2: Admin Name Fallback */}
+            <div>
+              Admin:{" "}
+              {order.payment?.received_by ||
+                order.meta?.received_by ||
+                order.receivedBy ||
+                order.received_by ||
+                "Kasir"}
+            </div>
             <div>HP : {order.customerPhone || "-"}</div>
             <div>No : {order.orderNumber}</div>
           </div>
@@ -73,12 +81,28 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
           {/* ===== ITEMS ===== */}
           {Array.isArray(order.items) &&
             order.items.map((item, index) => {
+              console.log(`🧾 DEBUG ITEM [${index}]:`, item);
+              console.log(
+                `   - Finishing Check:`,
+                item.finishing,
+                typeof item.finishing,
+              );
+              console.log(`   - Metadata Check:`, item.metadata);
+
               const meta = item.meta || item.metadata || {};
+              // 🔥 FIX 1: Robust Product Name Fallback
+              const productName =
+                item.productName ||
+                item.product_name ||
+                item.product?.name ||
+                item.name ||
+                item.product ||
+                "ITEM TANPA NAMA";
 
               return (
                 <div key={index} style={{ marginBottom: "6px" }}>
-                  <div>
-                    {item.qty || item.quantity || 1}x {item.productName}
+                  <div style={styles.bold}>
+                    {item.qty || item.quantity || 1}x {productName}
                   </div>
 
                   {/* Ukuran */}
@@ -97,10 +121,19 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
                       </div>
                     )}
 
-                  {/* Catatan */}
-                  {item.notes && (
-                    <div style={styles.small}>Catatan: {item.notes}</div>
-                  )}
+                  {/* Catatan - ALWAYS VISIBLE (with placeholder if empty) */}
+                  <div
+                    style={{
+                      ...styles.small,
+                      marginTop: "4px",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    <strong>Catatan:</strong>{" "}
+                    {item.note ||
+                      item.notes ||
+                      ".................................................."}
+                  </div>
 
                   <div style={{ textAlign: "right" }}>
                     {formatRupiah(item.subtotal || 0)}

@@ -25,7 +25,15 @@ import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
 // Style
 import "./index.css";
 
+// Services
+import { OrderSyncService } from "./services/OrderSyncService";
+
 function App() {
+  // 🔥 Start Background Sync Service
+  React.useEffect(() => {
+    OrderSyncService.start();
+  }, []);
+
   return (
     <AuthProvider>
       <CSProvider>

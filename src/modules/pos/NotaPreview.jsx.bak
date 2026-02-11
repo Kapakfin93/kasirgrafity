@@ -24,103 +24,6 @@ const humanizeActor = (actorCode) => {
   return actorCode;
 };
 
-// --- HELPER: DYNAMIC FINISHING EXTRACTOR (Vacuum Cleaner V2) ---
-/**
- * Extracts ALL finishing details from complex variant structures.
- * Handles: finishing_list, selected_details, selected_finishing, finishing_selections, and fallback strings.
- * @param {Object} dims - item.dimensions or item.specs
- * @param {Object} item - The full item object
- * @returns {string} - Formatted finishing string or "-"
- */
-const extractFinishingDetails = (dims, item) => {
-  const parts = [];
-
-  // STEP 1: Extract from finishing_list (Array) - Spanduk style
-  if (dims.finishing_list && Array.isArray(dims.finishing_list)) {
-    const names = dims.finishing_list.map((f) => f.name || f).filter(Boolean);
-    parts.push(...names);
-  }
-  // ✅ ALSO CHECK: item.meta.finishing_list (X-Banner style)
-  else if (
-    item.meta?.finishing_list &&
-    Array.isArray(item.meta.finishing_list)
-  ) {
-    const names = item.meta.finishing_list
-      .map((f) => f.name || f)
-      .filter(Boolean);
-    parts.push(...names);
-  }
-
-  // STEP 2: Extract from selected_details (Dynamic Object) - Complex variants
-  // Exclude common non-finishing keys to avoid duplication
-  const excludeKeys = ["size", "material", "qty", "quantity", "variantLabel"];
-
-  if (dims.selected_details && typeof dims.selected_details === "object") {
-    Object.entries(dims.selected_details).forEach(([category, value]) => {
-      // Skip excluded keys
-      if (excludeKeys.includes(category)) return;
-
-      // Handle nested objects: { "Laminasi": { "name": "Glossy" } }
-      if (value && typeof value === "object" && value.name) {
-        parts.push(`${category}: ${value.name}`);
-      }
-      // Handle direct strings: { "Laminasi": "Glossy" }
-      else if (typeof value === "string") {
-        parts.push(`${category}: ${value}`);
-      }
-    });
-  }
-
-  // STEP 3: Extract from selected_finishing (Object) - X-Banner style
-  // Structure: { "OPT_DISPLAY_MAT": { "label": "Flexi 280gr", "price": 0 } }
-  if (dims.selected_finishing && typeof dims.selected_finishing === "object") {
-    Object.values(dims.selected_finishing).forEach((selection) => {
-      if (selection && typeof selection === "object") {
-        const label = selection.label || selection.name;
-        if (label) parts.push(label);
-      } else if (typeof selection === "string") {
-        parts.push(selection);
-      }
-    });
-  }
-
-  // STEP 4: Extract from finishing_selections (Array) - Alternative X-Banner style
-  // Structure: [{ "group_id": "...", "selected_label": "Flexi 280gr" }]
-  if (dims.finishing_selections && Array.isArray(dims.finishing_selections)) {
-    dims.finishing_selections.forEach((selection) => {
-      const label =
-        selection.selected_label ||
-        selection.label ||
-        selection.name ||
-        selection.selected?.label ||
-        selection.selected?.name;
-      if (label) parts.push(label);
-    });
-  }
-
-  // STEP 5: Extract from selected_variant (Object) - Variant-specific info
-  // Structure: { "label": "X-Banner", "specs": "60x160 | Fiber Black" }
-  if (dims.selected_variant && typeof dims.selected_variant === "object") {
-    // Only add specs if they contain useful info (not just dimensions)
-    const specs = dims.selected_variant.specs;
-    if (specs && typeof specs === "string" && specs.includes("|")) {
-      // Extract material part after "|" (e.g., "60x160 | Fiber Black" -> "Fiber Black")
-      const materialPart = specs.split("|")[1]?.trim();
-      if (materialPart) parts.push(materialPart);
-    }
-  }
-
-  // STEP 6: Fallback to simple string fields (if no parts extracted yet)
-  if (parts.length === 0) {
-    if (dims.finishing) parts.push(dims.finishing);
-    else if (item.finishing) parts.push(item.finishing);
-    else if (item.meta?.finishing) parts.push(item.meta.finishing);
-  }
-
-  // STEP 7: Return formatted string or fallback
-  return parts.length > 0 ? parts.join(", ") : "-";
-};
-
 export const NotaPreview = React.forwardRef(
   (
     {
@@ -583,17 +486,18 @@ export const NotaPreview = React.forwardRef(
                         textTransform: "uppercase",
                       }}
                     >
-                      {order?.targetDate || order?.meta?.estimate_date
-                        ? new Date(
-                            order.targetDate || order.meta.estimate_date,
-                          ).toLocaleString("id-ID", {
-                            weekday: "long",
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
+                      {order?.meta?.estimate_date
+                        ? new Date(order.meta.estimate_date).toLocaleString(
+                            "id-ID",
+                            {
+                              weekday: "long",
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )
                         : "-"}
                     </span>
                   </div>
@@ -613,66 +517,98 @@ export const NotaPreview = React.forwardRef(
 
                 {items.map((item, idx) => {
                   const qty = item.quantity || item.qty || 0;
-                  // Smart Variable Mapping (Forensic Fix)
+                  // Strict Variable Mapping from Feasibility Report
                   const dims = item.dimensions || item.specs || {};
+                  
+                  // 🔥 LOGIC FIX: Handle various finishing structures safely
+                  let finishing = "-";
+                  if (dims.finishing) {
+                      finishing = dims.finishing;
+                  } else if (dims.finishing_list && Array.isArray(dims.finishing_list)) {
+                      finishing = dims.finishing_list.map(f => f.name || f).join(", ");
+                  } else if (item.finishing) {
+                      finishing = item.finishing;
+                  }
 
-                  // 🕵️ DEBUG SPK: Log actual item data
-                  console.log(`📋 SPK ITEM #${idx + 1}:`, {
-                    product_name: item.productName || item.product_name,
-                    dims_summary: dims.summary,
-                    dims_material: dims.material,
-                    dims_variantLabel: dims.variantLabel,
-                    item_description: item.description,
-                    item_note: item.note,
-                    item_notes: item.notes,
-                    full_dims: dims,
-                  });
+                  const material = dims.variantLabel || dims.material || dims.variant_name || "-";
+                  
+                  // 🔥 LOGIC FIX: Handle size summary vs dimensions
+                  const size = dims.size_summary || 
+                               (dims.length && dims.width ? `${dims.length}m x ${dims.width}m` : "") || 
+                               item.size_summary || 
+                               "-";
+                               
+                  const notes = item.notes || item.note || "";
 
-                  // 🔥 PRIORITY 1: Use pre-formatted summary from Cart (Gold Standard)
-                  const smartSummary =
-                    dims.summary || dims.description || item.description || "";
+                  return (
+                    <div key={idx} style={{ padding: "15px 0", borderBottom: "1px dashed #ccc" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "15px" }}>
+                        {/* QTY BOX */}
+                        <div style={{ 
+                          fontSize: "24px", 
+                          fontWeight: "900", 
+                          border: "3px solid black", 
+                          padding: "10px 15px", 
+                          minWidth: "60px", 
+                          textAlign: "center",
+                          borderRadius: "8px"
+                        }}>
+                          {qty}x
+                        </div>
 
-                  // 🔥 PRIORITY 2: Individual Components (Fallback)
-                  const variantLabel =
-                    dims.variantLabel ||
-                    dims.material ||
-                    dims.variant_name ||
-                    "";
-                  const sizeInfo =
-                    dims.size_summary ||
-                    (dims.length && dims.width
-                      ? `${dims.length}m x ${dims.width}m`
-                      : "");
+                        {/* SPECS */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "5px" }}>
+                            {item.productName || item.product_name || "ITEM"}
+                          </div>
+                          
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px", fontSize: "12px" }}>
+                            <div>
+                              <span style={{ fontWeight: "bold" }}>Bahan:</span> {material}
+                            </div>
+                            <div>
+                              <span style={{ fontWeight: "bold" }}>Ukuran:</span> {size}
+                            </div>
+                            <div style={{ gridColumn: "span 2" }}>
+                              <span style={{ fontWeight: "bold" }}>Finishing:</span> {finishing}
+                            </div>
+                          </div>
 
-                  // 🔥 SMART DETECTION: Trust summary if it has detail
-                  // Indicators of detailed summary:
-                  // 1. Contains "|" separator (enriched format: "X-Banner | Flexi 280gr")
-                  // 2. Length > 15 characters (not just product name)
-                  const hasDetailedSummary =
-                    smartSummary &&
-                    (smartSummary.includes("|") || smartSummary.length > 15);
+                          {/* NOTES HIGHLIGHT */}
+                          {notes && (
+                            <div style={{ 
+                              marginTop: "8px", 
+                              background: "#fef3c7", 
+                              padding: "8px", 
+                              borderLeft: "4px solid #f59e0b", 
+                              fontStyle: "italic",
+                              fontSize: "14px"
+                            }}>
+                              <strong>Catatan:</strong> {notes}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
 
-                  // FINAL DECISION: Prioritize detailed summary, fallback to manual construction
-                  const displaySpecs = hasDetailedSummary
-                    ? smartSummary
-                    : `${variantLabel} ${sizeInfo}`.trim() ||
-                      smartSummary ||
-                      "-";
+                {/* FOOTER: Operator Signature */}
+                <div style={{ marginTop: "40px", display: "flex", justifyContent: "space-between" }}>
+                  <div style={{ textAlign: "center", width: "40%" }}>
+                    <p style={{ margin: "50px 0 0 0", borderTop: "1px solid black", paddingTop: "5px" }}>
+                      OPERATOR
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "center", width: "40%" }}>
+                    <p style={{ margin: "50px 0 0 0", borderTop: "1px solid black", paddingTop: "5px" }}>
+                      QC / PACKING
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                  console.log(`✅ SPK DISPLAY:`, {
-                    smartSummary,
-                    hasDetailedSummary,
-                    finalDisplaySpecs: displaySpecs,
-                  });
-
-                  // 🔥 FINISHING: Dynamic extraction using helper
-                  const finishing = extractFinishingDetails(dims, item);
-
-                  // Extract notes from all possible sources
-                  const notes =
-                    item.notes || item.note || item.specs?.notes || "";
-
-                  console.log(`📝 SPK NOTES:`, notes);
 
                   return (
                     <div
@@ -718,28 +654,28 @@ export const NotaPreview = React.forwardRef(
 
                           <div
                             style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: "5px",
                               fontSize: "12px",
-                              marginBottom: "5px",
                             }}
                           >
-                            <div style={{ marginBottom: "5px" }}>
-                              <span style={{ fontWeight: "bold" }}>
-                                Spesifikasi:
-                              </span>{" "}
-                              {displaySpecs}
+                            <div>
+                              <span style={{ fontWeight: "bold" }}>Bahan:</span>{" "}
+                              {material}
                             </div>
-                            {/* 🔥 SMART FINISHING DISPLAY: Only show if NOT already in summary */}
-                            {finishing &&
-                              finishing !== "-" &&
-                              !displaySpecs.includes("Fin:") &&
-                              !displaySpecs.includes("Finishing:") && (
-                                <div>
-                                  <span style={{ fontWeight: "bold" }}>
-                                    Finishing:
-                                  </span>{" "}
-                                  {finishing}
-                                </div>
-                              )}
+                            <div>
+                              <span style={{ fontWeight: "bold" }}>
+                                Ukuran:
+                              </span>{" "}
+                              {size}
+                            </div>
+                            <div style={{ gridColumn: "span 2" }}>
+                              <span style={{ fontWeight: "bold" }}>
+                                Finishing:
+                              </span>{" "}
+                              {finishing}
+                            </div>
                           </div>
 
                           {/* NOTES HIGHLIGHT */}
@@ -764,6 +700,36 @@ export const NotaPreview = React.forwardRef(
                 })}
 
                 {/* FOOTER: Operator Signature */}
+                <div
+                  style={{
+                    marginTop: "40px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div style={{ textAlign: "center", width: "40%" }}>
+                    <p
+                      style={{
+                        margin: "50px 0 0 0",
+                        borderTop: "1px solid black",
+                        paddingTop: "5px",
+                      }}
+                    >
+                      OPERATOR
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "center", width: "40%" }}>
+                    <p
+                      style={{
+                        margin: "50px 0 0 0",
+                        borderTop: "1px solid black",
+                        paddingTop: "5px",
+                      }}
+                    >
+                      QC / PACKING
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -892,38 +858,28 @@ export const NotaPreview = React.forwardRef(
                     const unitPrice =
                       item.unit_price || item.unitPrice || item.price || 0;
 
-                    // 🔥 UNIFIED LOGIC: Same robust extraction as SPK
-                    const dims = item.dimensions || item.specs || {};
+                    // Descriptions Logic (Reconstruct)
+                    const specs = item.dimensions || item.specs || {};
+                    let variantName = "";
+                    if (specs.variant_name) variantName = specs.variant_name;
+                    else if (specs.variant_info)
+                      variantName = specs.variant_info;
+                    else if (item.variantName) variantName = item.variantName;
 
-                    // STEP 1: Smart Summary (Priority 1 - Pre-built from Cart)
-                    const smartSummary = dims.summary || item.description || "";
-
-                    // STEP 2: Manual Construction (Priority 2 - For products without summary)
-                    const variantInfo =
-                      dims.variantLabel ||
-                      dims.material ||
-                      dims.variant_name ||
-                      "";
-                    const sizeInfo =
-                      dims.size_summary ||
-                      (dims.length && dims.width
-                        ? `${dims.length}m x ${dims.width}m`
-                        : "");
-
-                    // STEP 3: Combine Main Spec
-                    const mainSpec =
-                      smartSummary || `${variantInfo} ${sizeInfo}`.trim();
-
-                    // STEP 4: Extract Finishing (Dynamic Vacuum Cleaner)
-                    const finishingDetails = extractFinishingDetails(
-                      dims,
-                      item,
-                    );
-
-                    // STEP 5: Build Final Display String
-                    const fullDetailString = [mainSpec, finishingDetails]
-                      .filter((s) => s && s !== "-")
-                      .join(", ");
+                    // Construct Detailed Specs Line
+                    const specParts = [
+                      specs.size_summary ||
+                        (specs.length && specs.width
+                          ? `${specs.length}m x ${specs.width}m`
+                          : "") ||
+                        item.size_summary,
+                      variantName,
+                      specs.finishing ||
+                        (specs.finishing_list
+                          ? specs.finishing_list.map((f) => f.name).join(", ")
+                          : "") ||
+                        item.finishing,
+                    ].filter(Boolean); // Hapus yang kosong
 
                     return (
                       <div
@@ -949,8 +905,8 @@ export const NotaPreview = React.forwardRef(
                           <span>{formatRupiah(subtotal)}</span>
                         </div>
 
-                        {/* Line 2: Full Detail String (Unified Logic) */}
-                        {fullDetailString && (
+                        {/* Line 2: Dynamic Specs (Join relevant fields) */}
+                        {specParts.length > 0 && (
                           <div
                             style={{
                               paddingLeft: "15px",
@@ -959,7 +915,7 @@ export const NotaPreview = React.forwardRef(
                               fontSize: "10px",
                             }}
                           >
-                            {fullDetailString}
+                            {specParts.join(" • ")}
                           </div>
                         )}
 

@@ -1,15 +1,20 @@
 /**
- * Order Store - Zustand (V5.3 - LOGIC RESTORED & VERIFIED)
+ * Order Store - Zustand (V5.4 - OPTIMISTIC UI FIX)
  * State management for order/production tracking
  * Features:
  * - Strict Normalization
  * - Supabase Hybrid Sync
  * - Auto Audit Logging (CCTV)
  * - INTELLIGENT DASHBOARD FEED (Via ownerDecisionEngine)
- * - FIX: Restored Missing Calculation Logic for Monthly View
+ * - FIX: Resolved "White Screen" by fixing imports and syntax
  */
 
 import { create } from "zustand";
+import { v4 as uuid } from "uuid";
+import { supabase } from "../services/supabaseClient";
+import { db } from "../data/db/schema"; // Top-level import for stability
+import { OrderSyncService } from "../services/OrderSyncService"; // Top-level import
+
 import {
   logPOSOrderCreated,
   logPaymentRecorded,
@@ -87,6 +92,8 @@ const internalNormalizeOrder = (dbOrder) => {
   // C. EXPLICIT MAPPING
   return {
     id: dbOrder.id,
+    server_id: dbOrder.id,
+    ref_local_id: dbOrder.ref_local_id || null,
     orderNumber: dbOrder.order_number || dbOrder.orderNumber || "-",
     customerName: dbOrder.customer_name,
     customerPhone: dbOrder.customer_phone,
@@ -125,6 +132,13 @@ const internalNormalizeOrder = (dbOrder) => {
     // Meta
     meta: dbOrder.meta || {},
 
+    // [FIX 3] DEADLINE EXPOSURE (Untuk SPK)
+    targetDate:
+      dbOrder.target_date ||
+      dbOrder.targetDate ||
+      dbOrder.meta?.estimate_date ||
+      null,
+
     // Items
     items: rawItems.map((item) => ({
       id: item.id || Math.random().toString(36).substr(2, 9),
@@ -144,7 +158,7 @@ const internalNormalizeOrder = (dbOrder) => {
       description: buildDescription(item),
 
       // 🔥 FIX: DATA CARRIER (Jangan Buang Dimensions!)
-      dimensions: item.dimensions || {},
+      dimensions: item.dimensions || item.specs || {},
       specs: item.dimensions || item.specs || {}, // Fallback for safety
 
       meta: item.meta || item.metadata || {},
@@ -198,7 +212,6 @@ export const useOrderStore = create((set, get) => ({
     try {
       const safeLimit = Math.min(limit, 100);
       const offset = (page - 1) * safeLimit;
-      const { supabase } = await import("../services/supabaseClient");
 
       if (navigator.onLine && supabase) {
         let query = supabase
@@ -239,7 +252,6 @@ export const useOrderStore = create((set, get) => ({
 
   // 2. LOAD SUMMARY (HYBRID INTELLIGENCE)
   loadSummary: async (dateRange = null) => {
-    const { supabase } = await import("../services/supabaseClient");
     try {
       // A. Fetch Basic Data
       let query = supabase
@@ -437,149 +449,24 @@ export const useOrderStore = create((set, get) => ({
 
   // 3. CREATE ORDER (V2 - ATOMIC RPC)
   createOrder: async (payload) => {
-    // === SPECS STANDARDIZER (KONTRAK FINAL) ===
-    const buildSpecsFromProduct = (item) => {
-      // 🔍 DEBUG: Log item structure to see what fields exist
-      console.log("🏗️ buildSpecsFromProduct INPUT:", {
-        has_pricingType: !!item.pricingType,
-        pricingType_value: item.pricingType,
-        has_pricing_model: !!item.pricing_model,
-        pricing_model_value: item.pricing_model,
-        has_inputMode: !!item.inputMode,
-        inputMode_value: item.inputMode,
-        has_dimensions: !!item.dimensions,
-        dimensions_keys: item.dimensions ? Object.keys(item.dimensions) : null,
-        item_keys: Object.keys(item).slice(0, 15), // First 15 keys
-      });
-
-      const pricingType =
-        item.pricingType ||
-        item.pricing_model ||
-        item.product?.pricing_model ||
-        item.inputMode ||
-        "MANUAL";
-
-      console.log("🏗️ DETECTED pricingType:", pricingType);
-
-      let specs = {
-        type: pricingType,
-        inputs: {},
-        summary: "",
-      };
-
-      // === AREA (Spanduk, Outdoor, MMT) ===
-      if (pricingType === "AREA") {
-        const dims = item.dimensions || {};
-        const length = parseFloat(dims.length || 0);
-        const width = parseFloat(dims.width || 0);
-        const area = parseFloat(dims.area || length * width || 0);
-        const material = dims.variantLabel || dims.material || "Standard";
-        const finishingNames = (
-          item.finishings ||
-          item.metadata?.finishing_list ||
-          []
-        )
-          .map((f) => f.name || f.id)
-          .filter(Boolean);
-
-        specs.inputs = {
-          length,
-          width,
-          area,
-          material,
-          finishing: finishingNames,
-        };
-
-        specs.summary = `${length}m x ${width}m • ${material}`;
-        if (finishingNames.length > 0) {
-          specs.summary += ` • Fin: ${finishingNames.join(", ")}`;
-        }
-      }
-
-      // === LINEAR (Roll, Stiker Meteran) ===
-      else if (pricingType === "LINEAR" || pricingType === "LINEAR_METER") {
-        const dims = item.dimensions || {};
-        const length = parseFloat(dims.length || 0);
-        const width = parseFloat(dims.width || 1);
-        const material = dims.variantLabel || dims.material || "Standard";
-
-        specs.inputs = {
-          length,
-          width,
-          material,
-        };
-
-        specs.summary = `${length}m • ${material}`;
-      }
-
-      // === MATRIX (Poster A0/A1, Plakat) ===
-      else if (pricingType === "MATRIX") {
-        const size =
-          item.dimensions?.sizeKey || item.selected_details?.size || "Custom";
-        const material =
-          item.dimensions?.material ||
-          item.selected_details?.variant ||
-          "Standard";
-
-        specs.inputs = {
-          size,
-          material,
-        };
-
-        specs.summary = `${size} • ${material}`;
-      }
-
-      // === TIERED (Qty-based pricing) ===
-      else if (pricingType === "TIERED") {
-        const variant =
-          item.dimensions?.variantLabel || item.variantLabel || "Standard";
-
-        specs.inputs = {
-          variant,
-          tier: item.pricingSnapshot?.tier || "standard",
-        };
-
-        specs.summary = `${variant}`;
-      }
-
-      // === UNIT / MANUAL / MIXED (Jasa, Merch, Dokumen) ===
-      else {
-        const variant =
-          item.dimensions?.variantLabel ||
-          item.variantLabel ||
-          item.selected_details?.variant ||
-          "Standard";
-
-        specs.inputs = {
-          variant,
-        };
-
-        specs.summary = variant !== "Standard" ? variant : "";
-      }
-
-      // SAFETY NET: Fallback to description or product name
-      if (!specs.summary || specs.summary.trim() === "") {
-        specs.summary =
-          item.description ||
-          item.productName ||
-          item.product_name ||
-          item.name ||
-          "Item";
-      }
-
-      return specs;
-    };
     set({ isLoading: true, error: null });
     try {
       const { items, ...orderHeader } = payload;
       if (!orderHeader.customer_name)
         throw new Error("ORDER REJECTED: Nama customer wajib diisi");
 
-      const { supabase } = await import("../services/supabaseClient");
-      const { v4: uuid } = await import("uuid");
-
       // === BUILD RAW_INTENT PAYLOAD (FIXED: USE CART SPECS DIRECTLY) ===
       const rawItems = items.map((item) => {
+        // 🕵️ DEBUG: SPY ON THE RAW ITEM STRUCTURE
+        if (
+          item.product_name?.includes("DISPLAY") ||
+          item.productName?.includes("DISPLAY") ||
+          item.name?.includes("DISPLAY") ||
+          item.product_id?.includes("display")
+        ) {
+          console.log("🕵️ RAW ITEM PAYLOAD:", JSON.stringify(item, null, 2));
+        }
+
         // 1. CALCULATE FINISHING TOTAL (keep for legacy)
         const sourceFinishings =
           item.finishings || item.metadata?.finishing_list || [];
@@ -637,42 +524,634 @@ export const useOrderStore = create((set, get) => ({
         // 🔥 FIX: STANDARDIZE QUANTITY VARIABLE (Calculated ONCE)
         const finalQty = Number(item.qty || item.quantity || 1);
 
-        // 🔥 FIX: MERGE METADATA INTO SPECS/DIMENSIONS TO SURVIVE DB RPC
-        // The RPC only saves 'specs' -> 'dimensions'. It DROPS 'metadata'.
-        // So we must embed all critical info into 'specs'.
-        const richSpecs = {
-          ...specs,
-          // Inject Metadata Helpers
-          variant_info: specs.summary,
-          finishing_list: sourceFinishings,
-          original_specs: foundSpecs,
-          note: item.notes || "", // Use 'note' key for Smart Merge compatibility
-          notes: item.notes || "",
-        };
+        // 🕵️ DEBUG: Check item fields BEFORE isUnitType detection
+        console.log("🔍 PRE-CHECK ITEM:", {
+          product_name: productName,
+          input_mode: item.input_mode,
+          pricing_type: item.pricing_type,
+          price_mode: item.price_mode,
+          product_id: item.product_id,
+          productId: item.productId,
+        });
+
+        // 🔥 PHASE 1 FIX: UNIT PRODUCT DATA CAPTURE (X-Banner / Display System)
+        // Detect if this is a UNIT-type product
+        const isUnitType =
+          item.input_mode === "UNIT" ||
+          item.pricing_type === "UNIT" ||
+          item.price_mode === "UNIT" ||
+          (item.product_id && item.product_id.includes("display"));
+
+        // Capture hidden data for UNIT products
+        let enrichedDimensions = item.dimensions || item.specs || {};
+        let enrichedMaterialId =
+          item.dimensions?.materialId ||
+          item.dimensions?.variantId ||
+          item.selected_details?.material_id ||
+          null;
+        let enrichedSizeId =
+          item.dimensions?.sizeKey ||
+          item.dimensions?.selectedVariant?.label ||
+          item.selected_details?.size_id ||
+          null;
+
+        if (isUnitType) {
+          console.log(
+            "🔧 UNIT TYPE DETECTED:",
+            productName,
+            "| Processing material extraction...",
+          );
+
+          // STEP 1: Extract variant/material from CORRECT SOURCES
+          // 🔥 CRITICAL: Material data for X-Banner is in finishing_list array
+          const finishingList =
+            item.finishing_list || item.metadata?.finishing_list || [];
+          const selectedFinishing = item.selected_finishing || {};
+          const finishingSelections = item.finishing_selections || [];
+          const selectedVariant = item.selected_variant || {};
+
+          console.log("📦 Data Sources:", {
+            finishing_list_count: finishingList.length,
+            has_selected_finishing: Object.keys(selectedFinishing).length > 0,
+            has_selected_variant: Object.keys(selectedVariant).length > 0,
+            dimensions_inputs: item.dimensions?.inputs,
+          });
+
+          // STEP 2: Build material label from available sources
+          let materialLabel = "";
+          let variantLabel = "";
+          let sizeLabel = "";
+
+          // 🔥 PRIORITY 1: Check finishing_list (PRIMARY SOURCE for X-Banner)
+          // For Display System, material (Flexi 280gr, Albatros, etc.) is stored as finishing
+          if (finishingList.length > 0) {
+            const firstFinishing = finishingList[0];
+            materialLabel =
+              firstFinishing.name ||
+              firstFinishing.label ||
+              firstFinishing.id ||
+              "";
+
+            if (materialLabel) {
+              console.log(
+                "✅ Material FOUND in finishing_list[0]:",
+                materialLabel,
+              );
+            } else {
+              console.warn(
+                "⚠️ finishing_list[0] exists but has no name/label/id:",
+                firstFinishing,
+              );
+            }
+          } else {
+            console.warn("⚠️ finishing_list is EMPTY - checking fallbacks...");
+          }
+
+          // PRIORITY 2: Try selected_finishing (Legacy/Fallback)
+          if (!materialLabel && selectedFinishing.material) {
+            materialLabel = selectedFinishing.material;
+            console.log(
+              "✅ Material from selected_finishing.material:",
+              materialLabel,
+            );
+          }
+          if (!materialLabel && selectedFinishing.label) {
+            materialLabel = selectedFinishing.label;
+            console.log(
+              "✅ Material from selected_finishing.label:",
+              materialLabel,
+            );
+          }
+
+          // PRIORITY 3: Try selected_variant (Merch/ATK pattern)
+          if (!materialLabel && selectedVariant.material) {
+            materialLabel = selectedVariant.material;
+            console.log(
+              "✅ Material from selected_variant.material:",
+              materialLabel,
+            );
+          }
+
+          // PRIORITY 4: Try dimensions.inputs.variant (X-Banner variant name)
+          if (!variantLabel && item.dimensions?.inputs?.variant) {
+            variantLabel = item.dimensions.inputs.variant;
+            console.log(
+              "✅ Variant from dimensions.inputs.variant:",
+              variantLabel,
+            );
+          }
+
+          // Extract size if available
+          if (selectedVariant.size) {
+            sizeLabel = selectedVariant.size;
+          } else if (selectedFinishing.size) {
+            sizeLabel = selectedFinishing.size;
+          }
+
+          // STEP 3: Build enriched summary
+          const originalSummary = enrichedDimensions.summary || productName;
+          let enrichedSummary = originalSummary;
+
+          // Only enrich if we found material data
+          if (materialLabel || variantLabel) {
+            const detailPart = materialLabel || variantLabel;
+            enrichedSummary = `${originalSummary} | ${detailPart}${sizeLabel ? ` | ${sizeLabel}` : ""}`;
+            console.log("📝 Enriched Summary Created:", enrichedSummary);
+          } else {
+            console.error(
+              "❌ CRITICAL: No material data found for UNIT product:",
+              productName,
+            );
+            console.error("Raw item data:", {
+              finishing_list: finishingList,
+              selected_finishing: selectedFinishing,
+              selected_variant: selectedVariant,
+              dimensions_inputs: item.dimensions?.inputs,
+            });
+          }
+
+          // STEP 4: Merge captured data into dimensions
+          enrichedDimensions = {
+            ...enrichedDimensions,
+            // Preserve original
+            ...(item.dimensions || {}),
+            // Inject captured fields (CRITICAL for rendering)
+            material:
+              materialLabel || variantLabel || enrichedDimensions.material,
+            variantLabel:
+              variantLabel || materialLabel || enrichedDimensions.variantLabel,
+            size: sizeLabel || enrichedDimensions.size,
+            // Enrich summary with material info
+            summary: enrichedSummary,
+            // Store raw sources for debugging
+            _unit_capture: {
+              selected_finishing: selectedFinishing,
+              selected_variant: selectedVariant,
+              finishing_selections: finishingSelections,
+              finishing_list: finishingList,
+            },
+          };
+
+          console.log("🎯 Final enrichedDimensions:", {
+            material: enrichedDimensions.material,
+            variantLabel: enrichedDimensions.variantLabel,
+            summary: enrichedDimensions.summary,
+          });
+
+          // STEP 5: Update IDs if we found labels
+          if (materialLabel || variantLabel) {
+            enrichedMaterialId =
+              enrichedMaterialId || materialLabel || variantLabel;
+          }
+          if (sizeLabel) {
+            enrichedSizeId = enrichedSizeId || sizeLabel;
+          }
+
+          console.log("🔧 UNIT Product Enriched:", {
+            product: productName,
+            material: enrichedMaterialId,
+            size: enrichedSizeId,
+            summary: enrichedDimensions.summary,
+          });
+        }
+
+        // 🔥 PHASE 2 FIX: MATRIX PRODUCT DATA CAPTURE (Poster)
+        const isMatrixType =
+          item.pricing_type === "MATRIX" ||
+          item.pricingType === "MATRIX" ||
+          item.dimensions?.type === "MATRIX" ||
+          item.specs?.type === "MATRIX";
+
+        if (isMatrixType) {
+          console.log(
+            "📐 MATRIX TYPE DETECTED:",
+            productName,
+            "| Processing finishing & notes...",
+          );
+
+          // STEP 1: Extract & Append Finishing to Summary
+          const finishingList =
+            item.finishings ||
+            item.finishing_list ||
+            item.metadata?.finishing_list ||
+            [];
+
+          if (finishingList.length > 0) {
+            const finishingNames = finishingList
+              .map((f) => f.name || f.label || f.id)
+              .filter(Boolean);
+            const finishingText = finishingNames.join(", ");
+
+            console.log("🎨 Finishing extracted:", finishingText);
+
+            // Append if not already present
+            if (
+              finishingText &&
+              !enrichedDimensions.summary?.includes(finishingText)
+            ) {
+              enrichedDimensions = {
+                ...enrichedDimensions,
+                summary: `${enrichedDimensions.summary || ""} | ${finishingText}`,
+              };
+              console.log("📝 Summary enriched:", enrichedDimensions.summary);
+            }
+          }
+
+          console.log("🎯 Final MATRIX dimensions:", {
+            summary: enrichedDimensions.summary,
+          });
+        }
+
+        // 🔥 PHASE 3 FIX: LINEAR PRODUCT DATA CAPTURE (Textile/Rolls)
+        const isLinearType =
+          item.categoryId === "CAT_ROLLS" ||
+          item.category_id === "CAT_ROLLS" ||
+          item.pricing_type === "LINEAR" ||
+          item.pricingType === "LINEAR" ||
+          item.dimensions?.type === "LINEAR" ||
+          item.specs?.type === "LINEAR";
+
+        if (isLinearType) {
+          console.log(
+            "📏 LINEAR TYPE DETECTED:",
+            productName,
+            "| Processing finishing, notes & material...",
+          );
+
+          // STEP 1: Extract & Append Finishing to Summary
+          const finishingList =
+            item.finishings ||
+            item.finishing_list ||
+            item.metadata?.finishing_list ||
+            [];
+
+          if (finishingList.length > 0) {
+            const finishingNames = finishingList
+              .map((f) => f.name || f.label || f.id)
+              .filter(Boolean);
+            const finishingText = finishingNames.join(", ");
+
+            console.log("✂️ Finishing extracted:", finishingText);
+
+            // Append if not already present
+            if (
+              finishingText &&
+              !enrichedDimensions.summary?.includes(finishingText)
+            ) {
+              enrichedDimensions = {
+                ...enrichedDimensions,
+                summary: `${enrichedDimensions.summary || ""} | ${finishingText}`,
+              };
+              console.log("📝 Summary enriched:", enrichedDimensions.summary);
+            }
+          }
+
+          // STEP 2: Capture Material ID from dimensions.inputs
+          if (!enrichedMaterialId && enrichedDimensions.inputs?.material) {
+            enrichedMaterialId = enrichedDimensions.inputs.material;
+            console.log("🧵 Material ID captured:", enrichedMaterialId);
+          }
+
+          console.log("🎯 Final LINEAR enrichment:", {
+            summary: enrichedDimensions.summary,
+            material_id: enrichedMaterialId,
+          });
+        }
+
+        // 🔥 PHASE 4: MERCH_APPAREL FIX (Jersey, Kaos, Mug)
+        const isMerchApparel =
+          item.categoryId === "MERCH_APPAREL" ||
+          item.category_id === "MERCH_APPAREL";
+
+        if (isMerchApparel) {
+          console.log(
+            "👕 MERCH_APPAREL TYPE DETECTED:",
+            productName,
+            "| Processing finishing, attributes, notes & variant...",
+          );
+
+          // STEP 1: Collect ALL Extra Info (Finishing + Attributes)
+          const extras = [];
+
+          // Extract Finishings
+          const finishingList =
+            item.finishings ||
+            item.finishing_list ||
+            item.metadata?.finishing_list ||
+            [];
+
+          finishingList.forEach((f) => {
+            const name = f.name || f.label || f.id;
+            if (name) extras.push(name);
+          });
+
+          console.log("🎨 Finishings extracted:", finishingList.length);
+
+          // Extract Attributes (Color/Size for Merch if not in variant)
+          if (item.attributes && typeof item.attributes === "object") {
+            Object.entries(item.attributes).forEach(([key, val]) => {
+              if (
+                val &&
+                key !== "notes" &&
+                typeof val === "string" &&
+                val.trim()
+              ) {
+                extras.push(val);
+              }
+            });
+            console.log(
+              "🏷️ Attributes extracted:",
+              Object.keys(item.attributes).length,
+            );
+          }
+
+          // STEP 2: Append to Summary
+          const extraText = extras.filter(Boolean).join(", ");
+          if (extraText && !enrichedDimensions.summary?.includes(extraText)) {
+            enrichedDimensions = {
+              ...enrichedDimensions,
+              summary: `${enrichedDimensions.summary || ""} | ${extraText}`,
+            };
+            console.log("📝 Summary enriched:", enrichedDimensions.summary);
+          }
+
+          // STEP 3: Capture Variant/Material ID from multiple sources
+          if (!enrichedMaterialId) {
+            enrichedMaterialId =
+              enrichedDimensions.inputs?.variant ||
+              item.selected_variant?.name ||
+              item.selected_variant?.label ||
+              null;
+
+            if (enrichedMaterialId) {
+              console.log("🏷️ Variant ID captured:", enrichedMaterialId);
+            }
+          }
+
+          console.log("🎯 Final MERCH_APPAREL enrichment:", {
+            summary: enrichedDimensions.summary,
+            material_id: enrichedMaterialId,
+            extras_count: extras.length,
+          });
+        }
+
+        // 🔥 PHASE 5: STATIONERY (MATERIAL-BASED) FIX
+        // Applies to: Yasin, Stempel, Kop, Kalender (Products using Materials as Main Variants)
+        // EXCLUDES: Nota (handled by Matrix logic)
+        const stationeryMaterialKeywords = [
+          "yasin",
+          "stempel",
+          "kop_surat",
+          "piagam",
+          "stopmap",
+          "kalender",
+          "map_ijazah",
+          "brosur",
+          "amplop",
+        ];
+
+        // Safe product_id check (whitelist approach)
+        const isMaterialStationery =
+          item.product_id &&
+          stationeryMaterialKeywords.some((key) =>
+            item.product_id.includes(key),
+          );
+
+        if (isMaterialStationery) {
+          console.log(
+            "📚 STATIONERY (MATERIAL) DETECTED:",
+            item.product_id,
+            "| Processing material, finishing & notes...",
+          );
+
+          // STEP 1: CAPTURE MAIN SPEC (Material/Variant Name)
+          // Audit shows Yasin stores "Softcover 180" in inputs.variant OR inputs.material
+          const mainSpec =
+            enrichedDimensions.inputs?.variant ||
+            enrichedDimensions.inputs?.material ||
+            enrichedDimensions.variantLabel ||
+            item.selected_variant?.name ||
+            "";
+
+          console.log("📖 Main spec (material):", mainSpec);
+
+          // STEP 2: FORCE SET material_id (Crucial for Reporting & SPK)
+          // Database expects material name (e.g., "Softcover 180")
+          if (!enrichedMaterialId && mainSpec) {
+            enrichedMaterialId = mainSpec;
+            console.log("🏷️ Material ID captured:", enrichedMaterialId);
+          }
+
+          // STEP 3: EXTRACT FINISHINGS
+          const finishingList =
+            item.finishings ||
+            item.finishing_list ||
+            item.metadata?.finishing_list ||
+            [];
+
+          const finishingNames = finishingList
+            .map((f) => f.name || f.label || f.id)
+            .filter(Boolean);
+          const finishingText = finishingNames.join(", ");
+
+          console.log("📎 Finishings:", finishingText || "(none)");
+
+          // STEP 4: ENRICH SUMMARY WITH FINISHINGS
+          // Start with existing summary OR the captured main spec
+          let newSummary = enrichedDimensions.summary || mainSpec;
+
+          // Append finishing (avoid duplicates)
+          if (finishingText && !newSummary.includes(finishingText)) {
+            newSummary = `${newSummary} | ${finishingText}`;
+            console.log("📝 Summary enriched:", newSummary);
+          }
+
+          // Apply enriched summary
+          enrichedDimensions = {
+            ...enrichedDimensions,
+            summary: newSummary,
+          };
+
+          console.log("🎯 Final STATIONERY enrichment:", {
+            summary: enrichedDimensions.summary,
+            material_id: enrichedMaterialId,
+            finishing_count: finishingNames.length,
+          });
+        }
+
+        // 👕 PHASE 4: MERCH & APPAREL ENRICHMENT (Lanyard, Jersey, Kaos)
+        // Detect via category OR product ID keywords (CASE-INSENSITIVE)
+        const merchKeywords = ["MERCH", "LANYARD", "JERSEY", "KAOS"];
+        const productIdUpper = (item.product_id || "").toUpperCase();
+        const isMerchProduct =
+          item.categoryId === "MERCH_APPAREL" ||
+          merchKeywords.some((key) => productIdUpper.includes(key));
+
+        if (isMerchProduct) {
+          console.log(
+            "👕 MERCH/APPAREL DETECTED:",
+            item.product_id,
+            "| Processing variant + finishings...",
+          );
+
+          // STEP 1: CAPTURE MAIN SPEC (Material/Variant from Frontend)
+          // Lanyard stores "Lanyard Tissue 2cm" in inputs.variant OR variantLabel
+          const mainSpec =
+            enrichedDimensions.inputs?.variant ||
+            enrichedDimensions.variantLabel ||
+            item.selected_variant?.name ||
+            "";
+
+          console.log("🏷️ Main spec (variant):", mainSpec);
+
+          // STEP 2: EXTRACT FINISHINGS (Crucial for Lanyard: Stoppers, Hooks)
+          // Check all possible sources for finishings
+          let finishingList =
+            item.finishings ||
+            item.finishing_list ||
+            item.metadata?.finishing_list ||
+            [];
+
+          const finishingNames = finishingList
+            .map((f) => f.name || f.label || f.id)
+            .filter(Boolean);
+          const finishingText = finishingNames.join(", ");
+
+          console.log("📎 Finishings:", finishingText || "(none)");
+
+          // STEP 3: ENRICH SUMMARY WITH FINISHINGS
+          // Start with existing summary OR the captured main spec
+          let newSummary = enrichedDimensions.summary || mainSpec;
+
+          // Append finishing (avoid duplicates)
+          if (finishingText && !newSummary.includes(finishingText)) {
+            newSummary = `${newSummary} | ${finishingText}`;
+            console.log("📝 MERCH Summary enriched:", newSummary);
+          }
+
+          // Apply enriched summary
+          enrichedDimensions = {
+            ...enrichedDimensions,
+            summary: newSummary,
+          };
+
+          console.log("🎯 Final MERCH/APPAREL enrichment:", {
+            summary: enrichedDimensions.summary,
+            finishing_count: finishingNames.length,
+          });
+        }
+
+        // 🔥 PHASE 6: DIGITAL A3 PRO FIX (Universal: Booklet, Stiker, Kartu Nama)
+        // Covers all products in DIGITAL_A3_PRO category including Stiker & Kartu Nama
+        const isBookletOrA3 =
+          item.categoryId === "DIGITAL_A3_PRO" ||
+          enrichedDimensions.type === "BOOKLET" ||
+          item.product_id === "master_print_dokumen" ||
+          item.product_id === "cetak_majalah_a4" ||
+          item.product_id === "master_stiker_a3" || // ✅ Explicitly include Stiker
+          item.product_id === "master_kartu_nama";
+
+        if (isBookletOrA3) {
+          console.log(
+            "🖨️ A3 PRO DETECTED (Universal):",
+            productName,
+            "| Processing main spec + finishings...",
+          );
+
+          // STEP 1: CAPTURE MAIN SPEC (Hybrid Strategy)
+          // - Booklet uses 'paper'
+          // - Stiker/Kartu Nama uses 'variant'
+          const mainSpec =
+            enrichedDimensions.inputs?.paper ||
+            enrichedDimensions.inputs?.variant ||
+            enrichedDimensions.variantLabel ||
+            "";
+
+          console.log("📄 Main Spec detected:", mainSpec);
+
+          // Force set material_id if not already set
+          if (!enrichedMaterialId && mainSpec) {
+            enrichedMaterialId = mainSpec;
+            console.log("🏷️ Material ID captured:", mainSpec);
+          }
+
+          // STEP 2: EXTRACT FINISHINGS (Universal Source)
+          // A3 Calculator puts finishings in metadata.finishing_list
+          let finishingList =
+            item.finishings ||
+            item.finishing_list ||
+            item.metadata?.finishing_list ||
+            [];
+
+          const finishingNames = finishingList
+            .map((f) => f.name || f.label || f.id)
+            .filter(Boolean);
+          const finishingText = finishingNames.join(", ");
+
+          console.log("📎 Finishings:", finishingText || "(none)");
+
+          // STEP 3: ENRICH SUMMARY
+          // Start with existing summary OR main spec
+          let newSummary = enrichedDimensions.summary || mainSpec;
+
+          // Append finishing if exists and not already present
+          if (finishingText && !newSummary.includes(finishingText)) {
+            // Use Pipe separator for clear distinction
+            newSummary = `${newSummary} | ${finishingText}`;
+            console.log("📝 A3 Summary enriched:", newSummary);
+          }
+
+          // Apply enriched summary
+          enrichedDimensions = {
+            ...enrichedDimensions,
+            summary: newSummary,
+          };
+
+          console.log("🎯 Final A3 PRO enrichment:", {
+            summary: enrichedDimensions.summary,
+            material_id: enrichedMaterialId,
+            finishing_count: finishingNames.length,
+          });
+        }
+
+        // 🔍 DEBUG: Trace note sources BEFORE return
+        console.log("📝 NOTE SOURCES CHECK:", {
+          product: productName,
+          "item.note": item.note,
+          "item.notes": item.notes,
+          "selected_details.notes": item.selected_details?.notes,
+          "attributes.notes": item.attributes?.notes,
+          "specs.notes": item.specs?.notes,
+        });
 
         return {
           product_id: item.productId || item.product_id,
           product_name: productName,
 
-          material_id:
-            item.dimensions?.materialId ||
-            item.dimensions?.variantId ||
-            item.selected_details?.material_id ||
-            null,
-          size_id:
-            item.dimensions?.sizeKey ||
-            item.dimensions?.selectedVariant?.label ||
-            item.selected_details?.size_id ||
-            null,
+          material_id: enrichedMaterialId,
+          size_id: enrichedSizeId,
           quantity: finalQty,
 
           unit_price: finalUnitPrice,
           // 🔥 FIX: FORCE RECALCULATE SUBTOTAL (Trust Math, Not Input)
           subtotal: finalUnitPrice * finalQty,
 
-          // 🔥 SPECS MAPPING (Legacy Table Support)
-          dimensions: richSpecs, // Map richSpecs -> dimensions column
-          specs: richSpecs, // Keep specs key for RPC
+          // 🔥 CRITICAL FIX: Both dimensions AND specs must use enriched data
+          // SPK/NOTA may read from either field depending on database schema
+          dimensions: enrichedDimensions,
+          specs: enrichedDimensions, // ✅ Use enriched data, not raw item.specs
+
+          // Force copy the note from all possible sources
+          note:
+            item.note ||
+            item.notes ||
+            item.selected_details?.notes ||
+            item.attributes?.notes ||
+            item.specs?.notes ||
+            "",
+
+          // Ensure metadata survives
+          meta: item.meta || {},
 
           // LEGACY METADATA (keep for backward compatibility - local only)
           metadata: {
@@ -683,12 +1162,37 @@ export const useOrderStore = create((set, get) => ({
             finishing_total: finishingTotal,
             finishing_list: sourceFinishings,
             price_source: "frontend_calculator",
-            notes: item.notes || "",
+            notes:
+              item.notes ||
+              item.selected_details?.notes ||
+              item.attributes?.notes ||
+              "",
             calc_debug: `qty(${finalQty}) * unit(${finalUnitPrice}) = ${finalUnitPrice * finalQty}`,
           },
 
-          notes: item.notes || "",
+          // 🔥 FIX: Sync notes field with note field (check all sources)
+          notes:
+            item.note ||
+            item.notes ||
+            item.selected_details?.notes ||
+            item.attributes?.notes ||
+            item.specs?.notes ||
+            "",
         };
+      });
+
+      // 🕵️ DEBUG: Check final payload BEFORE sending to Supabase
+      console.log(
+        "💾 FINAL PAYLOAD TO DATABASE:",
+        JSON.stringify(rawItems, null, 2),
+      );
+      rawItems.forEach((item, idx) => {
+        console.log(`📦 ITEM ${idx + 1} DIMENSIONS:`, {
+          product: item.product_name,
+          dimensions_summary: item.dimensions?.summary,
+          dimensions_material: item.dimensions?.material,
+          dimensions_full: item.dimensions,
+        });
       });
 
       const rawIntent = {
@@ -717,6 +1221,9 @@ export const useOrderStore = create((set, get) => ({
         is_tempo: payload.is_tempo || false,
         production_status: payload.production_status || "PENDING",
 
+        // [FIX 5] LIFT DEADLINE TO ROOT (Critical for SPK)
+        target_date: payload.target_date || payload.meta?.target_date || null,
+
         meta: {
           received_by: payload.received_by || "Kasir",
           production_priority:
@@ -728,119 +1235,84 @@ export const useOrderStore = create((set, get) => ({
         },
       };
 
-      // === ONLINE PATH: Single RPC Call ===
+      // === OPTIMISTIC UI: SAVE LOCAL & RETURN IMMEDIATELY ===
       try {
-        // 🏗️ DEBUG: Log specs untuk setiap item (NOW AT ITEM LEVEL)
-        console.log(
-          "🏗️ CHECKOUT PAYLOAD SPECS:",
-          rawItems.map((item) => ({
-            product: item.product_name,
-            specs_type: item.specs.type,
-            specs_summary: item.specs.summary,
-            specs_inputs: item.specs.inputs,
-            has_metadata_specs: !!item.metadata?.specs, // Should be undefined now
-          })),
-        );
-
-        // 🔍 DEBUG: Log payload sebelum kirim ke RPC
-        console.log(
-          "🔍 PAYLOAD SENT TO RPC:",
-          JSON.stringify(rawIntent, null, 2),
-        );
-
-        // 🔥 GUARD: Validate Payment Payload
-        if (!rawIntent.payment || rawIntent.payment.amount === undefined) {
-          throw new Error("INVALID_PAYMENT_PAYLOAD: Payment object missing");
-        }
-
-        const { data: rpcResult, error: rpcError } = await supabase.rpc(
-          "create_pos_order_notary",
-          { p_payload: rawIntent },
-        );
-
-        if (rpcError) throw rpcError;
-        if (!rpcResult.success) {
-          throw new Error(rpcResult.error || rpcResult.message || "RPC Failed");
-        }
-
-        // Log result
-        if (rpcResult.is_duplicate) {
-          console.log(
-            "♻️ Idempotent: Returning existing order",
-            rpcResult.order_id,
-          );
-        } else {
-          logPOSOrderCreated(
-            rpcResult.order_id,
-            rpcResult.order_number,
-            payload.received_by || "Kasir",
-          );
-        }
-
-        // Fetch full order for UI normalization
-        const { data: fullOrder } = await supabase
-          .from("orders")
-          .select(`*, items_snapshot, items:order_items(*)`)
-          .eq("id", rpcResult.order_id)
-          .single();
-
-        const normalizedOrder = internalNormalizeOrder(fullOrder);
-
-        set((state) => ({
-          orders: [normalizedOrder, ...state.orders],
-          loading: false,
-        }));
-
-        return normalizedOrder;
-      } catch (supabaseError) {
-        // === OFFLINE PATH: Save RAW INTENT Only (No Price Calculations) ===
-        console.warn(
-          "⚠️ RPC failed. Saving RAW INTENT to local Dexie:",
-          supabaseError,
-        );
-
-        const db = (await import("../data/db/schema")).default;
+        // 1. GENERATE LOCAL ID
         const localOrderId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const localOrderNumber = `LOCAL-${Date.now()}`;
+        const localCreatedAt = new Date().toISOString();
 
-        // Build offline RAW INTENT (Authority-Preserving)
+        // 2. BUILD PROPER OFFLINE INTENT (Authority-Preserving)
         const offlineIntent = {
+          // ID & SYNC TRACKING
           id: localOrderId,
-          orderNumber: `LOCAL-${Date.now()}`,
+          ref_local_id: localOrderId, // Critical for Idempotency
+          status: "PENDING_LOCAL", // Dexie Status
+          sync_status: "PENDING", // Sync Service Status
+          sync_attempts: 0,
+          local_created_at: localCreatedAt,
+          createdAt: localCreatedAt, // For UI sorting
+          orderNumber: localOrderNumber,
+
+          // DATA PAYLOAD
           customer: rawIntent.customer,
-          items: rawItems,
+          items: rawItems, // Full items with specs & metadata
           payment: rawIntent.payment,
           meta: {
             ...rawIntent.meta,
-            source_version: "offline_fallback",
+            source_version: "optimistic_ui_v1",
           },
           idempotency_key: rawIntent.idempotency_key,
-          status: "PENDING_LOCAL",
-          local_created_at: new Date().toISOString(),
-          sync_error: supabaseError.message,
+
+          // [FIX 5b] PERSIST DEADLINE (Offline Intent)
+          target_date: rawIntent.target_date,
+
+          // FINANCIALS (TRUSTED FRONTEND CALCULATION)
+          total_amount: rawIntent.total_amount,
+          discount_amount: rawIntent.discount_amount,
+          tax_amount: rawIntent.tax_amount,
+          paid_amount: rawIntent.payment.amount,
+          remaining_amount: rawIntent.remaining_amount,
+          payment_status: rawIntent.payment_status,
+          is_tempo: rawIntent.is_tempo,
+          production_status: rawIntent.production_status,
         };
 
-        await db.orders.put(offlineIntent);
+        // 3. SAVE TO DEXIE (NON-BLOCKING AWAIT)
+        console.log("💾 Optimistic Save:", localOrderNumber);
+        await db.orders.add(offlineIntent);
 
-        console.log(
-          "💾 RAW INTENT saved to local Dexie (no price calculations):",
-          localOrderId,
+        // 4. TRIGGER BACKGROUND SYNC (FIRE & FORGET)
+        // We do NOT await this. Let it run in background.
+        OrderSyncService.syncOfflineOrders().catch((err) =>
+          console.error("⚠️ Background Sync Trigger Failed:", err),
         );
 
-        // Return minimal order object for UI
-        set({ loading: false });
-        return {
-          id: localOrderId,
-          orderNumber: offlineIntent.orderNumber,
+        // 5. UPDATE LOCAL STATE (UI LOOKS INSTANT)
+        // Normalize for UI consumption
+        const uiOrder = {
+          ...offlineIntent,
+          // Map DB fields to UI expected fields if necessary
           customerName: offlineIntent.customer.name,
           customerPhone: offlineIntent.customer.phone,
-          items: items,
-          totalAmount: 0,
-          paidAmount: offlineIntent.payment.amount,
-          remainingAmount: 0,
-          paymentStatus: "PENDING_LOCAL",
-          productionStatus: "PENDING",
-          createdAt: offlineIntent.local_created_at,
+          items: rawItems,
+          totalAmount: offlineIntent.total_amount,
+          paidAmount: offlineIntent.paid_amount,
+          remainingAmount: offlineIntent.remaining_amount,
+          paymentStatus: offlineIntent.payment_status,
         };
+
+        set((state) => ({
+          orders: [uiOrder, ...state.orders],
+          loading: false,
+        }));
+
+        console.log("✅ Optimistic Order Created:", uiOrder);
+        return uiOrder;
+      } catch (err) {
+        console.error("❌ CRITICAL: Failed to save local order:", err);
+        set({ loading: false });
+        throw new Error("Gagal menyimpan order lokal: " + err.message);
       }
     } catch (err) {
       console.error("❌ Order creation failed:", err);
@@ -849,425 +1321,304 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // 4. REALTIME SUBSCRIPTION (LIVE UPDATE) 📡
-  subscribeToOrders: async () => {
-    const { supabase } = await import("../services/supabaseClient");
-    if (!supabase) return;
+  // ... (Pastikan import OrderSyncService dan loggers ada di paling atas file)
+  // import { OrderSyncService } from "../services/OrderSyncService";
+  // import { logOrderStatusChanged, logPaymentRecorded, logOrderCancelled } from "../utils/eventLogger";
 
-    // Prevent duplicate subscription
-    if (get().realtimeSubscription) return;
+  // === HELPER: OMNI-SEARCH (PENCARIAN CERDAS) ===
+  // Mencari order di Dexie berdasarkan ID Lokal, UUID Server, atau Nomor Nota
+  // === HELPER: OMNI-SEARCH & SELF-HEALING ===
+  // Mencari order di Dexie. Jika tidak ada tapi ada di State (Cloud),
+  // otomatis simpan ke Dexie (Hydration) agar bisa diedit offline.
+  _resolveOrder: async (idOrString) => {
+    if (!idOrString) return null;
 
-    console.log("📡 Subscribing to Realtime Orders...");
+    // 1. Cek Primary Key (ID Lokal)
+    let order = await db.orders.get(idOrString);
+    if (order) return order;
 
-    const subscription = supabase
-      .channel("public:orders")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        (payload) => {
-          console.log("🔔 New Order Received:", payload.new);
-          const newOrder = internalNormalizeOrder(payload.new);
+    // 2. Cek Server ID (Jika UI mengirim UUID dari Supabase)
+    order = await db.orders.where("server_id").equals(idOrString).first();
+    if (order) return order;
 
-          set((state) => ({
-            orders: [newOrder, ...state.orders],
-            // Update filtered if it matches current filter (simplified: just add it)
-            filteredOrders: [newOrder, ...state.filteredOrders],
-            totalOrders: state.totalOrders + 1,
-          }));
+    // 3. Cek Order Number (Backup terakhir)
+    order = await db.orders.where("orderNumber").equals(idOrString).first();
+    if (order) return order;
 
-          // Refresh Summary to update badges
-          get().loadSummary();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders" },
-        (payload) => {
-          console.log("🔔 Order Updated:", payload.new);
-          // Partial update to avoid full re-normalization overhead if possible,
-          // but safer to normalize to ensure consistency
-          const updatedOrder = internalNormalizeOrder(payload.new);
-
-          set((state) => ({
-            orders: state.orders.map((o) =>
-              o.id === updatedOrder.id ? updatedOrder : o,
-            ),
-            filteredOrders: state.filteredOrders.map((o) =>
-              o.id === updatedOrder.id ? updatedOrder : o,
-            ),
-          }));
-
-          // Refresh Summary to update badges/totals
-          get().loadSummary();
-        },
-      )
-      .subscribe();
-
-    set({ realtimeSubscription: subscription });
-  },
-
-  unsubscribeFromOrders: () => {
-    const sub = get().realtimeSubscription;
-    if (sub) {
-      console.log("🔕 Unsubscribing from Realtime Orders...");
-      sub.unsubscribe();
-      set({ realtimeSubscription: null });
-    }
-  },
-
-  // 5. UPDATE ORDER
-  updateOrder: async (id, updates) => {
-    set({ loading: true, error: null });
-    try {
-      const { supabase } = await import("../services/supabaseClient");
-      const dbUpdates = {};
-      const fieldMap = {
-        productionStatus: "production_status",
-        paymentStatus: "payment_status",
-        paidAmount: "paid_amount",
-        remainingAmount: "remaining_amount",
-        dpAmount: "dp_amount",
-        completedAt: "completed_at",
-        deliveredAt: "delivered_at",
-        cancelReason: "cancel_reason",
-        cancelledAt: "cancelled_at",
-        financialAction: "financial_action",
-        receivedBy: "received_by",
-        assignedTo: "assigned_to",
-      };
-
-      Object.keys(updates).forEach((key) => {
-        if (fieldMap[key]) dbUpdates[fieldMap[key]] = updates[key];
-        else dbUpdates[key] = updates[key];
-      });
-
-      if (navigator.onLine && Object.keys(dbUpdates).length > 0) {
-        await supabase.from("orders").update(dbUpdates).eq("id", id);
-      }
-
-      set((state) => ({
-        orders: state.orders.map((order) =>
-          order.id === id ? { ...order, ...updates } : order,
-        ),
-        loading: false,
-      }));
-    } catch (error) {
-      console.error("Update Error:", error);
-      set({ error: error.message, loading: false });
-      throw error;
-    }
-  },
-
-  // 5. HELPER ACTIONS
-  searchOrders: async (query) => {
-    if (!query || query.trim() === "") {
-      set({ searchQuery: "" });
-      return get().loadOrders({ page: 1, limit: 20 });
-    }
-    set({ loading: true, searchQuery: query.trim() });
-    try {
-      get().loadOrders({ page: 1, limit: 50 });
-    } catch (error) {
-      set({ error: error.message, loading: false });
-    }
-  },
-
-  // === ACTION BUTTONS ===
-
-  payOrder: async (
-    orderId,
-    amount,
-    receivedBy = "Kasir",
-    paymentMethod = "CASH",
-  ) => {
-    set({ loading: true, error: null });
-    try {
-      if (!amount || amount <= 0)
-        throw new Error("Payment amount must be greater than 0");
-      if (!receivedBy || receivedBy.trim() === "")
-        throw new Error("Received by is required");
-
-      const { supabase } = await import("../services/supabaseClient");
-
-      const { data, error: rpcError } = await supabase.rpc(
-        "add_payment_to_order",
-        {
-          p_order_id: orderId,
-          p_amount: amount,
-          p_user_name: receivedBy,
-          p_payment_method: paymentMethod,
-        },
-      );
-
-      if (rpcError) throw new Error(`Payment failed: ${rpcError.message}`);
-      if (!data || !data.success) throw new Error("Payment recording failed");
-
-      logPaymentRecorded(
-        data.payment_id || "rpc_pay",
-        orderId,
-        amount,
-        paymentMethod,
-        receivedBy,
-      );
-
-      const { data: updatedOrder, error: fetchError } = await supabase
-        .from("orders")
-        .select(`*, items_snapshot, items:order_items(*)`)
-        .eq("id", orderId)
-        .single();
-
-      if (!fetchError && updatedOrder) {
-        const normalizedOrder = internalNormalizeOrder(updatedOrder);
-        set((state) => ({
-          orders: state.orders.map((o) =>
-            o.id === orderId ? normalizedOrder : o,
-          ),
-          loading: false,
-        }));
-      } else {
-        set({ loading: false });
-      }
-      return data;
-    } catch (error) {
-      console.error("❌ Payment failed:", error);
-      set({ error: error.message, loading: false });
-      throw error;
-    }
-  },
-
-  addPayment: async (orderId, amount, receivedBy = null) => {
-    return get().payOrder(orderId, amount, receivedBy || "Kasir", "CASH");
-  },
-
-  updateProductionStatus: async (orderId, status, assignedTo = null) => {
-    const oldOrder = get().orders.find((o) => o.id === orderId);
-    const oldStatus = oldOrder ? oldOrder.productionStatus : "UNKNOWN";
-
-    const updates = { productionStatus: status };
-    if (status === "IN_PROGRESS" && assignedTo) updates.assignedTo = assignedTo;
-    if (status === "READY") updates.completedAt = new Date().toISOString();
-    if (status === "DELIVERED") updates.deliveredAt = new Date().toISOString();
-
-    await get().updateOrder(orderId, updates);
-
-    logOrderStatusChanged(orderId, oldStatus, status, assignedTo || "Operator");
-  },
-
-  cancelOrder: async (
-    orderId,
-    reason,
-    financialAction = "NONE",
-    actorName = "Operator",
-  ) => {
-    // 1. Fetch existing meta first to preserve data
-    const oldOrder = get().orders.find((o) => o.id === orderId);
-    const oldMeta = oldOrder?.meta || {};
-
-    await get().updateOrder(orderId, {
-      productionStatus: "CANCELLED",
-      cancelReason: reason,
-      cancelledAt: new Date().toISOString(),
-      // ✅ FIX: Force snake_case key to match Supabase column exact name
-      financial_action: financialAction,
-      // 🔥 SECURITY FIX: RECORD ACTOR
-      meta: {
-        ...oldMeta,
-        cancelled_by: actorName,
-        cancel_reason_log: reason,
-        cancelled_at_log: new Date().toISOString(),
-      },
-    });
-
-    logEvent(
-      "order_cancelled",
-      "ORDER_BOARD",
-      orderId,
-      "orders",
-      {
-        reason: reason,
-        financial_action: financialAction,
-        cancelled_by: actorName,
-      },
-      actorName,
+    // 4. 🔥 SELF-HEALING: CLOUD TO LOCAL HYDRATION
+    // Jika tidak ada di Dexie, tapi ada di State (baru load dari Supabase),
+    // kita "High-Jacking" data state untuk disusupkan ke Dexie.
+    const stateOrder = get().orders.find(
+      (o) =>
+        o.id === idOrString ||
+        o.server_id === idOrString ||
+        o.orderNumber === idOrString,
     );
-  },
 
-  // Helpers
-  loadOrdersPaginated: async (page, pageSize, filter) =>
-    get().loadOrders({ page, limit: pageSize, paymentStatus: filter }),
-  goToPage: async (page) =>
-    get().loadOrders({
-      page,
-      limit: get().pageSize,
-      paymentStatus: get().currentFilter,
-    }),
-  nextPage: async () => {
-    const { currentPage, totalPages } = get();
-    if (currentPage < totalPages) get().goToPage(currentPage + 1);
-  },
-  prevPage: async () => {
-    const { currentPage } = get();
-    if (currentPage > 1) get().goToPage(currentPage - 1);
-  },
-  setFilterAndReload: async (status) => {
-    set({ currentFilter: status, currentPage: 1 });
-    get().loadOrders({ page: 1, limit: 20, paymentStatus: status });
-  },
-  applyFilter: (orders) => orders,
-
-  // PAYMENT VALIDATION
-  getPaymentValidationReport: async (options = {}) => {
-    try {
-      const { getPaymentDiscrepancyReport } =
-        await import("../core/paymentValidator");
-      return await getPaymentDiscrepancyReport(options);
-    } catch (error) {
-      console.error("❌ Payment validation failed:", error);
-      return {
-        success: false,
-        error: error.message,
-        summary: null,
-        results: [],
-      };
-    }
-  },
-  getProblematicPayments: async () => {
-    const report = await get().getPaymentValidationReport({
-      onlyMismatches: true,
-    });
-    return report.results || [];
-  },
-  // ============================================
-  // STATE 3: OFFLINE → PENDING → SYNC
-  // ============================================
-  syncPendingLocalOrders: async () => {
-    const MAX_RETRIES = 3;
-
-    // A. Check online status
-    if (!navigator.onLine) {
-      console.log("📴 Offline - skipping sync");
-      return { synced: 0, failed: 0, skipped: 0, message: "Offline" };
-    }
-
-    try {
-      const db = (await import("../data/db/schema")).default;
-      const { supabase } = await import("../services/supabaseClient");
-
-      // B. Fetch pending orders from Dexie
-      const pendingOrders = await db.orders
-        .where("status")
-        .equals("PENDING_LOCAL")
-        .toArray();
-
-      if (pendingOrders.length === 0) {
-        console.log("✅ No pending local orders to sync");
-        return { synced: 0, failed: 0, skipped: 0, message: "No pending" };
-      }
-
-      console.log(`🔄 Syncing ${pendingOrders.length} pending local orders...`);
-
-      let synced = 0;
-      let failed = 0;
-      let skipped = 0;
-
-      // C. Loop each pending order
-      for (const localOrder of pendingOrders) {
-        try {
-          // D. Build RAW_INTENT from stored data (REUSE idempotency_key)
-          const rawIntent = {
-            idempotency_key: localOrder.idempotency_key,
-            customer: localOrder.customer,
-            items: localOrder.items,
-            payment: localOrder.payment || localOrder.payment_attempt,
-            meta: {
-              ...localOrder.meta,
-              source_version: "sync_recovery",
-            },
-          };
-
-          // E. Validate idempotency_key exists
-          if (!rawIntent.idempotency_key) {
-            console.warn(
-              `⚠️ Order ${localOrder.id} missing idempotency_key - skipping`,
-            );
-            skipped++;
-            continue;
-          }
-
-          // F. Call RPC
-          // F. Call RPC for Sync
-          const { data: rpcResult, error: rpcError } = await supabase.rpc(
-            "create_pos_order_notary",
-            { p_payload: rawIntent },
+    if (stateOrder) {
+      console.log("🚑 Hydrating missing order to Dexie:", stateOrder.id);
+      try {
+        // Prepare object for Dexie (Refine structure if needed)
+        // Kita gunakan ID asli dari state (bisa UUID atau Local ID)
+        // Pastikan field server_id terisi jika ini UUID
+        const isUuid =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            stateOrder.id,
           );
 
-          if (rpcError) throw rpcError;
+        const hydratedOrder = {
+          ...stateOrder,
+          // Jika ID-nya UUID, jadikan server_id juga
+          server_id: isUuid
+            ? stateOrder.id
+            : stateOrder.server_id || stateOrder.id,
+          sync_status: "SYNCED", // Anggap synced karena asalnya dari cloud
+          ref_local_id: stateOrder.id, // Fallback
+          isTempo: stateOrder.is_tempo, // <--- CRITICAL: Fixes Rule Engine for Tempo
+          is_tempo: stateOrder.is_tempo,
+        };
 
-          // G. Handle RPC response
-          if (rpcResult.success) {
-            // G1. SUCCESS or DUPLICATE - both are valid sync
-            if (rpcResult.is_duplicate) {
-              console.log(
-                `♻️ Order ${localOrder.id} already exists on server (idempotent)`,
-              );
-            } else {
-              console.log(
-                `✅ Order ${localOrder.id} synced → ${rpcResult.order_number}`,
-              );
-            }
+        // Simpan ke Dexie
+        await db.orders.put(hydratedOrder);
+        return hydratedOrder;
+      } catch (err) {
+        console.warn("⚠️ Hydration failed:", err);
+        return null; // Gagal hydrate, ya sudahlah
+      }
+    }
 
-            // G2. Update Dexie order status to SYNCED
-            await db.orders.update(localOrder.id, {
-              status: "SYNCED",
-              server_order_id: rpcResult.order_id,
-              server_order_number: rpcResult.order_number,
-              synced_at: new Date().toISOString(),
-            });
+    return null;
+  },
 
-            synced++;
-          } else {
-            // G3. RPC returned success: false (validation error)
-            throw new Error(
-              rpcResult.error || rpcResult.message || "RPC validation failed",
-            );
-          }
-        } catch (syncError) {
-          // H. Handle sync failure
-          const attempts = (localOrder.sync_attempts || 0) + 1;
-          const newStatus =
-            attempts >= MAX_RETRIES ? "SYNC_FAILED" : "PENDING_LOCAL";
+  // === 4. UPDATE PRODUCTION STATUS (FULL AUDIT & OFFLINE) ===
+  updateProductionStatus: async (
+    orderId,
+    newStatus,
+    operatorName = "System",
+  ) => {
+    set({ loading: true });
+    try {
+      // 1. GUNAKAN OMNI-SEARCH
+      const localOrder = await get()._resolveOrder(orderId);
 
-          await db.orders.update(localOrder.id, {
-            sync_attempts: attempts,
-            last_sync_error: syncError.message,
-            last_sync_at: new Date().toISOString(),
-            status: newStatus,
-          });
-
-          if (newStatus === "SYNC_FAILED") {
-            console.error(
-              `❌ Order ${localOrder.id} failed permanently after ${attempts} attempts`,
-            );
-          } else {
-            console.warn(
-              `⚠️ Order ${localOrder.id} sync failed (attempt ${attempts}/${MAX_RETRIES})`,
-            );
-          }
-
-          failed++;
-        }
+      if (!localOrder) {
+        console.error(`❌ Order Not Found in Dexie. Input: ${orderId}`);
+        throw new Error(
+          "Data order lokal tidak ditemukan. Mohon refresh halaman.",
+        );
       }
 
-      const result = { synced, failed, skipped, message: "Sync complete" };
+      // 2. SMART SYNC STATE
+      // Jika PENDING (Baru & Offline) -> Tetap PENDING
+      // Jika SYNCED (Sudah di Server) -> UPDATE_PENDING (Kirim Perubahan)
+      const currentSyncStatus = localOrder.sync_status || "PENDING";
+      const nextSyncStatus =
+        currentSyncStatus === "PENDING" ? "PENDING" : "UPDATE_PENDING";
+
+      const previousStatus = localOrder.productionStatus;
+
+      // 3. PREPARE UPDATES
+      const updates = {
+        productionStatus: newStatus, // CamelCase (App)
+        production_status: newStatus, // Snake_case (DB)
+        status: newStatus === "DONE" ? "READY" : "IN_PROGRESS", // Helper status
+
+        assignedTo: operatorName,
+        assigned_to: operatorName,
+
+        sync_status: nextSyncStatus,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 4. UPDATE DEXIE
+      await db.orders.update(localOrder.id, updates);
+
+      // 5. UPDATE STATE (OPTIMISTIC UI - MULTI-MATCH FIX)
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          // Robust Match: Local ID OR Server ID
+          const isMatch =
+            o.id === localOrder.id ||
+            (o.server_id && o.server_id === localOrder.server_id) ||
+            (o.orderNumber && o.orderNumber === localOrder.orderNumber);
+
+          return isMatch ? { ...o, ...updates } : o;
+        }),
+        loading: false,
+      }));
+
+      // 6. 🔥 JEJAK AUDIT (DIGITAL FOOTPRINT)
+      // Mencatat siapa yang mengubah status, jam berapa, dari apa ke apa
+      try {
+        if (previousStatus !== newStatus) {
+          // Pastikan Anda mengimpor fungsi ini di atas file
+          // import { logOrderStatusChanged } from "../utils/eventLogger";
+          await logOrderStatusChanged(
+            localOrder.id,
+            previousStatus,
+            newStatus,
+            operatorName,
+          );
+        }
+      } catch (logErr) {
+        console.warn("⚠️ Gagal mencatat log audit:", logErr);
+      }
+
+      // 7. TRIGGER SYNC (JALUR IMPORT FIX)
+      // Menggunakan import yang sudah ada di atas, tidak perlu import() dinamis yang bikin crash path
+      OrderSyncService.syncOfflineOrders();
+
       console.log(
-        `🔄 Sync complete: ${synced} synced, ${failed} failed, ${skipped} skipped`,
+        `✅ Status Updated: ${previousStatus} -> ${newStatus} (Sync: ${nextSyncStatus})`,
       );
-      return result;
-    } catch (error) {
-      console.error("❌ Sync orchestration failed:", error);
-      return { synced: 0, failed: 0, skipped: 0, error: error.message };
+      return true;
+    } catch (err) {
+      console.error("❌ Update Production Failed:", err);
+      set({ error: err.message, loading: false });
+      throw err;
     }
   },
 
-  clearError: () => set({ error: null }),
+  // === 5. ADD PAYMENT (FULL AUDIT & OFFLINE) ===
+  addPayment: async (orderId, amount, receiver = "Kasir") => {
+    set({ loading: true });
+    try {
+      const localOrder = await get()._resolveOrder(orderId);
+      if (!localOrder)
+        throw new Error("Order tidak ditemukan di database lokal.");
+
+      const paymentAmount = Number(amount);
+      const currentPaid = Number(localOrder.paidAmount || 0);
+      const total = Number(
+        localOrder.totalAmount || localOrder.grandTotal || 0,
+      );
+
+      const newPaid = currentPaid + paymentAmount;
+      const newRemaining = total - newPaid;
+
+      // Logic Status Pembayaran
+      let newPaymentStatus = "PARTIAL";
+      if (newRemaining <= 0) newPaymentStatus = "PAID";
+      else if (newPaid <= 0) newPaymentStatus = "UNPAID";
+
+      // Smart Sync Logic
+      const nextSyncStatus =
+        localOrder.sync_status === "PENDING" ? "PENDING" : "UPDATE_PENDING";
+
+      const updates = {
+        paidAmount: newPaid,
+        paid_amount: newPaid,
+
+        remainingAmount: newRemaining > 0 ? newRemaining : 0,
+        remaining_amount: newRemaining > 0 ? newRemaining : 0,
+
+        paymentStatus: newPaymentStatus,
+        payment_status: newPaymentStatus,
+
+        sync_status: nextSyncStatus,
+        updatedAt: new Date().toISOString(),
+
+        // Meta Pembayaran Terakhir
+        payment_meta: {
+          ...(localOrder.payment_meta || {}),
+          last_payment_amount: paymentAmount,
+          last_payment_by: receiver,
+          last_payment_date: new Date().toISOString(),
+        },
+      };
+
+      await db.orders.update(localOrder.id, updates);
+
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          // Robust Match
+          const isMatch =
+            o.id === localOrder.id ||
+            (o.server_id && o.server_id === localOrder.server_id) ||
+            (o.orderNumber && o.orderNumber === localOrder.orderNumber);
+
+          return isMatch ? { ...o, ...updates } : o;
+        }),
+        loading: false,
+      }));
+
+      // 🔥 JEJAK AUDIT KEUANGAN
+      try {
+        // import { logPaymentRecorded } from "../utils/eventLogger";
+        await logPaymentRecorded(
+          null, // Payment ID (Not available yet)
+          localOrder.id, // Order ID
+          paymentAmount, // Amount
+          "MANUAL", // Method (Simplified)
+          receiver, // Received By
+        );
+      } catch (logErr) {
+        console.warn("Audit Log Fail", logErr);
+      }
+
+      OrderSyncService.syncOfflineOrders();
+      return true;
+    } catch (err) {
+      console.error("❌ Add Payment Failed:", err);
+      set({ error: err.message, loading: false });
+      throw err;
+    }
+  },
+
+  // === 6. CANCEL ORDER (FULL AUDIT) ===
+  cancelOrder: async (orderId, reason, financialAction, operator) => {
+    set({ loading: true });
+    try {
+      const localOrder = await get()._resolveOrder(orderId);
+      if (!localOrder) throw new Error("Order tidak ditemukan.");
+
+      const nextSyncStatus =
+        localOrder.sync_status === "PENDING" ? "PENDING" : "UPDATE_PENDING";
+
+      const updates = {
+        productionStatus: "CANCELLED",
+        production_status: "CANCELLED",
+        status: "CANCELLED",
+
+        cancelReason: reason,
+        cancel_reason: reason,
+
+        financialAction: financialAction, // REFUND / FORFEIT
+        financial_action: financialAction,
+
+        cancelledAt: new Date().toISOString(),
+        cancelled_at: new Date().toISOString(),
+        cancelledBy: operator,
+
+        sync_status: nextSyncStatus,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await db.orders.update(localOrder.id, updates);
+
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          // Robust Match
+          const isMatch =
+            o.id === localOrder.id ||
+            (o.server_id && o.server_id === localOrder.server_id) ||
+            (o.orderNumber && o.orderNumber === localOrder.orderNumber);
+
+          return isMatch ? { ...o, ...updates } : o;
+        }),
+        loading: false,
+      }));
+
+      // 🔥 JEJAK AUDIT PEMBATALAN
+      // Log manual karena cancel agak spesifik
+      // logEvent("ORDER_CANCELLED", { ... }) bisa digunakan jika ada
+
+      OrderSyncService.syncOfflineOrders();
+      return true;
+    } catch (err) {
+      console.error("❌ Cancel Failed:", err);
+      set({ loading: false });
+      throw err;
+    }
+  },
 }));
