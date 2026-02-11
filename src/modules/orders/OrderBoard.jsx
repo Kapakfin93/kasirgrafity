@@ -24,6 +24,7 @@ export function OrderBoard() {
     searchOrders,
     loadSummary, // PENTING: Untuk update Dashboard Owner
     summaryData,
+    manualRefreshOrders, // 🛡️ FITUR BARU: Manual Refresh
   } = useOrderStore();
 
   const permissions = usePermissions();
@@ -145,6 +146,30 @@ export function OrderBoard() {
             )}
           </p>
         </div>
+
+        {/* 🛡️ FITUR BARU: TOMBOL REFRESH MANUAL */}
+        <button
+          onClick={manualRefreshOrders}
+          disabled={loading}
+          style={{
+            marginLeft: "auto",
+            marginRight: "10px",
+            height: "40px",
+            padding: "0 20px",
+            background: loading ? "#94a3b8" : "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            cursor: loading ? "wait" : "pointer",
+            fontWeight: "bold",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+          }}
+        >
+          {loading ? "⏳ Syncing..." : "🔄 Refresh Data"}
+        </button>
 
         {/* Search */}
         <div className="board-search">

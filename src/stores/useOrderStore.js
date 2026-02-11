@@ -1621,4 +1621,105 @@ export const useOrderStore = create((set, get) => ({
       throw err;
     }
   },
+
+  // ... (kode actions lainnya biarkan saja)
+
+  // 🛡️ FITUR BARU: MANUAL REFRESH (HEMAT KUOTA)
+  // Terpisah total dari logic createOrder (Fase 1-6 Aman)
+  manualRefreshOrders: async () => {
+    const { fetchOrders } = get(); // Ambil fungsi reload yang sudah ada
+    set({ loading: true });
+
+    console.log("🔄 MANUAL REFRESH: Operator meminta data terbaru...");
+
+    try {
+      // 1. PANGGIL KURIR (Service Sync)
+      // Memaksa service untuk cek ke Supabase sekarang juga
+      if (OrderSyncService && typeof OrderSyncService.sync === "function") {
+        await OrderSyncService.sync();
+      } else {
+        console.warn(
+          "⚠️ OrderSyncService.sync tidak ditemukan, memuat data lokal saja.",
+        );
+      }
+
+      // 2. UPDATE TAMPILAN (Dexie -> Store)
+      // Menarik data yang baru saja dibawa kurir ke layar
+      if (fetchOrders) {
+        await fetchOrders();
+      }
+
+      console.log("✅ MANUAL REFRESH: Data Produksi Terupdate.");
+    } catch (error) {
+      console.error("❌ MANUAL REFRESH: Gagal menarik data.", error);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  // ... (kode actions lainnya biarkan saja)
+
+  // 🛡️ FITUR BARU: MANUAL REFRESH (HEMAT KUOTA)
+  // Terpisah total dari logic createOrder (Fase 1-6 Aman)
+  manualRefreshOrders: async () => {
+    const { fetchOrders } = get(); // Ambil fungsi reload yang sudah ada
+    set({ loading: true });
+
+    console.log("🔄 MANUAL REFRESH: Operator meminta data terbaru...");
+
+    try {
+      // 1. PANGGIL KURIR (Service Sync)
+      // Memaksa service untuk cek ke Supabase sekarang juga
+      if (OrderSyncService && typeof OrderSyncService.sync === "function") {
+        await OrderSyncService.sync();
+      } else {
+        console.warn(
+          "⚠️ OrderSyncService.sync tidak ditemukan, memuat data lokal saja.",
+        );
+      }
+
+      // 2. UPDATE TAMPILAN (Dexie -> Store)
+      // Menarik data yang baru saja dibawa kurir ke layar
+      if (fetchOrders) {
+        await fetchOrders();
+      }
+
+      console.log("✅ MANUAL REFRESH: Data Produksi Terupdate.");
+    } catch (error) {
+      console.error("❌ MANUAL REFRESH: Gagal menarik data.", error);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  // 🛡️ FITUR BARU: MANUAL REFRESH (HEMAT KUOTA)
+  manualRefreshOrders: async () => {
+    const { loadOrders, currentFilter } = get(); // ✅ USE CORRECT ACTION NAME
+    set({ loading: true });
+
+    console.log("🔄 MANUAL REFRESH: Operator meminta data terbaru...");
+
+    try {
+      // 1. PUSH PENDING DATA (Jika ada order offline yang nyangkut)
+      if (
+        OrderSyncService &&
+        typeof OrderSyncService.syncOfflineOrders === "function"
+      ) {
+        await OrderSyncService.syncOfflineOrders(); // ✅ CORRECT METHOD NAME
+      }
+
+      // 2. PULL LATEST DATA (Sesuai Filter Saat Ini)
+      // Gunakan parameter yang sama dengan state terakhir agar user tidak bingung
+      await loadOrders({
+        page: 1, // Reset ke halaman 1 agar data paling baru terlihat
+        paymentStatus: currentFilter || "ALL",
+      });
+
+      console.log("✅ MANUAL REFRESH: Data Produksi Terupdate.");
+    } catch (error) {
+      console.error("❌ MANUAL REFRESH: Gagal menarik data.", error);
+    } finally {
+      set({ loading: false });
+    }
+  },
 }));

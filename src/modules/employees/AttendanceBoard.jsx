@@ -25,7 +25,11 @@ export function AttendanceBoard() {
     syncStatus,
   } = useAttendanceStore();
 
-  const { getActiveEmployees } = useEmployeeStore(); // Removed loadEmployees
+  const {
+    getActiveEmployees,
+    syncFromCloud: syncEmployeesFromCloud,
+    syncStatus: employeeSyncStatus,
+  } = useEmployeeStore(); // Removed loadEmployees
 
   useEffect(() => {
     // loadEmployees(); // HANDLED BY MAIN LAYOUT (Global Pre-load)
@@ -150,13 +154,21 @@ export function AttendanceBoard() {
 
         {/* MANUAL SYNC BUTTON */}
         <button
-          onClick={() => syncFromCloud(true)}
-          disabled={syncStatus === "syncing"}
+          onClick={() => {
+            syncFromCloud(true);
+            syncEmployeesFromCloud(true);
+          }}
+          disabled={
+            syncStatus === "syncing" || employeeSyncStatus === "syncing"
+          }
           style={{
             marginTop: "12px",
             background: "transparent",
             border: "1px solid #334155",
-            color: syncStatus === "syncing" ? "#fbbf24" : "#94a3b8",
+            color:
+              syncStatus === "syncing" || employeeSyncStatus === "syncing"
+                ? "#fbbf24"
+                : "#94a3b8",
             padding: "6px 12px",
             borderRadius: "6px",
             cursor: "pointer",
@@ -167,7 +179,7 @@ export function AttendanceBoard() {
             margin: "12px auto 0",
           }}
         >
-          {syncStatus === "syncing" ? (
+          {syncStatus === "syncing" || employeeSyncStatus === "syncing" ? (
             <>⏳ Sinkronisasi Data...</>
           ) : (
             <>🔄 Sync Data Manual</>

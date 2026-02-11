@@ -3,90 +3,119 @@
  * Display today's attendance summary on dashboard
  */
 
-import React from 'react';
-import { formatTime, calculateWorkHours } from '../../utils/dateHelpers';
+import React from "react";
+import { formatTime, calculateWorkHours } from "../../utils/dateHelpers";
 
 export function TodayAttendance({ attendances, employees }) {
-    // Create a map of attendance by employee ID
-    const attendanceMap = {};
-    attendances.forEach(att => {
-        attendanceMap[att.employeeId] = att;
-    });
+  // Create a map of attendance by employee ID
+  const attendanceMap = {};
+  attendances.forEach((att) => {
+    attendanceMap[att.employeeId] = att;
+  });
 
-    if (employees.length === 0) {
-        return (
-            <div className="empty-state">
-                <p>👥 Belum ada karyawan terdaftar</p>
-            </div>
-        );
-    }
-
+  if (employees.length === 0) {
     return (
-        <div className="attendance-summary">
-            {employees.map(employee => {
-                const attendance = attendanceMap[employee.id];
-                const hasCheckedIn = attendance && attendance.checkInTime;
-                const hasCheckedOut = attendance && attendance.checkOutTime;
-
-                let statusIcon = '⚪';
-                let statusText = 'Belum Absen';
-                let statusClass = 'absent';
-
-                if (hasCheckedOut) {
-                    statusIcon = '✅';
-                    statusText = 'Selesai';
-                    statusClass = 'completed';
-                } else if (hasCheckedIn) {
-                    statusIcon = '🟢';
-                    statusText = 'Sedang Kerja';
-                    statusClass = 'working';
-                }
-
-                return (
-                    <div key={employee.id} className={`attendance-item ${statusClass}`}>
-                        <div className="attendance-item-header">
-                            <div className="attendance-employee">
-                                <span className="attendance-icon">{statusIcon}</span>
-                                <strong>{employee.name}</strong>
-                            </div>
-                            <span className="attendance-shift">
-                                {employee.shift === 'PAGI' ? '☀️' : '🌙'} {employee.shift}
-                            </span>
-                        </div>
-
-                        {attendance && (
-                            <div className="attendance-item-times">
-                                {attendance.checkInTime && (
-                                    <div className="attendance-time">
-                                        <span className="time-label">Masuk:</span>
-                                        <span className="time-value">{formatTime(attendance.checkInTime)}</span>
-                                        {attendance.status === 'LATE' && (
-                                            <span className="late-badge">Telat</span>
-                                        )}
-                                    </div>
-                                )}
-                                {attendance.checkOutTime && (
-                                    <div className="attendance-time">
-                                        <span className="time-label">Pulang:</span>
-                                        <span className="time-value">{formatTime(attendance.checkOutTime)}</span>
-                                    </div>
-                                )}
-                                {attendance.totalHours && (
-                                    <div className="attendance-total">
-                                        Total: {attendance.totalHours.toFixed(1)} jam
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {!attendance && (
-                            <div className="attendance-item-status">
-                                <span className="status-text">{statusText}</span>
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
-        </div>
+      <div className="empty-state">
+        <p>👥 Belum ada karyawan terdaftar</p>
+      </div>
     );
+  }
+
+  return (
+    <div className="attendance-summary" style={{ display: "grid", gap: "8px" }}>
+      {employees.map((employee) => {
+        const attendance = attendanceMap[employee.id];
+        const hasCheckedIn = attendance && attendance.checkInTime;
+        const hasCheckedOut = attendance && attendance.checkOutTime;
+
+        // Determine Status Class & Texts
+        let statusClass = "status-absent";
+        let icon = "⚪";
+        let statusText = "Belum Absen";
+        let textColor = "#94a3b8"; // Slate-400
+
+        if (hasCheckedOut) {
+          statusClass = "status-done";
+          icon = "✅";
+          statusText = "Selesai";
+          textColor = "#cbd5e1";
+        } else if (hasCheckedIn) {
+          statusClass = "status-working";
+          icon = "🔥";
+          statusText = "Sedang Kerja";
+          textColor = "#f1f5f9"; // White
+        }
+
+        return (
+          <div
+            key={employee.id}
+            className={`attendance-glow-card ${statusClass}`}
+          >
+            <div className="attendance-glow-content">
+              {/* LEFT: Name & Status Icon */}
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
+                <span style={{ fontSize: "18px" }}>{icon}</span>
+                <div>
+                  <div
+                    style={{
+                      color: "#f1f5f9",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {employee.name}
+                  </div>
+                  <div
+                    style={{
+                      color: textColor,
+                      fontSize: "11px",
+                      textTransform: "uppercase",
+                      fontWeight: "600",
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    {statusText}
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT: Time Info */}
+              <div style={{ textAlign: "right" }}>
+                {attendance && attendance.checkInTime ? (
+                  <>
+                    <div
+                      style={{
+                        color: "#cbd5e1",
+                        fontSize: "13px",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {formatTime(attendance.checkInTime)}
+                    </div>
+                    {attendance.checkOutTime && (
+                      <div style={{ color: "#64748b", fontSize: "11px" }}>
+                        Plg: {formatTime(attendance.checkOutTime)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      color: "#475569",
+                      fontSize: "12px",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    --:--
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }

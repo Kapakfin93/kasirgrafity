@@ -8435,3 +8435,94 @@ body {
     color: black !important;
   }
 }
+
+/* =========================================
+   ATTENDANCE GLOW CARDS (User Requested)
+   ========================================= */
+.attendance-glow-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px; /* Reduced from 20px for compact look */
+  padding: 2px; /* Space for the border */
+  background: #0f172a; /* Fallback */
+  isolation: isolate; /* Create new stacking context */
+  margin-bottom: 8px;
+}
+
+/* The Rotating Gradient */
+/* The Rotating Gradient - ONLY FOR ACTIVE WORKING EMPLOYEES */
+.attendance-glow-card::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: transparent; /* Default NO GLOW */
+  z-index: -2;
+  opacity: 0.5; /* Dimmer default */
+  transition: all 0.5s ease;
+}
+
+@keyframes rotBGimg {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The Dark Background Overlay (Inset) */
+.attendance-glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 3px; /* Border width */
+  background: #1e293b; /* Dark Slate Background */
+  border-radius: 8px; /* Slightly less than parent */
+  z-index: -1;
+}
+
+/* Status Variants (Overrides Gradient) */
+.attendance-glow-card.status-working::before {
+  background-image: linear-gradient(
+    180deg,
+    #10b981,
+    #34d399,
+    #10b981
+  ); /* Emerald Neon */
+  animation: rotBGimg 4s linear infinite; /* Active Rotation */
+  opacity: 1; /* Bright */
+}
+
+/* Static Borders for Non-Active */
+.attendance-glow-card.status-absent {
+  border: 1px solid #f59e0b; /* Simple Amber Border */
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.attendance-glow-card.status-done {
+  border: 1px solid #334155; /* Simple Slate Border */
+  background: rgba(15, 23, 42, 0.2);
+  opacity: 0.7;
+}
+
+/* Hide the pseudo-element glow for non-working to save GPU and stop animation */
+.attendance-glow-card.status-absent::before,
+.attendance-glow-card.status-done::before {
+  display: none;
+}
+
+/* Content Area */
+.attendance-glow-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  width: 100%;
+}
