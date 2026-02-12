@@ -120,6 +120,7 @@ export function MainLayout() {
       { path: "/dashboard", icon: "📊", label: "Dashboard" },
       { path: "/pos", icon: "💰", label: "Kasir" },
       { path: "/orders", icon: "📋", label: "Order" },
+      { path: "/marketing-gallery", icon: "📸", label: "Gallery" }, // 🆕 Marketing Review
       { path: "/web-inbox", icon: "📩", label: "Inbox" },
       { path: "/expenses", icon: "💸", label: "Pengeluaran" },
       { path: "/products", icon: "📦", label: "Produk" },
@@ -131,6 +132,7 @@ export function MainLayout() {
     navItems.push(
       { path: "/pos", icon: "💰", label: "Kasir" },
       { path: "/orders", icon: "📋", label: "Order" },
+      { path: "/marketing-gallery", icon: "📸", label: "Gallery" }, // 🆕 Marketing Review
       { path: "/web-inbox", icon: "📩", label: "Inbox" },
       { path: "/expenses", icon: "💸", label: "Pengeluaran" },
       { path: "/attendance", icon: "⏰", label: "Absensi" },
@@ -139,6 +141,7 @@ export function MainLayout() {
     navItems.push(
       { path: "/pos", icon: "💰", label: "Kasir" },
       { path: "/orders", icon: "📋", label: "Order" },
+      { path: "/marketing-gallery", icon: "📸", label: "Gallery" }, // 🆕 Opsional: Kasir juga bisa lihat?
       { path: "/attendance", icon: "⏰", label: "Absensi" },
     );
   } else {

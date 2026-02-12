@@ -21,6 +21,7 @@ import { OrderBoard } from "./modules/orders/OrderBoard";
 import { ExpensePage } from "./modules/expenses/ExpensePage";
 import { WebInboxPanel } from "./modules/orders/WebInboxPanel";
 import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
+import { MarketingGallery } from "./modules/marketing/MarketingGallery";
 
 // Style
 import "./index.css";
@@ -94,6 +95,7 @@ function App() {
               <Route path="/expenses" element={<ExpensePage />} />
               <Route path="/web-inbox" element={<WebInboxPanel />} />
               <Route path="/attendance" element={<AttendanceBoard />} />
+              <Route path="/marketing-gallery" element={<MarketingGallery />} />
             </Route>
 
             {/* Fallback 404 */}

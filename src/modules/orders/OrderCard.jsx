@@ -22,6 +22,7 @@ import { ConfirmModal } from "../../components/ConfirmModal";
 import { PromptModal } from "../../components/PromptModal";
 import { WANotificationModal } from "../../components/WANotificationModal";
 import { AuditLogModal } from "../../components/AuditLogModal";
+import { CompletionModal } from "./CompletionModal";
 
 export function OrderCard({ order }) {
   const { updateProductionStatus, addPayment, cancelOrder } = useOrderStore();
@@ -59,6 +60,7 @@ export function OrderCard({ order }) {
   });
   const [waModal, setWaModal] = useState({ show: false, actionType: null });
   const [showAuditLog, setShowAuditLog] = useState(false);
+  const [completionModal, setCompletionModal] = useState({ show: false });
 
   const statusConfig = ORDER_STATUS[order.productionStatus];
 
@@ -99,7 +101,7 @@ export function OrderCard({ order }) {
 
     // C. PRODUCTION: READY / DELIVERED
     if (mainAction.type === "COMPLETE_ORDER") {
-      setWaModal({ show: true, actionType: "COMPLETE" });
+      setCompletionModal({ show: true });
       return;
     }
     if (
@@ -145,6 +147,22 @@ export function OrderCard({ order }) {
       alert("❌ Gagal: " + err.message);
     }
     setUpdating(false);
+  };
+
+  const handleCompletionSubmit = async ({ orderId, status, evidence }) => {
+    // Note: Modal will handle success step, we just process data here
+    setUpdating(true);
+    try {
+      await updateProductionStatus(orderId, status, user?.name || "Operator", {
+        marketing_evidence_url: evidence?.url,
+        is_public_content: evidence?.isPublic,
+      });
+    } catch (err) {
+      // Re-throw to let Modal handle UI error
+      throw err;
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleWAConfirmWithNotification = async () => {
@@ -977,6 +995,13 @@ export function OrderCard({ order }) {
               financialAction: "NONE",
             })
           }
+        />
+        <CompletionModal
+          isOpen={completionModal.show}
+          order={order}
+          onClose={() => setCompletionModal({ show: false })}
+          onSubmit={handleCompletionSubmit}
+          isOffline={!navigator.onLine}
         />
         <WANotificationModal
           isOpen={waModal.show}

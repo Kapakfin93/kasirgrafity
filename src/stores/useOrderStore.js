@@ -139,6 +139,19 @@ const internalNormalizeOrder = (dbOrder) => {
       dbOrder.meta?.estimate_date ||
       null,
 
+    // Marketing Gallery
+    marketingEvidenceUrl:
+      dbOrder.marketing_evidence_url || dbOrder.marketingEvidenceUrl || null,
+    isPublicContent: Boolean(
+      dbOrder.is_public_content || dbOrder.isPublicContent,
+    ),
+    isApprovedForSocial: Boolean(
+      dbOrder.is_approved_for_social || dbOrder.isApprovedForSocial,
+    ),
+    isPostedToGmaps: Boolean(
+      dbOrder.is_posted_to_gmaps || dbOrder.isPostedToGmaps,
+    ),
+
     // Items
     items: rawItems.map((item) => ({
       id: item.id || Math.random().toString(36).substr(2, 9),
@@ -231,13 +244,80 @@ export const useOrderStore = create((set, get) => ({
 
         if (error) throw error;
 
-        const appOrders = data.map(internalNormalizeOrder);
+        // --- 🛡️ HYBRID HYDRATION (SPLIT-BRAIN FIX) ---
+        // 1. Normalize Server Data
+        let appOrders = data.map(internalNormalizeOrder);
+
+        // 2. Fetch Local Pending (The "Fresh" Data)
+        // Ambil data yang belum terkirim ke server (PENDING) atau sedang update (UPDATE_PENDING)
+        const localPending = await db.orders
+          .where("sync_status")
+          .anyOf("PENDING", "UPDATE_PENDING")
+          .reverse()
+          .toArray();
+
+        // 3. Smart Merge Strategy
+        if (localPending.length > 0) {
+          console.log(
+            `🧬 HYBRID HYDRATION: Merging ${localPending.length} local pending orders...`,
+          );
+
+          // Buat Map untuk Deduplikasi (Key: Server ID atau Local ID)
+          const orderMap = new Map();
+
+          // A. Masukkan Server Data dulu
+          appOrders.forEach((o) => {
+            const key = o.server_id || o.id; // Prioritas Server ID
+            orderMap.set(key, o);
+          });
+
+          // B. Overlay dengan Local Data (Local Wins!)
+          localPending.forEach((local) => {
+            const normalizedLocal = internalNormalizeOrder(local);
+
+            // Client-Side Filter Check (Karena kita bypass Query DB)
+            let matchesFilter = true;
+            if (
+              paymentStatus !== "ALL" &&
+              normalizedLocal.paymentStatus !== paymentStatus
+            )
+              matchesFilter = false;
+            if (
+              productionStatus !== "ALL" &&
+              normalizedLocal.productionStatus !== productionStatus
+            )
+              matchesFilter = false;
+
+            if (matchesFilter) {
+              // Strategy:
+              // Jika ini UPDATE_PENDING -> Timpa data server yang ada (update in-place)
+              // Jika ini PENDING -> Tambahkan sebagai item baru (insert top)
+
+              // Cek apakah data ini punya Server ID (artinya ini Update data lama)
+              if (
+                normalizedLocal.server_id &&
+                orderMap.has(normalizedLocal.server_id)
+              ) {
+                // UPDATE CASE: Timpa data server dengan data lokal
+                orderMap.set(normalizedLocal.server_id, normalizedLocal);
+              } else {
+                // INSERT/NEW CASE: Gunakan ID Lokal sebagai Key
+                orderMap.set(normalizedLocal.id, normalizedLocal);
+              }
+            }
+          });
+
+          // C. Convert back to Array & Sort
+          appOrders = Array.from(orderMap.values()).sort((a, b) => {
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          });
+        }
 
         set({
           orders: appOrders,
           filteredOrders: appOrders,
-          totalOrders: count,
-          totalPages: Math.ceil(count / safeLimit),
+          totalOrders: count + localPending.length, // Approximate Count
+          totalPages: Math.ceil((count + localPending.length) / safeLimit),
           currentPage: page,
           pageSize: safeLimit,
           currentFilter: paymentStatus,
@@ -1395,6 +1475,7 @@ export const useOrderStore = create((set, get) => ({
     orderId,
     newStatus,
     operatorName = "System",
+    options = {}, // { marketing_evidence_url, is_public_content }
   ) => {
     set({ loading: true });
     try {
@@ -1425,6 +1506,10 @@ export const useOrderStore = create((set, get) => ({
 
         assignedTo: operatorName,
         assigned_to: operatorName,
+
+        // MARKETING EVIDENCE
+        marketing_evidence_url: options.marketing_evidence_url || null,
+        is_public_content: options.is_public_content || false,
 
         sync_status: nextSyncStatus,
         updatedAt: new Date().toISOString(),
@@ -1625,74 +1710,6 @@ export const useOrderStore = create((set, get) => ({
   // ... (kode actions lainnya biarkan saja)
 
   // 🛡️ FITUR BARU: MANUAL REFRESH (HEMAT KUOTA)
-  // Terpisah total dari logic createOrder (Fase 1-6 Aman)
-  manualRefreshOrders: async () => {
-    const { fetchOrders } = get(); // Ambil fungsi reload yang sudah ada
-    set({ loading: true });
-
-    console.log("🔄 MANUAL REFRESH: Operator meminta data terbaru...");
-
-    try {
-      // 1. PANGGIL KURIR (Service Sync)
-      // Memaksa service untuk cek ke Supabase sekarang juga
-      if (OrderSyncService && typeof OrderSyncService.sync === "function") {
-        await OrderSyncService.sync();
-      } else {
-        console.warn(
-          "⚠️ OrderSyncService.sync tidak ditemukan, memuat data lokal saja.",
-        );
-      }
-
-      // 2. UPDATE TAMPILAN (Dexie -> Store)
-      // Menarik data yang baru saja dibawa kurir ke layar
-      if (fetchOrders) {
-        await fetchOrders();
-      }
-
-      console.log("✅ MANUAL REFRESH: Data Produksi Terupdate.");
-    } catch (error) {
-      console.error("❌ MANUAL REFRESH: Gagal menarik data.", error);
-    } finally {
-      set({ loading: false });
-    }
-  },
-
-  // ... (kode actions lainnya biarkan saja)
-
-  // 🛡️ FITUR BARU: MANUAL REFRESH (HEMAT KUOTA)
-  // Terpisah total dari logic createOrder (Fase 1-6 Aman)
-  manualRefreshOrders: async () => {
-    const { fetchOrders } = get(); // Ambil fungsi reload yang sudah ada
-    set({ loading: true });
-
-    console.log("🔄 MANUAL REFRESH: Operator meminta data terbaru...");
-
-    try {
-      // 1. PANGGIL KURIR (Service Sync)
-      // Memaksa service untuk cek ke Supabase sekarang juga
-      if (OrderSyncService && typeof OrderSyncService.sync === "function") {
-        await OrderSyncService.sync();
-      } else {
-        console.warn(
-          "⚠️ OrderSyncService.sync tidak ditemukan, memuat data lokal saja.",
-        );
-      }
-
-      // 2. UPDATE TAMPILAN (Dexie -> Store)
-      // Menarik data yang baru saja dibawa kurir ke layar
-      if (fetchOrders) {
-        await fetchOrders();
-      }
-
-      console.log("✅ MANUAL REFRESH: Data Produksi Terupdate.");
-    } catch (error) {
-      console.error("❌ MANUAL REFRESH: Gagal menarik data.", error);
-    } finally {
-      set({ loading: false });
-    }
-  },
-
-  // 🛡️ FITUR BARU: MANUAL REFRESH (HEMAT KUOTA)
   manualRefreshOrders: async () => {
     const { loadOrders, currentFilter } = get(); // ✅ USE CORRECT ACTION NAME
     set({ loading: true });
@@ -1720,6 +1737,115 @@ export const useOrderStore = create((set, get) => ({
       console.error("❌ MANUAL REFRESH: Gagal menarik data.", error);
     } finally {
       set({ loading: false });
+    }
+  },
+
+  // 12. APPROVE MARKETING CONTENT
+  approveMarketingContent: async (orderId, isApproved) => {
+    try {
+      const updates = {
+        is_approved_for_social: isApproved,
+        sync_status: "UPDATE_PENDING",
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 1. Update Dexie (Attempts Local Update)
+      const updatedCount = await db.orders.update(orderId, updates);
+
+      // [ARCH FIX] If order not in Dexie (Ghost/Old Data), Insert it first!
+      if (updatedCount === 0) {
+        const currentOrder = get().orders.find((o) => o.id === orderId);
+        if (currentOrder) {
+          // Reconstruct full object for Dexie
+          const orderToSave = {
+            ...currentOrder,
+            ...updates,
+            is_approved_for_social: isApproved, // Explicitly set for local consistency
+            // Ensure ID is set
+            id: orderId,
+            // Fallback for server_id if missing (should be same as id for older orders)
+            server_id: currentOrder.server_id || orderId,
+          };
+          await db.orders.put(orderToSave);
+          console.log(
+            "📥 [ARCH FIX] Hydrated missing order into Dexie:",
+            orderId,
+          );
+        } else {
+          console.error("❌ Order not found in State either!");
+          return false;
+        }
+      }
+
+      // 2. Optimistic Update State
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId ? { ...o, isApprovedForSocial: isApproved } : o,
+        ),
+      }));
+
+      // 3. Trigger Sync (STANDARD ARCHITECTURE)
+      try {
+        await OrderSyncService.syncOfflineOrders();
+        console.log("🔄 Triggered Standard Sync for Approval");
+      } catch (syncErr) {
+        console.warn("⚠️ Background sync trigger failed:", syncErr);
+      }
+
+      return true;
+    } catch (err) {
+      console.error("Failed to approve content:", err);
+      return false;
+    }
+  },
+
+  // 13. REJECT MARKETING CONTENT (Hide from Gallery)
+  rejectMarketingContent: async (orderId) => {
+    try {
+      const updates = {
+        is_public_content: false, // Hide from public queue
+        is_approved_for_social: false, // Ensure not approved
+        sync_status: "UPDATE_PENDING",
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 1. Update Dexie
+      const updatedCount = await db.orders.update(orderId, updates);
+
+      // [ARCH FIX] If order not in Dexie, Insert it!
+      if (updatedCount === 0) {
+        const currentOrder = get().orders.find((o) => o.id === orderId);
+        if (currentOrder) {
+          const orderToSave = {
+            ...currentOrder,
+            ...updates,
+            id: orderId,
+            server_id: currentOrder.server_id || orderId,
+          };
+          await db.orders.put(orderToSave);
+        }
+      }
+
+      // 2. Optimistic Update State
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId
+            ? { ...o, isPublicContent: false, isApprovedForSocial: false }
+            : o,
+        ),
+      }));
+
+      // 3. Trigger Sync (STANDARD ARCHITECTURE)
+      try {
+        await OrderSyncService.syncOfflineOrders();
+      } catch (syncErr) {
+        console.warn("⚠️ Background sync trigger failed:", syncErr);
+      }
+
+      return true;
+    } catch (err) {
+      console.error("Failed to reject content:", err);
+      return false;
     }
   },
 }));

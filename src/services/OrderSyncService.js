@@ -140,6 +140,51 @@ export const OrderSyncService = {
       return true; // Success
     } catch (err) {
       // 5. Failure Handling (INSERT)
+
+      // --- 🛡️ IDEMPOTENCY FIX (Self-Healing) ---
+      // Jika error "Duplicate Key", artinya data SUDAH ADA di server (Ghost Sync).
+      // Jangan hitung sebagai error, tapi lakukan "Link & Sync".
+      if (
+        err.message?.includes("duplicate key") ||
+        err.message?.includes("idx_orders_ref_local_id")
+      ) {
+        console.warn(
+          "⚠️ Duplicate Key Detected (Ghost Sync). Attempting self-healing...",
+          order.id,
+        );
+
+        try {
+          // 1. Ambil Data dari Server (Cari pakai ref_local_id)
+          const { data: existingServerOrder } = await supabase
+            .from("orders")
+            .select("id, order_number, status")
+            .eq("ref_local_id", order.id)
+            .single();
+
+          if (existingServerOrder) {
+            console.log(
+              "✅ Self-Healing Success! Linking to:",
+              existingServerOrder.order_number,
+            );
+
+            // 2. Update Lokal (Link ke Server ID)
+            await db.orders.update(order.id, {
+              sync_status: "SYNCED",
+              server_id: existingServerOrder.id,
+              server_order_number: existingServerOrder.order_number,
+              // status: existingServerOrder.status, // Opsional: Ikuti server atau pertahankan lokal? Kita pertahankan lokal dulu.
+              last_sync_error: null,
+              updatedAt: new Date().toISOString(),
+            });
+
+            return true; // ANGGAP SUKSES!
+          }
+        } catch (recoverErr) {
+          console.error("❌ Self-Healing Failed:", recoverErr);
+          // Fallthrough ke logic error biasa
+        }
+      }
+
       console.error(
         `❌ [INSERT FAIL] ID: ${order.ref_local_id || order.id}`,
         err.message,
@@ -170,16 +215,16 @@ export const OrderSyncService = {
    */
   async processSingleUpdate(order) {
     try {
-      // Safety Check: Must have a Server ID to update
-      if (!order.server_id) {
+      // Safety Check: Ensure we have a target ID
+      const targetId = order.server_id || order.id;
+
+      if (!targetId) {
         throw new Error(
-          "Cannot sync update: Missing 'server_id'. Is this a ghost order?",
+          "Cannot sync update: Missing target ID (server_id or id).",
         );
       }
 
-      console.log(
-        `📝 [UPDATE START] Syncing changes for Server ID: ${order.server_id}`,
-      );
+      console.log(`📝 [UPDATE START] Syncing changes for ID: ${targetId}`);
 
       // Map Local State -> Server Columns
       const payload = {
@@ -192,16 +237,34 @@ export const OrderSyncService = {
         cancel_reason: order.cancelReason,
         cancelled_at: order.cancelledAt, // ISO String
         financial_action: order.financialAction,
-        updated_at: new Date().toISOString(), // <--- CRITICAL ADDITION
+
+        // MARKETING EVIDENCE (SIDECAR)
+        marketing_evidence_url: order.marketing_evidence_url,
+        is_public_content: order.is_public_content,
+        is_approved_for_social: order.is_approved_for_social, // <--- FIX: Added Approval Column
+
+        updated_at: new Date().toISOString(),
         // We generally don't update 'items' or 'customer' on status changes in this V1
-        // but we could add them if needed. For now, focus on Status & Money.
       };
+
+      console.log(
+        "👉 [SYNC DEBUG] Update Payload:",
+        JSON.stringify(payload, null, 2),
+      );
+      console.log("👉 [SYNC DEBUG] Target Server ID:", targetId);
 
       // Execute Update Update
       const { error } = await supabase
         .from("orders")
         .update(payload)
-        .eq("id", order.server_id); // Secure lookup by ID
+        .eq("id", targetId);
+
+      if (error) {
+        console.error("❌ [SYNC ERROR] Supabase Update Failed:", error);
+        throw error;
+      } else {
+        console.log("✅ [SYNC SUCCESS] Supabase Updated!");
+      } // Secure lookup by ID
 
       if (error) throw error;
 

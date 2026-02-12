@@ -1,0 +1,148 @@
+{
+  "name": "KasirGrafity Marketing Automation (Robust)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id,\n  order_number,\n  customer_name,\n  marketing_evidence_url,\n  items_snapshot,\n  updated_at\nFROM orders\nWHERE\n  is_approved_for_social = TRUE\n  AND is_posted_to_gmaps = FALSE\n  AND marketing_evidence_url IS NOT NULL\nORDER BY updated_at DESC\nLIMIT 5;"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "id": "supabase-get-approved",
+      "name": "Get Approved Photos",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.marketing_evidence_url }}",
+              "operation": "contains",
+              "value2": "https://"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "id": "filter-valid-url",
+      "name": "Filter Valid URL"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "resource": "media",
+        "location": "YOUR_LOCATION_ID",
+        "mediaFormat": "PHOTO",
+        "mediaUrl": "={{ $json.marketing_evidence_url }}",
+        "description": "=✨ Pesanan Baru Selesai! ✨\n\nTerima kasih Kak {{ $json.customer_name || 'Pelanggan Setia' }} sudah mempercayakan cetakan {{ $json.items_snapshot || 'Digital Printing' }} di KasirGrafity.\n\n✅ Kualitas Terbaik\n✅ Pengerjaan Cepat\n✅ Hasil Memuaskan\n\nYuk, cetak kebutuhan promosimu sekarang! 🚀\n#KasirGrafity #DigitalPrinting #PercetakanJogja #{{ $json.order_number }}"
+      },
+      "type": "n8n-nodes-base.googleBusinessProfile",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "id": "google-business-post",
+      "name": "Post to Google Maps",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 300000,
+      "credentials": {
+        "googleBusinessProfileOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Business Profile account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "orders",
+        "updateKey": "id",
+        "columns": "is_posted_to_gmaps",
+        "value": "true"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "id": "supabase-mark-posted",
+      "name": "Mark as Posted",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Approved Photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Approved Photos": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid URL": {
+      "main": [
+        [
+          {
+            "node": "Post to Google Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Google Maps": {
+      "main": [
+        [
+          {
+            "node": "Mark as Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
+
