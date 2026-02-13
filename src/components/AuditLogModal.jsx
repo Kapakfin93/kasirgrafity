@@ -60,14 +60,53 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
   const fetchLogs = async () => {
     setLoading(true);
 
+    // 🛡️ [FIX] HANDLE LOCAL ID (Prevent UUID Error 22P02)
+    if (orderId && orderId.toString().startsWith("local_")) {
+      try {
+        // Safe Query: Hanya cari di metadata intra-JSON (Text), jangan scan ref_id (UUID)
+        const { data, error } = await supabase
+          .from("event_logs")
+          .select("*")
+          .eq("metadata->>ref_local_id", orderId)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setLogs(data || []);
+      } catch (err) {
+        console.warn("Local Log Fetch Skipped/Error:", err.message);
+        setLogs([]);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // STANDARD QUERY (Server ID / UUID)
     try {
-      const { data, error } = await supabase
-        .from("event_logs")
-        .select("*")
-        .or(
+      // 1. Cek apakah UUID Valid?
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          orderId,
+        );
+
+      let query = supabase.from("event_logs").select("*");
+
+      if (isUuid) {
+        // Jika UUID: Cari di ref_id ATAU metadata
+        query = query.or(
           `ref_id.eq.${orderId},metadata->>ref_local_id.eq.${orderId},metadata->>order_id.eq.${orderId}`,
-        )
-        .order("created_at", { ascending: false });
+        );
+      } else {
+        // Jika BUKAN UUID (Integer/String): HANYA cari di metadata (Text Column)
+        // Mencegah Error: invalid input syntax for type uuid
+        query = query.or(
+          `metadata->>ref_local_id.eq.${orderId},metadata->>order_id.eq.${orderId}`,
+        );
+      }
+
+      const { data, error } = await query.order("created_at", {
+        ascending: false,
+      });
 
       if (error) throw error;
 
@@ -292,7 +331,11 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
             <div
               style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}
             >
-              📭 Belum ada aktivitas.
+              {orderId && orderId.toString().startsWith("local_") ? (
+                <span>⏳ Log belum tersedia (Menunggu Sync)</span>
+              ) : (
+                <span>📭 Belum ada aktivitas.</span>
+              )}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>

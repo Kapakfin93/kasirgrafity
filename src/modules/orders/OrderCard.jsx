@@ -157,9 +157,6 @@ export function OrderCard({ order }) {
         marketing_evidence_url: evidence?.url,
         is_public_content: evidence?.isPublic,
       });
-    } catch (err) {
-      // Re-throw to let Modal handle UI error
-      throw err;
     } finally {
       setUpdating(false);
     }
@@ -244,7 +241,7 @@ export function OrderCard({ order }) {
         user?.name || "Operator",
       );
     } catch (error) {
-      alert("❌ Gagal batal.");
+      alert("❌ Gagal batal: " + error.message);
     } finally {
       setUpdating(false);
     }
@@ -340,8 +337,8 @@ export function OrderCard({ order }) {
         style={{
           background: "#1f2937",
           borderRadius: "12px",
-          padding: "16px",
-          marginBottom: "16px",
+          padding: "12px", // COMPACT: Reduced from 16px
+          marginBottom: "12px", // COMPACT: Reduced from 16px
           border: "1px solid #374151",
           boxShadow: "0 4px 6px rgba(0, 0, 0, 0.3)",
           // LOGIKA KUNCI: Redupkan jika Arsip
@@ -356,18 +353,18 @@ export function OrderCard({ order }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "16px",
-            paddingBottom: "12px",
+            marginBottom: "10px", // COMPACT: Reduced from 16px
+            paddingBottom: "8px", // COMPACT: Reduced from 12px
             borderBottom: "2px solid #374151",
           }}
         >
           <div>
             <div
               style={{
-                fontSize: "18px",
+                fontSize: "16px", // COMPACT
                 fontWeight: "900",
                 color: "white",
-                marginBottom: "4px",
+                marginBottom: "2px", // COMPACT
               }}
             >
               <span title={order.source === "ONLINE" ? "Online" : "Kasir"}>
@@ -469,7 +466,7 @@ export function OrderCard({ order }) {
                 background: "none",
                 border: "1px solid #4b5563",
                 borderRadius: "6px",
-                padding: "6px 10px",
+                padding: "4px 8px", // COMPACT
                 cursor: "pointer",
                 fontSize: "14px",
                 color: "#9ca3af",
@@ -482,9 +479,9 @@ export function OrderCard({ order }) {
               style={{
                 backgroundColor: isLunas ? "#16a34a" : "#dc2626",
                 color: "white",
-                padding: "6px 12px",
+                padding: "4px 8px", // COMPACT
                 borderRadius: "6px",
-                fontSize: "11px",
+                fontSize: "10px", // COMPACT
                 fontWeight: "900",
                 textTransform: "uppercase",
                 boxShadow: isLunas
@@ -501,9 +498,9 @@ export function OrderCard({ order }) {
                     ? "#ef4444"
                     : statusConfig?.color || "#94a3b8",
                 color: "white",
-                padding: "6px 12px",
+                padding: "4px 8px", // COMPACT
                 borderRadius: "6px",
-                fontSize: "11px",
+                fontSize: "10px", // COMPACT
                 fontWeight: "900",
                 textTransform: "uppercase",
               }}
@@ -538,9 +535,9 @@ export function OrderCard({ order }) {
             style={{
               display: "flex",
               alignItems: "center",
-              marginBottom: "16px",
+              marginBottom: "12px",
               background: "rgba(0,0,0,0.2)",
-              padding: "8px",
+              padding: "6px", // COMPACT
               borderRadius: "8px",
             }}
           >
@@ -601,9 +598,9 @@ export function OrderCard({ order }) {
         <div
           style={{
             background: "#111827",
-            padding: "14px",
+            padding: "10px", // COMPACT
             borderRadius: "8px",
-            marginBottom: "12px",
+            marginBottom: "10px", // COMPACT
           }}
         >
           {(order.items || []).map((item, idx) => (
@@ -618,10 +615,10 @@ export function OrderCard({ order }) {
             >
               <div
                 style={{
-                  fontSize: "16px",
+                  fontSize: "14px", // COMPACT
                   fontWeight: "700",
                   color: "white",
-                  marginBottom: "6px",
+                  marginBottom: "4px",
                 }}
               >
                 x{item.qty} {item.productName}
@@ -737,7 +734,7 @@ export function OrderCard({ order }) {
                 disabled={updating || mainAction.disabled}
                 style={{
                   flex: 2,
-                  padding: "14px",
+                  padding: "10px 12px", // COMPACT: Reduced from 14px
                   backgroundColor: mainAction.color,
                   color: "white",
                   border: "none",

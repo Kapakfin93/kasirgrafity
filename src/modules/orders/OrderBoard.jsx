@@ -8,10 +8,11 @@ import React, { useEffect, useState } from "react";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import { OrderCard } from "./OrderCard";
+import { db } from "../../data/db/schema";
 
 export function OrderBoard() {
   const {
-    orders,
+    orders, // [RESTORED] Source of Truth
     loading,
     error,
     // Pagination state
@@ -35,8 +36,30 @@ export function OrderBoard() {
   const [productionFilter, setProductionFilter] = useState("ALL");
   const [localSearchQuery, setLocalSearchQuery] = useState("");
 
-  // === 1. DATA LOADING & FILTERING ENGINE ===
-  // Setiap kali Page, Filter, atau Search berubah, kita minta data BARU ke Server
+  // === REACTIVE STORE INTEGRATION (HEARTBEAT RESTORED) ===
+
+  // 🕵️ MULAI: CCTV STORAGE HEALTH (Background Check)
+  useEffect(() => {
+    const checkStorageHealth = async () => {
+      try {
+        if (!db || !db.orders) return;
+        const count = await db.orders.count();
+        const estimate = await navigator.storage?.estimate();
+
+        console.log("📊 [CCTV SERVER] Storage Health:", {
+          totalOrdersLokal: count,
+          terpakai: (estimate?.usage / 1024 / 1024).toFixed(2) + " MB",
+          kapasitasMaksimal: (estimate?.quota / 1024 / 1024).toFixed(2) + " MB",
+        });
+      } catch (err) {
+        console.warn("⚠️ Gagal mengecek kapasitas storage:", err);
+      }
+    };
+    checkStorageHealth();
+  }, []);
+  // 🏁 SELESAI: CCTV STORAGE HEALTH
+
+  // [PHASE 1] Restore Heartbeat Download
   useEffect(() => {
     // Jika sedang searching, jangan load paginated biasa (biarkan fungsi searchOrders yg kerja)
     if (storeSearchQuery) return;
@@ -59,7 +82,66 @@ export function OrderBoard() {
     storeSearchQuery,
   ]);
 
+  // Keep Sync Trigger for Dashboard only (Optional)
+  // Keep Sync Trigger for Dashboard only (Optional)
+  // [PHASE 2] AUTO-SYNC INTERVAL (30 Minutes)
+  useEffect(() => {
+    // Initial Load
+    loadSummary();
+
+    // Setup Interval: 30 Menit = 30 * 60 * 1000 = 1,800,000 ms
+    // Setup Interval: 30 Menit = 30 * 60 * 1000 = 1,800,000 ms
+    const intervalId = setInterval(async () => {
+      console.log(
+        `[${new Date().toLocaleTimeString()}] ⏰ Auto-Sync Initiated`,
+      );
+
+      // 🛡️ RACE CONDITION GUARD:
+      // Jangan refresh jika user sedang mengetik search!
+      if (!storeSearchQuery && !localSearchQuery) {
+        console.time("Auto-Sync Duration");
+        try {
+          console.log("🔄 Auto-Sync: Fetching Orders...");
+          await loadOrders({
+            page: currentPage,
+            limit: 20,
+            paymentStatus: paymentFilter,
+            productionStatus: productionFilter,
+          });
+
+          console.log("🔄 Auto-Sync: Fetching Summary...");
+          await loadSummary();
+
+          console.log("✅ Auto-Sync Completed Successfully");
+        } catch (err) {
+          console.error("❌ Auto-Sync Failed:", err);
+        } finally {
+          console.timeEnd("Auto-Sync Duration");
+        }
+      } else {
+        console.warn(
+          `⏸️ Auto-Sync Paused: User is searching (Store: "${storeSearchQuery}", Local: "${localSearchQuery}")`,
+        );
+      }
+    }, 1800000); // 30 Menit
+
+    // CLEANUP PROTOCOL
+    return () => {
+      console.log("🧹 Auto-Sync Interval Cleared.");
+      clearInterval(intervalId);
+    };
+  }, [
+    currentPage,
+    paymentFilter,
+    productionFilter,
+    storeSearchQuery,
+    localSearchQuery,
+    loadOrders,
+    loadSummary,
+  ]);
+
   // === 2. SEARCH HANDLER (Debounce) ===
+  // Still useful for updating UI state, providing search query param
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localSearchQuery !== storeSearchQuery) {
@@ -245,19 +327,19 @@ export function OrderBoard() {
       {error && <div className="board-error">❌ Error: {error}</div>}
 
       {/* Order Cards Grid */}
-      <div className="board-grid">
-        {!loading && orders.length === 0 && (
-          <div className="board-empty">
-            <p>📭 Tidak ada pesanan untuk filter ini.</p>
-            {localSearchQuery && <p>Coba ubah kata kunci pencarian.</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {orders.length === 0 ? (
+          <div className="col-span-full text-center py-12 bg-gray-800 rounded-xl border border-gray-700">
+            <p className="text-gray-400">
+              {loading ? "Memuat pesanan..." : "Belum ada pesanan."}
+            </p>
           </div>
+        ) : (
+          orders.map((order) => (
+            <OrderCard key={order.ref_local_id || order.id} order={order} />
+          ))
         )}
-
-        {orders.map((order) => (
-          <OrderCard key={order.id} order={order} />
-        ))}
       </div>
-
       {/* === PAGINATION CONTROLS === */}
       {/* Tampilkan pagination jika bukan mode search DAN total halaman > 1 */}
       {!storeSearchQuery && totalPages > 1 && (
