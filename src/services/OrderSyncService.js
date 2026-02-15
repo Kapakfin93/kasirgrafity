@@ -73,14 +73,29 @@ export const OrderSyncService = {
     try {
       // 2. Map Payload to RPC Expectations
       // Ensure we send the *Original* created time (Time Travel)
+
+      // --- 🛡️ IDEMPOTENCY FIX (UUID-FIRST STRATEGY) ---
+      // 1. Ensure UUID integrity locally
+      let finalUuid = order.uuid;
+      if (!finalUuid) {
+        finalUuid = crypto.randomUUID();
+        // CRITICAL: Persist the new UUID locally first!
+        await db.orders.update(order.id, { uuid: finalUuid });
+        console.log(
+          `⚠️ [SELF-HEAL] Generated missing UUID for Order #${order.id}`,
+        );
+      }
+
       const payload = {
         ...order,
 
         // INJECT THESE MISSING FIELDS:
+        id: finalUuid, // FORCE Supabase ID to be the UUID
+
         ref_local_id: order.id, // MANDATORY: Maps Dexie ID
         local_created_at: order.createdAt, // MANDATORY: Maps Original Time
         source: "OFFLINE", // MANDATORY: Hardcoded flag
-        idempotency_key: order.id, // MANDATORY: Anti-duplication key
+        idempotency_key: finalUuid, // MANDATORY: Anti-duplication key (UUID)
         is_tempo: order.isTempo, // MANDATORY: Rule Engine Logic
 
         created_at: order.local_created_at || order.createdAt, // TIME TRAVEL
@@ -101,6 +116,11 @@ export const OrderSyncService = {
         // Ensure Meta exists
         meta: order.meta || {},
       };
+
+      // 3. Remove Local-Only Fields (Clean Payload)
+      delete payload.uuid; // Synced as 'id'
+      delete payload.sync_status;
+      delete payload.last_sync_error;
 
       console.log("📦 [INSERT START] Payload prepared:", {
         ref_id: payload.ref_local_id,
@@ -253,11 +273,21 @@ export const OrderSyncService = {
       );
       console.log("👉 [SYNC DEBUG] Target Server ID:", targetId);
 
-      // Execute Update Update
-      const { error } = await supabase
+      // --- 🛡️ NETWORK RESILIENCE WRAPPER ---
+      // Wrap Supabase call in a Promise.race to enforce a 20s timeout
+      const TIMEOUT_MS = 20000;
+
+      const updatePromise = supabase
         .from("orders")
         .update(payload)
         .eq("id", targetId);
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT_EXCEEDED")), TIMEOUT_MS),
+      );
+
+      // Execute Race
+      const { error } = await Promise.race([updatePromise, timeoutPromise]);
 
       if (error) {
         console.error("❌ [SYNC ERROR] Supabase Update Failed:", error);
@@ -265,8 +295,6 @@ export const OrderSyncService = {
       } else {
         console.log("✅ [SYNC SUCCESS] Supabase Updated!");
       } // Secure lookup by ID
-
-      if (error) throw error;
 
       console.log(`✅ [UPDATE SUCCESS] State synced for ${order.orderNumber}`);
 
@@ -279,10 +307,21 @@ export const OrderSyncService = {
 
       return true;
     } catch (err) {
-      console.error(
-        `❌ [UPDATE FAIL] ID: ${order.id} / Server: ${order.server_id}`,
-        err.message,
-      );
+      const isNetworkIssue =
+        err.message === "TIMEOUT_EXCEEDED" ||
+        err.message?.includes("AbortError") ||
+        err.message?.includes("network");
+
+      if (isNetworkIssue) {
+        console.warn(
+          `⚠️ [NETWORK ISSUE] Update ID: ${order.id} - ${err.message}`,
+        );
+      } else {
+        console.error(
+          `❌ [UPDATE FAIL] ID: ${order.id} / Server: ${order.server_id}`,
+          err.message,
+        );
+      }
 
       const attempts = (order.sync_attempts || 0) + 1;
       const updates = {
