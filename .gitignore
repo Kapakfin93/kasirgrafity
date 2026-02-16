@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .env
+
+# Backup Files (Safety Protocol)
+*.backup.jsx

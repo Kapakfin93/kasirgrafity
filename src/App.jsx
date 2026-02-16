@@ -19,7 +19,7 @@ import { DataManagement } from "./modules/settings/DataManagement";
 import { Workspace } from "./modules/pos/Workspace";
 import { OrderBoard } from "./modules/orders/OrderBoard";
 import { ExpensePage } from "./modules/expenses/ExpensePage";
-import { WebInboxPanel } from "./modules/orders/WebInboxPanel";
+import WebInboxPanel from "./modules/orders/WebInboxPanel";
 import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
 import { MarketingGallery } from "./modules/marketing/MarketingGallery";
 

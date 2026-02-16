@@ -1003,7 +1003,9 @@ export const useOrderStore = create((set, get) => ({
 
         // 🔥 CCTV AUDIT CREATE ORDER
         try {
-          await logPOSOrderCreated(localOrderId, "System");
+          const creatorName =
+            payload.received_by || payload.meta?.createdBy || "System";
+          await logPOSOrderCreated(localOrderId, localOrderNumber, creatorName);
         } catch (e) {}
 
         return uiOrder;

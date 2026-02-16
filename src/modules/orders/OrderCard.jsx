@@ -153,7 +153,9 @@ export function OrderCard({ order }) {
     // Note: Modal will handle success step, we just process data here
     setUpdating(true);
     try {
-      await updateProductionStatus(orderId, status, user?.name || "Operator", {
+      // 🔥 FIX: Pastikan nama user terkirim, jangan fallback ke "Operator" jika memungkinkan
+      const actorName = user?.name || "Admin/Operator";
+      await updateProductionStatus(orderId, status, actorName, {
         marketing_evidence_url: evidence?.url,
         is_public_content: evidence?.isPublic,
       });
@@ -166,11 +168,12 @@ export function OrderCard({ order }) {
     setWaModal({ show: false, actionType: null });
     setUpdating(true);
     try {
+      const operator = user?.name || "Operator";
       if (waModal.actionType === "COMPLETE") {
-        await updateProductionStatus(order.id, "READY");
+        await updateProductionStatus(order.id, "READY", operator);
         alert("✅ Order SIAP + WA Terkirim");
       } else if (waModal.actionType === "DELIVER") {
-        await updateProductionStatus(order.id, "DELIVERED");
+        await updateProductionStatus(order.id, "DELIVERED", operator);
         alert("✅ Order SELESAI + WA Terkirim");
       }
     } catch (err) {
@@ -183,11 +186,12 @@ export function OrderCard({ order }) {
     setWaModal({ show: false, actionType: null });
     setUpdating(true);
     try {
+      const operator = user?.name || "Operator";
       if (waModal.actionType === "COMPLETE") {
-        await updateProductionStatus(order.id, "READY");
+        await updateProductionStatus(order.id, "READY", operator);
         alert("✅ Order SIAP (Tanpa WA)");
       } else if (waModal.actionType === "DELIVER") {
-        await updateProductionStatus(order.id, "DELIVERED");
+        await updateProductionStatus(order.id, "DELIVERED", operator);
         alert("✅ Order SELESAI (Tanpa WA)");
       }
     } catch (err) {
@@ -1012,6 +1016,7 @@ export function OrderCard({ order }) {
           isOpen={showAuditLog}
           onClose={() => setShowAuditLog(false)}
           orderId={order.id}
+          localId={order.ref_local_id}
           orderNumber={order.orderNumber || String(order.id)}
         />
       </div>

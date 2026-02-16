@@ -46,45 +46,29 @@ const humanizeTerm = (term) => {
   return term;
 };
 
-export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
+export function AuditLogModal({
+  isOpen,
+  onClose,
+  orderId,
+  orderNumber,
+  localId,
+}) {
   const [logs, setLogs] = useState([]);
-
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen && orderId) {
+    if (isOpen && (orderId || localId)) {
       fetchLogs();
     }
-  }, [isOpen, orderId]);
+  }, [isOpen, orderId, localId]);
 
   const fetchLogs = async () => {
     setLoading(true);
 
-    // 🛡️ [FIX] HANDLE LOCAL ID (Prevent UUID Error 22P02)
-    if (orderId && orderId.toString().startsWith("local_")) {
-      try {
-        // Safe Query: Hanya cari di metadata intra-JSON (Text), jangan scan ref_id (UUID)
-        const { data, error } = await supabase
-          .from("event_logs")
-          .select("*")
-          .eq("metadata->>ref_local_id", orderId)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setLogs(data || []);
-      } catch (err) {
-        console.warn("Local Log Fetch Skipped/Error:", err.message);
-        setLogs([]);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // STANDARD QUERY (Server ID / UUID)
     try {
-      // 1. Cek apakah UUID Valid?
+      // 1. Cek apakah Primary ID adalah UUID?
       const isUuid =
+        orderId &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
           orderId,
         );
@@ -92,15 +76,26 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
       let query = supabase.from("event_logs").select("*");
 
       if (isUuid) {
-        // Jika UUID: Cari di ref_id ATAU metadata
-        query = query.or(
-          `ref_id.eq.${orderId},metadata->>ref_local_id.eq.${orderId},metadata->>order_id.eq.${orderId}`,
-        );
+        // SKENARIO 1: Server ID (UUID)
+        // Kita cari log yang punya ref_id = UUID
+        // ATAU log yang punya local_id = localId (Jembatan Masa Lalu)
+        const conditions = [
+          `ref_id.eq.${orderId}`,
+          `metadata->>order_id.eq.${orderId}`,
+        ];
+
+        // Jika kita punya localId ("local_123..."), tambahkan ke pencarian
+        if (localId) {
+          conditions.push(`metadata->>ref_local_id.eq.${localId}`);
+        }
+
+        query = query.or(conditions.join(","));
       } else {
-        // Jika BUKAN UUID (Integer/String): HANYA cari di metadata (Text Column)
-        // Mencegah Error: invalid input syntax for type uuid
+        // SKENARIO 2: Local ID Only / Legacy Integer
+        // Hanya cari di metadata text column untuk menghindari error UUID
+        const targetId = orderId || localId;
         query = query.or(
-          `metadata->>ref_local_id.eq.${orderId},metadata->>order_id.eq.${orderId}`,
+          `metadata->>ref_local_id.eq.${targetId},metadata->>order_id.eq.${targetId}`,
         );
       }
 
@@ -109,10 +104,10 @@ export function AuditLogModal({ isOpen, onClose, orderId, orderNumber }) {
       });
 
       if (error) throw error;
-
       setLogs(data || []);
     } catch (err) {
       console.error("Gagal ambil log CCTV:", err);
+      setLogs([]);
     } finally {
       setLoading(false);
     }

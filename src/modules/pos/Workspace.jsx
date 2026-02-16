@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom"; // Added useLocation, useNavigate
 import { useReactToPrint } from "react-to-print"; // <--- 1. IMPORT PENTING
 import { useTransaction, TRANSACTION_STAGES } from "../../hooks/useTransaction";
 import { useOrderStore } from "../../stores/useOrderStore";
@@ -58,7 +59,44 @@ export function Workspace() {
   // Web Order Prefill State
   const [webOrderPrefill, setWebOrderPrefill] = useState(null);
 
-  // Read prefill from sessionStorage on mount
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Handle Incoming Web Order (from Navigation State)
+  useEffect(() => {
+    if (location.state?.webOrderPayload) {
+      const { cartItem, customer } = location.state.webOrderPayload;
+
+      console.log("📥 Receiving Web Order Payload:", cartItem);
+
+      // 1. Add Item to Cart
+      if (cartItem) {
+        addItemToCart(cartItem);
+      }
+
+      // 2. Set Customer
+      if (customer) {
+        updateCustomerSnapshot({
+          name: customer.name || "",
+          whatsapp: customer.phone || "",
+          phone: customer.phone || "",
+        });
+      }
+
+      // 3. Clear State to prevent double-add on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+
+      // Optional: Auto-select category of the item if possible, or just stay on default
+    }
+  }, [
+    location.state,
+    addItemToCart,
+    updateCustomerSnapshot,
+    navigate,
+    location.pathname,
+  ]);
+
+  // Read prefill from sessionStorage on mount (Legacy/Backup)
   useEffect(() => {
     try {
       const prefillData = sessionStorage.getItem("webOrderPrefill");
@@ -72,7 +110,7 @@ export function Workspace() {
           return;
         }
 
-        // Set prefill state
+        // Set prefill state (Visual only)
         setWebOrderPrefill(parsed);
 
         // Auto-fill customer data
@@ -615,12 +653,17 @@ export function Workspace() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
+                // OLD: Fixed Columns based on mode
+                // gridTemplateColumns: gridMode === "compact" ? "repeat(4, 1fr)" ...
+
+                // NEW: Responsive Auto-Fill based on Min-Width
+                gridTemplateColumns: `repeat(auto-fill, minmax(${
                   gridMode === "compact"
-                    ? "repeat(4, 1fr)"
+                    ? "180px"
                     : gridMode === "large"
-                      ? "repeat(2, 1fr)"
-                      : "repeat(3, 1fr)",
+                      ? "320px"
+                      : "240px"
+                }, 1fr))`,
                 gap: "12px",
                 padding: "4px",
               }}

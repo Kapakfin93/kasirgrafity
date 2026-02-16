@@ -56,8 +56,11 @@ export function ReceiptSection({
         borderRadius: "16px",
         overflow: "hidden",
         boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-        width: "380px",
-        flexShrink: 0,
+        // OLD: width: "380px",
+        // NEW: Responsive Flex
+        flex: "0 0 28%", // Ideal width on 1080p
+        minWidth: "350px", // Don't get too small
+        maxWidth: "480px", // Don't get too wide on 4K
         border: "1px solid #334155",
       }}
     >
