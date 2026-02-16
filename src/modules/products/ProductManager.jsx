@@ -16,6 +16,7 @@ import {
   Mountain,
   Scroll,
   Image as ImageIcon,
+  Plus,
 } from "lucide-react";
 
 // ============================================
@@ -854,6 +855,7 @@ function ProductFormModal({
                 /* DEEP MATRIX EDITOR (For POSTER with price_list) */
                 <div className="space-y-6">
                   {/* MATRIX EDITOR - NOW FULLY EDITABLE */}
+                  {/* MATRIX EDITOR - NOW TRULY EDITABLE */}
                   <div>
                     <h3 className="text-cyan-400 font-bold mb-3 flex items-center gap-2">
                       <Edit size={16} /> Edit Harga Matrix (Per Ukuran & Bahan)
@@ -861,11 +863,67 @@ function ProductFormModal({
                     {formData.variants.map((variant, vIndex) => (
                       <div
                         key={vIndex}
-                        className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-3"
+                        className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-3 relative group"
                       >
-                        <h4 className="text-cyan-400 font-bold mb-3">
-                          {variant.label} ({variant.specs})
-                        </h4>
+                        {/* HEADER: EDITABLE LABEL & SPECS */}
+                        <div className="flex gap-2 mb-3 pr-8">
+                          <input
+                            type="text"
+                            className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-cyan-400 font-bold focus:border-cyan-500 outline-none"
+                            placeholder="Nama Bahan (contoh: Art Paper)"
+                            value={variant.label}
+                            onChange={(e) => {
+                              const newVariants = [...formData.variants];
+                              newVariants[vIndex] = {
+                                ...newVariants[vIndex],
+                                label: e.target.value,
+                                name: e.target.value, // Sync name too
+                              };
+                              setFormData({
+                                ...formData,
+                                variants: newVariants,
+                              });
+                            }}
+                          />
+                          <input
+                            type="text"
+                            className="w-1/3 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-300 text-sm focus:border-cyan-500 outline-none"
+                            placeholder="Specs (opsional)"
+                            value={variant.specs || ""}
+                            onChange={(e) => {
+                              const newVariants = [...formData.variants];
+                              newVariants[vIndex] = {
+                                ...newVariants[vIndex],
+                                specs: e.target.value,
+                              };
+                              setFormData({
+                                ...formData,
+                                variants: newVariants,
+                              });
+                            }}
+                          />
+                        </div>
+
+                        {/* DELETE BUTTON (Floating Top Right) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("Hapus bahan ini?")) {
+                              const newVariants = formData.variants.filter(
+                                (_, i) => i !== vIndex,
+                              );
+                              setFormData({
+                                ...formData,
+                                variants: newVariants,
+                              });
+                            }
+                          }}
+                          className="absolute top-2 right-2 text-slate-600 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Hapus Bahan"
+                        >
+                          🗑️
+                        </button>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {
                             /* LOGIC UPDATE: Handle Existing Keys + Phantom Keys for Nota */
@@ -896,6 +954,23 @@ function ProductFormModal({
                                     ...requiredFolioKeys,
                                   ]),
                                 );
+                              }
+
+                              // ⚠️ If New Material & No Keys yet, show default hints or empty
+                              if (renderKeys.length === 0 && isNotaTarget) {
+                                // Force keys for new material in Nota
+                                renderKeys = [
+                                  "FOLIO_1_4",
+                                  "FOLIO_1_3",
+                                  "FOLIO_1_2",
+                                  "FOLIO_1_1",
+                                ];
+                              } else if (renderKeys.length === 0) {
+                                // For generic matrix (A3/Indoor), maybe show SIDE_1 / SIDE_2 default?
+                                // Or fetch product_sizes?
+                                // For now, let's look at the product name to guess.
+                                // Or just show "SIDE_1" and "SIDE_2" as default start.
+                                renderKeys = ["SIDE_1", "SIDE_2"];
                               }
 
                               // 3. Render the Loop using the computed keys
@@ -965,6 +1040,32 @@ function ProductFormModal({
                         </div>
                       </div>
                     ))}
+
+                    {/* ADD NEW MATERIAL BUTTON */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          variants: [
+                            ...formData.variants,
+                            {
+                              label: "",
+                              name: "",
+                              specs: "",
+                              price: 0,
+                              price_list: {},
+                              is_active: true,
+                              // id will be undefined, triggering Insert logic
+                            },
+                          ],
+                        });
+                      }}
+                      className="w-full py-3 border-2 border-dashed border-slate-700 rounded-xl text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-slate-800 transition-all flex items-center justify-center gap-2 font-bold"
+                    >
+                      <Plus size={20} /> Tambah Bahan Baru
+                    </button>
+
                     <p className="text-xs text-slate-500 mt-3">
                       💡 Harga per lembar sesuai ukuran dan bahan kertas
                     </p>

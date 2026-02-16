@@ -249,6 +249,8 @@ export const useProductStore = create((set, get) => ({
           finishingMap[row.group_key].options.push({
             label: row.label,
             price: row.price || 0,
+            id: row.id, // 👈 FIX: Sertakan ID (UUID) agar tidak dianggap baru saat save
+            finishing_id: row.finishing_id, // Sertakan Slug Induk untuk referensi
           });
         });
         const finishingGroups = Object.values(finishingMap);
@@ -409,127 +411,289 @@ export const useProductStore = create((set, get) => ({
   // =========================================================================
   // 🚨 CRITICAL UPDATE: FIXED SPLIT-BRAIN + SANITIZER + UNIVERSAL ROUTER 🚨
   // =========================================================================
+  // =========================================================================
+  // 🚨 CRITICAL UPDATE: UNIVERSAL ROUTER V2 (VARIANTS + FINISHINGS) 🚨
+  // =========================================================================
   updateProduct: async (id, d) => {
-    // 0. CAPTURE RAW PAYLOAD (Prevents Sanitizer Stripping)
-    // const productData = d; // REMOVED: Refactored to use 'd' directly in generic router
+    const { supabase } = await import("../services/supabaseClient");
+    const productId = id;
+
+    // 0. CAPTURE & LOG RAW PAYLOAD (Error Control 🛡️)
+    console.group(`🚨 AUDIT EDIT PRODUK: ${productId}`);
+    console.log("1. 🔴 PAYLOAD MENTAH (UI):", d);
 
     // 1. Update Database Lokal (Dexie) - Agar UI responsif duluan
     await db.products.update(id, d);
 
-    // =========================================================
-    // 🕵️ FORENSIC TRAP START (ENHANCED WITH SANITIZER)
-    // =========================================================
-    const { supabase } = await import("../services/supabaseClient");
-    const productId = id;
-    const updates = d;
-
-    console.group("🚨 AUDIT EDIT PRODUK: " + productId);
-
-    // A. LOG DATA MENTAH (YANG BIKIN ERROR MERAH)
-    console.log("1. 🔴 PAYLOAD MENTAH (UI):", updates);
-
-    // B. JALANKAN PEMBERSIH (SANITIZER)
-    // Pastikan fungsi preparePayloadForDB ada di paling bawah file ini!
+    // 2. SANITIZE & UPDATE METADATA (Tabel Products - Kulit Luar)
     let cleanPayload = {};
     try {
-      cleanPayload = preparePayloadForDB(updates);
-      console.log("2. 🟢 PAYLOAD BERSIH (DB):", cleanPayload);
+      cleanPayload = preparePayloadForDB(d);
+      console.log("2. 🟢 PAYLOAD BERSIH (DB - Metadata):", cleanPayload);
     } catch (err) {
-      console.warn(
-        "⚠️ Sanitizer belum dipasang di bawah, pakai raw data.",
-        err,
-      );
-      cleanPayload = updates; // Fallback jika fungsi lupa dipasang
+      console.warn("⚠️ Sanitizer Error:", err);
+      cleanPayload = d;
     }
 
-    // C. UPDATE TABEL PRODUCTS (KULIT)
-    const { data: logData, error: logError } = await supabase
+    const { error: metaError } = await supabase
       .from("products")
-      .update(cleanPayload) // 👈 KITA KIRIM DATA BERSIH
-      .eq("id", productId)
-      .select();
+      .update(cleanPayload)
+      .eq("id", productId);
 
-    // D. LAPORAN HASIL
-    if (logError) {
-      console.error("3. ❌ GAGAL UPDATE METADATA:", logError.message);
-      console.error(" DETAILS:", logError);
+    if (metaError) {
+      console.error("❌ GAGAL UPDATE METADATA:", metaError.message);
     } else {
-      console.log("3. ✅ SUKSES UPDATE METADATA (Tabel Product Aman)");
-
-      // Verifikasi Data Balikan
-      if (logData && logData[0]) {
-        const serverPrice = logData[0].base_price || logData[0].price;
-        const sentPrice = cleanPayload.base_price || cleanPayload.price;
-
-        console.log(
-          `4. ⚖️ VERIFIKASI: Kirim ${sentPrice} vs Terima ${serverPrice} -> ${sentPrice == serverPrice ? "MATCH ✅" : "MISMATCH ❌"}`,
-        );
-      }
+      console.log("✅ SUKSES UPDATE METADATA (Nama/Harga Dasar Aman)");
     }
-    // 🕵️ FORENSIC TRAP END
 
-    // 🚦 UNIVERSAL TRAFFIC ROUTER (FINAL GENERIC VERSION)
+    // =========================================================
+    // 🚦 UNIVERSAL TRAFFIC ROUTER (THE LOGIC CORE)
     // =========================================================
 
-    // 1. Capture Raw Variants directly from Argument (d)
-    const rawVariants = d.variants || [];
-
-    // 2. Identify Context
+    // Identifikasi Jenis Mesin Hitung (Engine)
     const currentProduct = await db.products.get(id);
-    const engine = currentProduct?.calc_engine || d.calc_engine || "UNKNOWN";
-    console.log(`🚦 ROUTER ENGINE: ${engine}`);
+    const engine = d.calc_engine || currentProduct?.calc_engine || "UNKNOWN";
+    const categoryId = d.categoryId || currentProduct?.categoryId;
 
-    // 3. LOGIC BRANCHING
+    console.log(`🚦 ROUTER ENGINE: ${engine} | CAT: ${categoryId}`);
+
     const isMatrix =
       ["MATRIX", "MATRIX_FIXED"].includes(engine) ||
-      d.categoryId === "CAT_POSTER";
-    const hasVariantsToUpdate = rawVariants.length > 0;
+      categoryId === "CAT_POSTER";
 
-    // BRANCH A: MATRIX PRODUCTS (Complex Grid)
-    if (isMatrix) {
-      console.log("➡️ ROUTE: MATRIX -> Syncing Matrix Prices...");
-      await syncMatrixPricesToSupabase(id, rawVariants);
-      console.log("✅ Matrix Sync Service Called");
-    }
+    // LOGIC A: UNIVERSAL MATERIAL SYNC (PASTI JALAN DULUAN) 🟢
+    // Syarat: Ada variants di payload. Berlaku untuk SEMUA Tipe (Linear, Area, Matrix, Tiered).
+    // Ini menjamin "Induk Bahan" terdaftar di tabel `product_materials` sebelum diproses lebih lanjut.
+    if (d.variants && d.variants.length > 0) {
+      console.log("➡️ ROUTE: UNIVERSAL MATERIAL SYNC (All Products)...");
+      const variants = d.variants;
 
-    // BRANCH B: ALL OTHER PRODUCTS WITH VARIANTS (Linear, Area, Unit, Stationery, etc.)
-    // This covers ALL 7 Categories automatically if they have variants.
-    else if (hasVariantsToUpdate) {
-      console.log("➡️ ROUTE: MATERIAL/VARIANT UPDATE (Generic)...");
-      console.log(
-        `📦 Updating ${rawVariants.length} variants in product_materials...`,
-      );
+      // A.1. Upsert Variants (Looping)
+      for (const v of variants) {
+        // Sanitasi Harga (Untuk Linear/Area/Unit - kalau Matrix harganya 0 atau diabaikan, itu OK)
+        const rawPrice = v.price?.toString().replace(/\D/g, "") || "0";
+        const price = parseInt(rawPrice, 10);
 
-      for (const variant of rawVariants) {
-        if (variant.id && variant.price !== undefined) {
-          // Sanitasi Harga: "1.234.567" -> 1234567 (Integer)
-          const rawPrice = variant.price.toString().replace(/\D/g, "");
-          const cleanPrice = rawPrice ? parseInt(rawPrice, 10) : 0;
+        const variantPayload = {
+          product_id: productId, // 👈 KUNCI: Selalu tempel ID Induk!
+          label: v.label,
+          name: v.label, // Fallback untuk legacy column
+          specs: v.specs || "",
+          price_per_unit: price,
+          display_order: v.display_order || 99,
+          is_active: true,
+        };
 
-          const { error: matError } = await supabase
+        if (v.id && !v.id.startsWith("new_")) {
+          // UPDATE EXISTING
+          const { error: upError } = await supabase
             .from("product_materials")
-            .update({ price_per_unit: cleanPrice })
-            .eq("id", variant.id);
+            .update(variantPayload)
+            .eq("id", v.id);
 
-          if (matError) {
+          if (upError)
             console.error(
-              `❌ Material Update Failed (${variant.id}):`,
-              matError.message,
+              `❌ Gagal Update Varian ${v.label}:`,
+              upError.message,
             );
-          } else {
-            console.log(`✅ Material Updated: ${variant.id} -> ${cleanPrice}`);
+          else console.log(`✅ Update Varian: ${v.label}`);
+        } else {
+          // INSERT NEW (Tanpa ID atau ID sementara 'new_...')
+          const { data: insertedVar, error: inError } = await supabase
+            .from("product_materials")
+            .insert(variantPayload)
+            .select("id")
+            .single();
+
+          if (inError) {
+            console.error(
+              `❌ Gagal Insert Varian ${v.label}:`,
+              inError.message,
+            );
+          } else if (insertedVar) {
+            console.log(
+              `✅ Insert Varian Baru: ${v.label} -> ID: ${insertedVar.id}`,
+            );
+            // 🧠 SMART LINK: Update local object ID immediately
+            // This ensures Logic B (Matrix Sync) uses the REAL UUID, not 'new_...'
+            v.id = insertedVar.id;
           }
         }
       }
     }
 
-    // BRANCH C: NO VARIANTS (Standard Metadata Only)
-    else {
-      console.log("➡️ ROUTE: STANDARD METADATA ONLY (No sub-table updates)");
+    // LOGIC B: MATRIX PRICE SYNC (Anak) 🔴
+    // Syarat: Engine Matrix.
+    // Jalur ini hanya menyimpan HARGA. Bahannya (Induk) dianggap sudah beres di Logic A.
+    if (isMatrix) {
+      console.log("➡️ ROUTE: MATRIX -> Syncing Matrix Prices...");
+      const rawVariants = d.variants || [];
+      // Note: Jika variant baru saja di-insert di atas (Logic A) dan belum punya Real UUID,
+      // syncMatrixPricesToSupabase mungkin skip atau error untuk item tersebut.
+      // Solusi: UI akan auto-refresh setelah save, mengambil UUID baru.
+      // Save berikutnya akan sukses menyimpan harga.
+      // Ini trade-off yang aman daripada error Foreign Key.
+      await syncMatrixPricesToSupabase(id, rawVariants);
+      console.log("✅ Matrix Sync Service Called");
+    }
+
+    // =========================================================
+    // 🔧 LOGIC C: FINISHING OPTIONS SYNC (Baru!)
+    // =========================================================
+    if (d.finishing_groups && d.finishing_groups.length > 0) {
+      console.log("➡️ ROUTE: FINISHING SYNC...");
+
+      // Flatten Groups -> Options Rows
+      const allOptions = [];
+      d.finishing_groups.forEach((group, gIdx) => {
+        if (group.options) {
+          group.options.forEach((opt, oIdx) => {
+            allOptions.push({
+              group_key: group.id || `fin_grp_${gIdx}`,
+              group_title: group.title,
+              type: group.type || "radio",
+              is_required: group.required || false,
+              // Option Data
+              id: opt.id, // Bisa undefined/baru
+              label: opt.label,
+              price: opt.price,
+              display_order: oIdx + 1,
+            });
+          });
+        }
+      });
+
+      console.log(`📦 Memproses ${allOptions.length} Opsi Finishing...`);
+
+      for (const opt of allOptions) {
+        // GENERATE SLUG JIKA BELUM ADA (Jalur Resmi untuk finishing_id)
+        // Format: fin_{first_word}_{random_string}
+        let generatedFinishingId =
+          opt.id && opt.id.startsWith("fin_") ? null : opt.id;
+
+        // Jika ID Masih Kosong atau Temporary (fin_...), kita buat slug baru
+        // Tapi finishing_id itu TEXT (slug), bukan UUID.
+        // Kita butuh slug yang konsisten.
+        const cleanLabel = opt.label
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .toLowerCase()
+          .substring(0, 10);
+        const uniqueSlug = `fin_${cleanLabel}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+        // Note: Di DB `finishing_id` adalah TEXT identifier. `id` adalah UUID.
+        // Jika insert baru, kita perlu generate UUID (via Supabase) DAN Text ID (via code).
+
+        const payload = {
+          product_id: productId,
+          group_key: opt.group_key,
+          group_title: opt.group_title,
+          type: opt.type,
+          is_required: opt.is_required,
+          label: opt.label,
+          finishing_id: uniqueSlug, // 👈 SOLUSI ERROR 400: Generate ID Teks Unik
+          price: opt.price
+            ? parseInt(opt.price.toString().replace(/\D/g, ""), 10)
+            : 0,
+          display_order: opt.display_order, // Ini sudah benar (index + 1)
+          // is_active: true, // ❌ HAPUS: Kolom ini tidak ada di tabel finishing_options
+        };
+
+        // DEBUG: Cek Payload sebelum dikirim
+        // console.log("🧐 PAYLOAD FINISHING:", payload);
+
+        if (opt.id && !opt.id.startsWith("fin_")) {
+          // UPDATE EXISTING KONEKSI (Relation Only)
+          delete payload.finishing_id; // Jangan ubah parent ID
+
+          await supabase
+            .from("finishing_options")
+            .update(payload)
+            .eq("id", opt.id);
+        } else {
+          // INSERT NEW OPTION
+          // ⚠️ PENTING: Karena ada Foreign Key ke tabel `finishings`,
+          // Kita harus pastikan Master Finishing ID ini ada dulu!
+
+          // 1. Upsert Master Finishing (Definisi Global)
+          const masterPayload = {
+            id: uniqueSlug,
+            name: opt.label,
+            is_active: true,
+          };
+
+          const { error: masterError } = await supabase
+            .from("finishings")
+            .upsert(masterPayload, { onConflict: "id" });
+
+          if (masterError) {
+            console.error("❌ Gagal Upsert Master Finishing:", masterError);
+          }
+
+          // 2. Insert Link ke Produk (finishing_options)
+          const { error } = await supabase
+            .from("finishing_options")
+            .insert(payload);
+
+          if (error)
+            console.error("❌ Gagal Insert Finishing Option:", error, payload);
+        }
+      }
+      console.log("✅ Finishing Sync Selesai.");
+    }
+
+    // =========================================================
+    // 🔧 LOGIC D: WHOLESALE TIERS SYNC (Sambungan Pipa Baru!)
+    // =========================================================
+    const wholesaleRules =
+      d.wholesale_rules || d.advanced_features?.wholesale_rules;
+
+    if (wholesaleRules && Array.isArray(wholesaleRules)) {
+      console.log("➡️ ROUTE: WHOLESALE TIERS SYNC...");
+      console.log(`📦 Memproses ${wholesaleRules.length} Aturan Grosir...`);
+
+      // 1. Reset Tiers Lama (Strategy: Delete All & Re-Insert)
+      const { error: delError } = await supabase
+        .from("product_price_tiers")
+        .delete()
+        .eq("product_id", productId);
+
+      if (delError) {
+        console.error("❌ Gagal Reset Tiers Lama:", delError.message);
+      } else {
+        // 2. Insert Tiers Baru
+        if (wholesaleRules.length > 0) {
+          const tierPayloads = wholesaleRules.map((rule) => ({
+            product_id: productId,
+            min_qty: parseInt(rule.min, 10),
+            max_qty: parseInt(rule.max, 10),
+            value: parseInt(rule.value, 10),
+            type: rule.type || "price", // 'price' or 'discount'
+          }));
+
+          const { error: insError } = await supabase
+            .from("product_price_tiers")
+            .insert(tierPayloads);
+
+          if (insError)
+            console.error("❌ Gagal Insert Tiers Baru:", insError.message);
+          else console.log("✅ Sukses Simpan Tiers Baru:", tierPayloads.length);
+        } else {
+          console.log("ℹ️ Tiers Kosong (Dihapus oleh user).");
+        }
+      }
     }
 
     console.groupEnd(); // Tutup Group Log
-    await get().fetchMasterData(); // Refresh Data Lokal
+
+    // Refresh Data Lokal dan UI
+    setTimeout(() => {
+      get()
+        .syncCloudProducts()
+        .then(() => {
+          console.log("🔄 Auto-Sync post-update selesai. Refreshing UI...");
+          get().fetchMasterData(); // 👈 WAJIB: Agar UI update harga baru dari Supabase
+        });
+    }, 1000);
   },
 
   deleteProduct: async (id) => {
