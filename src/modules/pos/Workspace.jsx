@@ -49,7 +49,8 @@ export function Workspace() {
     setDiscount,
   } = useTransaction();
 
-  const { createOrder } = useOrderStore();
+  const { createOrder, incomingWebOrder, clearIncomingWebOrder } =
+    useOrderStore();
   const { profile } = useAuth();
   const { csName, locked, setCSName, lock, unlock } = useCS();
 
@@ -62,38 +63,53 @@ export function Workspace() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Handle Incoming Web Order (from Navigation State)
+  // 🔥 DUPLICATE PREVENTION GUARD (React Strict Mode / Fast Re-renders)
+  const processedRef = useRef(false);
+
+  // Handle Incoming Web Order (Global Store Pattern - Fixes Infinite Loop)
   useEffect(() => {
-    if (location.state?.webOrderPayload) {
-      const { cartItem, customer } = location.state.webOrderPayload;
-
-      console.log("📥 Receiving Web Order Payload:", cartItem);
-
-      // 1. Add Item to Cart
-      if (cartItem) {
-        addItemToCart(cartItem);
-      }
-
-      // 2. Set Customer
-      if (customer) {
-        updateCustomerSnapshot({
-          name: customer.name || "",
-          whatsapp: customer.phone || "",
-          phone: customer.phone || "",
-        });
-      }
-
-      // 3. Clear State to prevent double-add on refresh
-      navigate(location.pathname, { replace: true, state: {} });
-
-      // Optional: Auto-select category of the item if possible, or just stay on default
+    // 1. If NO order in pipe, RESET the guard so we are ready for next time
+    if (!incomingWebOrder) {
+      processedRef.current = false;
+      return;
     }
+
+    // 2. If Order exists BUT we already processed it, STOP.
+    if (processedRef.current) {
+      return;
+    }
+
+    // 3. EXECUTE (Once per order)
+    console.log("📥 Receiving Incoming Web Order (Store):", incomingWebOrder);
+    processedRef.current = true; // 🔒 LOCK IMMEDIATELY
+
+    const { cartItem, customer } = incomingWebOrder;
+
+    // A. Add Item to Cart
+    if (cartItem) {
+      addItemToCart(cartItem);
+    }
+
+    // B. Set Customer
+    if (customer) {
+      updateCustomerSnapshot({
+        name: customer.name || "",
+        whatsapp: customer.phone || "",
+        phone: customer.phone || "",
+      });
+    }
+
+    // C. CONSUME & CLEAR
+    // Data is now in Local POS State, so we clear the Global Transfer State.
+    // Small delay to ensure state updates propagate before clearing (optional safety)
+    setTimeout(() => {
+      clearIncomingWebOrder();
+    }, 100);
   }, [
-    location.state,
+    incomingWebOrder,
     addItemToCart,
     updateCustomerSnapshot,
-    navigate,
-    location.pathname,
+    clearIncomingWebOrder,
   ]);
 
   // Read prefill from sessionStorage on mount (Legacy/Backup)

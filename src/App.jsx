@@ -12,6 +12,7 @@ import { MainLayout } from "./components/MainLayout";
 
 // Pages
 import { Login } from "./pages/Login";
+import WebOrderPage from "./pages/WebOrderPage"; // 🔥 Import WebOrderPage
 import { OwnerDashboard } from "./modules/dashboard/OwnerDashboard";
 import { ProductManager } from "./modules/products/ProductManager";
 import { EmployeeList } from "./modules/employees/EmployeeList";
@@ -42,7 +43,8 @@ function App() {
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
-
+            <Route path="/product/:webCode" element={<WebOrderPage />} />{" "}
+            {/* 🔥 New Dynamic Route */}
             {/* Protected Routes (Harus Login) */}
             <Route
               path="/"
@@ -97,7 +99,6 @@ function App() {
               <Route path="/attendance" element={<AttendanceBoard />} />
               <Route path="/marketing-gallery" element={<MarketingGallery />} />
             </Route>
-
             {/* Fallback 404 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

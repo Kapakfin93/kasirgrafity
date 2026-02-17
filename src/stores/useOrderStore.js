@@ -213,6 +213,11 @@ export const useOrderStore = create((set, get) => ({
     },
   },
 
+  // 🔥 STATE KOMUNIKASI WEB -> POS (To Fix Infinite Loop)
+  incomingWebOrder: null, // Payload dari WebInbox
+  setIncomingWebOrder: (payload) => set({ incomingWebOrder: payload }),
+  clearIncomingWebOrder: () => set({ incomingWebOrder: null }),
+
   // === ACTIONS ===
 
   // 1. LOAD ORDERS (BLOCKCHAIN / STALE-WHILE-REVALIDATE STANDARD)
