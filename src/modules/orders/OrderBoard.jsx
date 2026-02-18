@@ -39,8 +39,17 @@ export function OrderBoard() {
   const [localSearchQuery, setLocalSearchQuery] = useState("");
 
   // [NEW] AGGREGATOR STATE
-  const [viewMode, setViewMode] = useState("LIST"); // LIST | WEEKLY
+  // Default ke WEEKLY agar Admin/Owner langsung dapat fitur baru
+  const [viewMode, setViewMode] = useState(() => {
+    return localStorage.getItem("orderBoard_viewMode") || "WEEKLY";
+  });
+
   const [currentWeekRange, setCurrentWeekRange] = useState(null);
+
+  // Persist View Mode
+  useEffect(() => {
+    localStorage.setItem("orderBoard_viewMode", viewMode);
+  }, [viewMode]);
 
   // === REACTIVE STORE INTEGRATION (HEARTBEAT RESTORED) ===
 
