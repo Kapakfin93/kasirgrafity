@@ -8,6 +8,7 @@ import React, { useEffect, useState } from "react";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import { OrderCard } from "./OrderCard";
+import WeekNavigator from "../../components/WeekNavigator"; // [NEW] Aggregator Component
 import { db } from "../../data/db/schema";
 
 export function OrderBoard() {
@@ -26,6 +27,7 @@ export function OrderBoard() {
     loadSummary, // PENTING: Untuk update Dashboard Owner
     summaryData,
     manualRefreshOrders, // 🛡️ FITUR BARU: Manual Refresh
+    loadOrdersByDateRange, // [NEW] Aggregator Action
   } = useOrderStore();
 
   const permissions = usePermissions();
@@ -35,6 +37,10 @@ export function OrderBoard() {
   const [paymentFilter, setPaymentFilter] = useState("ALL");
   const [productionFilter, setProductionFilter] = useState("ALL");
   const [localSearchQuery, setLocalSearchQuery] = useState("");
+
+  // [NEW] AGGREGATOR STATE
+  const [viewMode, setViewMode] = useState("LIST"); // LIST | WEEKLY
+  const [currentWeekRange, setCurrentWeekRange] = useState(null);
 
   // === REACTIVE STORE INTEGRATION (HEARTBEAT RESTORED) ===
 
@@ -64,12 +70,18 @@ export function OrderBoard() {
     // Jika sedang searching, jangan load paginated biasa (biarkan fungsi searchOrders yg kerja)
     if (storeSearchQuery) return;
 
-    loadOrders({
-      page: currentPage,
-      limit: 20,
-      paymentStatus: paymentFilter,
-      productionStatus: productionFilter,
-    });
+    if (viewMode === "WEEKLY" && currentWeekRange) {
+      // [NEW] Load Aggregator Logic
+      loadOrdersByDateRange(currentWeekRange.start, currentWeekRange.end);
+    } else {
+      // Default: Load Pagination Logic
+      loadOrders({
+        page: currentPage,
+        limit: 20,
+        paymentStatus: paymentFilter,
+        productionStatus: productionFilter,
+      });
+    }
 
     // REFRESH DASHBOARD JUGA (Agar Net Profit Owner Update!)
     loadSummary();
@@ -80,6 +92,9 @@ export function OrderBoard() {
     loadOrders,
     loadSummary,
     storeSearchQuery,
+    viewMode,
+    currentWeekRange, // [NEW] Trigger re-fetch when week changes
+    loadOrdersByDateRange,
   ]);
 
   // Keep Sync Trigger for Dashboard only (Optional)
@@ -229,6 +244,22 @@ export function OrderBoard() {
           </p>
         </div>
 
+        {/* [NEW] VIEW SWITCHER */}
+        <div className="flex bg-slate-100 rounded-lg p-1 mr-4 border border-slate-300">
+          <button
+            onClick={() => setViewMode("LIST")}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${viewMode === "LIST" ? "bg-white shadow text-blue-700" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            📋 List View
+          </button>
+          <button
+            onClick={() => setViewMode("WEEKLY")}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${viewMode === "WEEKLY" ? "bg-white shadow text-blue-700" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            📊 Mingguan
+          </button>
+        </div>
+
         {/* 🛡️ FITUR BARU: TOMBOL REFRESH MANUAL */}
         <button
           onClick={manualRefreshOrders}
@@ -264,6 +295,11 @@ export function OrderBoard() {
           />
         </div>
       </div>
+
+      {/* [NEW] WEEK NAVIGATOR (Visible only in WEEKLY mode) */}
+      {viewMode === "WEEKLY" && (
+        <WeekNavigator onWeekChange={(range) => setCurrentWeekRange(range)} />
+      )}
 
       {/* Filters Area */}
       <div className="board-filters">
@@ -341,8 +377,8 @@ export function OrderBoard() {
         )}
       </div>
       {/* === PAGINATION CONTROLS === */}
-      {/* Tampilkan pagination jika bukan mode search DAN total halaman > 1 */}
-      {!storeSearchQuery && totalPages > 1 && (
+      {/* Tampilkan pagination jika bukan mode search DAN total halaman > 1 DAN Mode LIST */}
+      {!storeSearchQuery && viewMode === "LIST" && totalPages > 1 && (
         <div
           className="pagination-controls"
           style={{

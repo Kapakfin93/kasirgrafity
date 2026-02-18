@@ -45,7 +45,8 @@ export function OwnerDashboard() {
   // STORE (Untuk Data Operasional & List Table)
   const { orders, loadOrders, summaryData, loadSummary } = useOrderStore();
   const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
-  const { todayAttendances, loadTodayAttendances } = useAttendanceStore();
+  const { todayAttendances, loadTodayAttendances, syncFromCloud } =
+    useAttendanceStore();
   const { expenses, loadExpenses } = useExpenseStore();
 
   // === LOAD DATA ===
@@ -57,6 +58,7 @@ export function OwnerDashboard() {
     loadSummary({ start, end }); // Tetap load ini untuk data operasional
     loadEmployees();
     loadTodayAttendances();
+    syncFromCloud(); // [NEW] Smart Sync (Throttled 1 min) - Fix Attendance Gap
     loadExpenses();
 
     // B. Load Data Intelijen (Untuk Keuangan Akurat)
