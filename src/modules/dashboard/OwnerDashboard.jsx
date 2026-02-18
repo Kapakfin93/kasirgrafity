@@ -26,24 +26,20 @@ export function OwnerDashboard() {
 
   const { orders, loadOrders } = useOrderStore();
   const { employees, loadEmployees, getActiveEmployees } = useEmployeeStore();
-  const { todayAttendances, loadTodayAttendances } = useAttendanceStore();
-  const { expenses, loadExpenses, getTotalExpenses } = useExpenseStore();
+  const { todayAttendances, loadTodayAttendances, syncFromCloud } =
+    useAttendanceStore();
+  const { expenses, loadExpenses } = useExpenseStore();
 
   useEffect(() => {
     loadOrders();
     loadEmployees();
     loadTodayAttendances();
+    syncFromCloud(); // [NEW] Smart Sync (Throttled 1 min) - Fix Attendance Gap
     loadExpenses();
   }, [loadOrders, loadEmployees, loadTodayAttendances, loadExpenses]);
 
-  if (!isOwner) {
-    return (
-      <div className="access-denied">
-        <h2>❌ Akses Ditolak</h2>
-        <p>Hanya Owner yang bisa mengakses dashboard ini.</p>
-      </div>
-    );
-  }
+  // === MOVED DOWN TO FIX CONDITIONAL HOOK LINT ===
+  // Hooks must render before any return statement
 
   // === REFACTORED: SERVER-SIDE STATS CALCULATION (RPC) ===
   const [stats, setStats] = useState({
@@ -116,8 +112,17 @@ export function OwnerDashboard() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, [period]);
+    if (isOwner) fetchStats();
+  }, [period, isOwner]);
+
+  if (!isOwner) {
+    return (
+      <div className="access-denied">
+        <h2>❌ Akses Ditolak</h2>
+        <p>Hanya Owner yang bisa mengakses dashboard ini.</p>
+      </div>
+    );
+  }
 
   // Keep legacy local data for specific lists (Recent Orders) if needed,
   // but avoid heavy calculations.

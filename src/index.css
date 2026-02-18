@@ -8394,3 +8394,163 @@ body {
     color: black !important;
   }
 }
+<<<<<<< HEAD
+=======
+
+/* =========================================
+   ATTENDANCE GLOW CARDS (User Requested)
+   ========================================= */
+.attendance-glow-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px; /* Reduced from 20px for compact look */
+  padding: 2px; /* Space for the border */
+  background: #0f172a; /* Fallback */
+  isolation: isolate; /* Create new stacking context */
+  margin-bottom: 8px;
+}
+
+/* The Rotating Gradient */
+/* The Rotating Gradient - ONLY FOR ACTIVE WORKING EMPLOYEES */
+.attendance-glow-card::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: transparent; /* Default NO GLOW */
+  z-index: -2;
+  opacity: 0.5; /* Dimmer default */
+  transition: all 0.5s ease;
+}
+
+@keyframes rotBGimg {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The Dark Background Overlay (Inset) */
+.attendance-glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 3px; /* Border width */
+  background: #1e293b; /* Dark Slate Background */
+  border-radius: 8px; /* Slightly less than parent */
+  z-index: -1;
+}
+
+/* Status Variants (Overrides Gradient) */
+.attendance-glow-card.status-working::before {
+  background-image: linear-gradient(
+    180deg,
+    #10b981,
+    #34d399,
+    #10b981
+  ); /* Emerald Neon */
+  animation: rotBGimg 4s linear infinite; /* Active Rotation */
+  opacity: 1; /* Bright */
+}
+
+/* Static Borders for Non-Active */
+.attendance-glow-card.status-absent {
+  border: 1px solid #f59e0b; /* Simple Amber Border */
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.attendance-glow-card.status-done {
+  border: 1px solid #334155; /* Simple Slate Border */
+  background: rgba(15, 23, 42, 0.2);
+  opacity: 0.7;
+}
+
+/* Hide the pseudo-element glow for non-working to save GPU and stop animation */
+.attendance-glow-card.status-absent::before,
+.attendance-glow-card.status-done::before {
+  display: none;
+}
+
+/* Content Area */
+.attendance-glow-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  width: 100%;
+}
+
+/* =========================================
+   ORDER CALL-TO-ACTION ANIMATIONS (Cosmetic)
+   ========================================= */
+
+/* 1. Pulse Red (Untuk PENDING - "Sentuh Aku") */
+@keyframes pulseRed {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    border-color: rgba(239, 68, 68, 1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+}
+
+.animate-pulse-red {
+  animation: pulseRed 2s infinite;
+  border: 1px solid #ef4444 !important; /* Force Red Border */
+}
+
+/* 2. Rotate Green (Untuk IN PROGRESS - "Mesin Jalan") */
+/* Reuses existing @keyframes rotBGimg from attendance or define new if needed */
+.order-card.animate-rotate-green {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid transparent !important; /* Hide default border to let glow show */
+  z-index: 1;
+  padding: 16px; /* Reset padding */
+}
+
+.order-card.animate-rotate-green::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: linear-gradient(
+    180deg,
+    transparent,
+    #10b981,
+    transparent
+  ); /* Emerald Moving Light */
+  animation: rotBGimg 3s linear infinite;
+  z-index: -2;
+  opacity: 0.8;
+}
+
+.order-card.animate-rotate-green::after {
+  content: "";
+  position: absolute;
+  inset: 3px; /* Border thickness */
+  background: white; /* Match card background */
+  border-radius: 10px; /* Match card radius - slightly smaller */
+  z-index: -1;
+}
+
+/* Dark Mode Support for Inset */
+:root[data-theme="dark"] .order-card.animate-rotate-green::after {
+  background: #1e293b; /* Match dark card background */
+}
