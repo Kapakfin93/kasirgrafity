@@ -96,7 +96,7 @@ export const OrderSyncService = {
         local_created_at: order.createdAt, // MANDATORY: Maps Original Time
         source: "OFFLINE", // MANDATORY: Hardcoded flag
         idempotency_key: finalUuid, // MANDATORY: Anti-duplication key (UUID)
-        is_tempo: order.isTempo, // MANDATORY: Rule Engine Logic
+        is_tempo: order.is_tempo || order.isTempo, // MANDATORY: Rule Engine Logic (Handle snake_case from Dexie)
 
         created_at: order.local_created_at || order.createdAt, // TIME TRAVEL
 
@@ -250,7 +250,7 @@ export const OrderSyncService = {
       const payload = {
         production_status: order.productionStatus,
         payment_status: order.paymentStatus,
-        is_tempo: order.isTempo, // <--- CRITICAL: Fixes Rule Engine
+        is_tempo: order.is_tempo || order.isTempo, // <--- CRITICAL: Fixes Rule Engine (Handle snake_case from Dexie)
         paid_amount: order.paidAmount,
         remaining_amount: order.remainingAmount,
         assigned_to: order.assignedTo, // For SPK / Operator
