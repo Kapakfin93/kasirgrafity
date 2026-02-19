@@ -9,7 +9,7 @@
  * 5. Operator Name Input
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -25,7 +25,8 @@ import { AuditLogModal } from "../../components/AuditLogModal";
 import { CompletionModal } from "./CompletionModal";
 
 export function OrderCard({ order }) {
-  const { updateProductionStatus, addPayment, cancelOrder } = useOrderStore();
+  const { updateProductionStatus, addPayment, cancelOrder, archiveOrder } =
+    useOrderStore();
   const { user } = useAuthStore();
   const permissions = usePermissions();
   const canUpdateOrderStatus = permissions.canUpdateOrderStatus();
@@ -62,17 +63,48 @@ export function OrderCard({ order }) {
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [completionModal, setCompletionModal] = useState({ show: false });
 
+  // [NEW] Context Menu State
+  const [contextMenu, setContextMenu] = useState(null);
+
+  const handleContextMenu = (e) => {
+    // Only for backlog items
+    if (!order.isBacklog) return;
+
+    e.preventDefault();
+    setContextMenu({
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+    });
+  };
+
+  const handleArchive = () => {
+    setContextMenu(null);
+    if (
+      window.confirm(
+        "Yakin ingin mengarsipkan order ini? Order akan hilang dari list.",
+      )
+    ) {
+      archiveOrder(order.id);
+    }
+  };
+
+  useEffect(() => {
+    const closeMenu = () => setContextMenu(null);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, []);
+
   const statusConfig = ORDER_STATUS[order.productionStatus];
 
   // === LOGIKA VISUAL LOCK (FIXED) ===
   // Variabel isLunas dideklarasikan SATU KALI DISINI SAJA
   const isLunas = order.paymentStatus === "PAID";
+  const isSelesai = order.productionStatus === "DELIVERED";
 
   // Hanya kunci (arsip) jika: CANCELLED atau (Sudah DELIVERED DAN Sudah LUNAS)
   // Jika Tempo (Delivered tapi Belum Lunas), JANGAN DIKUNCI.
-  const isArchived =
-    order.productionStatus === "CANCELLED" ||
-    (order.productionStatus === "DELIVERED" && isLunas);
+  const isLocked =
+    order.productionStatus === "CANCELLED" || (isSelesai && isLunas);
 
   // === MAIN ACTION HANDLER ===
   const handleMainAction = async () => {
@@ -335,9 +367,18 @@ export function OrderCard({ order }) {
   };
   const step = getTimelineStep();
 
+  // === ANIMATION LOGIC (COSMETIC) ===
+  let animationClass = "";
+  if (order.productionStatus === "PENDING") {
+    animationClass = "animate-pulse-red";
+  } else if (order.productionStatus === "IN_PROGRESS" && !isSelesai) {
+    animationClass = "animate-rotate-green"; // Walking light
+  }
+
   return (
     <>
       <div
+        className={`order-card ${animationClass}`}
         style={{
           background: "#1f2937",
           borderRadius: "12px",
@@ -346,10 +387,12 @@ export function OrderCard({ order }) {
           border: "1px solid #374151",
           boxShadow: "0 4px 6px rgba(0, 0, 0, 0.3)",
           // LOGIKA KUNCI: Redupkan jika Arsip
-          opacity: isArchived ? 0.85 : 1,
-          filter: isArchived ? "grayscale(30%)" : "none",
+          opacity: isLocked ? 0.85 : 1,
+          filter: isLocked ? "grayscale(30%)" : "none",
           transition: "all 0.3s",
+          cursor: order.isBacklog ? "context-menu" : "default",
         }}
+        onContextMenu={handleContextMenu}
       >
         {/* HEADER */}
         <div
@@ -410,6 +453,26 @@ export function OrderCard({ order }) {
                 flexWrap: "wrap",
               }}
             >
+              {/* [NEW] BACKLOG BADGE */}
+              {order.isBacklog && (
+                <span
+                  style={{
+                    backgroundColor: "#450a0a",
+                    color: "#fecaca",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    fontSize: "11px",
+                    fontWeight: "900",
+                    border: "1px solid #ef4444",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    boxShadow: "0 0 10px rgba(239, 68, 68, 0.2)",
+                  }}
+                >
+                  ⚠️ BACKLOG
+                </span>
+              )}
               {order.meta?.production_service?.priority && (
                 <span
                   style={{
@@ -730,7 +793,7 @@ export function OrderCard({ order }) {
         </div>
 
         {/* ACTION BUTTONS (Logic: HIDE if Archived) */}
-        {!isArchived && order.productionStatus !== "CANCELLED" && (
+        {!isLocked && order.productionStatus !== "CANCELLED" && (
           <div style={{ display: "flex", gap: "10px" }}>
             {mainAction && canUpdateOrderStatus && (
               <button
@@ -1020,6 +1083,45 @@ export function OrderCard({ order }) {
           orderNumber={order.orderNumber || String(order.id)}
         />
       </div>
+      {/* CONTEXT MENU */}
+      {contextMenu && (
+        <div
+          style={{
+            position: "fixed",
+            top: contextMenu.mouseY,
+            left: contextMenu.mouseX,
+            zIndex: 9999,
+            background: "#1f2937",
+            border: "1px solid #374151",
+            borderRadius: "8px",
+            padding: "8px",
+            boxShadow: "0 4px 6px rgba(0,0,0,0.5)",
+            minWidth: "150px",
+          }}
+        >
+          <div className="text-xs text-gray-400 mb-2 px-2">Actions</div>
+          <button
+            onClick={handleArchive}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "8px",
+              background: "#7f1d1d",
+              color: "#fca5a5",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              fontSize: "13px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            🗑️ Arsipkan
+          </button>
+        </div>
+      )}
     </>
   );
 }

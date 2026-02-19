@@ -381,6 +381,114 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
+  // 1.5. LOAD AGGREGATOR (WEEKLY ORDERS + BACKLOG)
+  loadOrdersByDateRange: async (startDate, endDate) => {
+    set({ loading: true, error: null });
+    try {
+      if (!navigator.onLine) throw new Error("Fitur Aggregator wajib online.");
+
+      // A. Query Backlog (90 Hari Terakhir, Belum Beres, Bukan Arsip)
+      // Logic: (Payment != PAID OR Production != DELIVERED) AND is_archived = false
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      // Kita pakai 2 Query terpisah agar tidak pusing dengan OR logic di Supabase JS
+      // Query 1: Payment Not Paid + is_archived false + range 90 hari
+      const backlogUnpaidPromise = supabase
+        .from("orders")
+        .select(`*, items_snapshot`)
+        .gte("created_at", ninetyDaysAgo.toISOString())
+        .lt("created_at", startDate.toISOString()) // Sebelum minggu ini
+        .eq("is_archived", false)
+        .neq("payment_status", "PAID");
+
+      // Query 2: Production Not Delivered + is_archived false + range 90 hari
+      const backlogNotDonePromise = supabase
+        .from("orders")
+        .select(`*, items_snapshot`)
+        .gte("created_at", ninetyDaysAgo.toISOString())
+        .lt("created_at", startDate.toISOString())
+        .eq("is_archived", false)
+        .neq("production_status", "DELIVERED");
+
+      // B. Query Current Week (Termasuk yang selesai di minggu ini)
+      const currentWeekPromise = supabase
+        .from("orders")
+        .select(`*, items_snapshot`)
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+        .eq("is_archived", false)
+        .order("created_at", { ascending: false });
+
+      const [resUnpaid, resNotDone, resWeek] = await Promise.all([
+        backlogUnpaidPromise,
+        backlogNotDonePromise,
+        currentWeekPromise,
+      ]);
+
+      if (resUnpaid.error) throw resUnpaid.error;
+      if (resNotDone.error) throw resNotDone.error;
+      if (resWeek.error) throw resWeek.error;
+
+      // C. Merge & Deduplicate
+      const orderMap = new Map();
+
+      // Helper to add
+      const addToMap = (list, isBacklog) => {
+        list.forEach((o) => {
+          const norm = internalNormalizeOrder(o);
+          norm.isBacklog = isBacklog; // Flag UI untuk warna merah/marker
+          orderMap.set(norm.id, norm);
+        });
+      };
+
+      addToMap(resUnpaid.data, true);
+      addToMap(resNotDone.data, true);
+
+      // Override Backlog flags if found in current week (should not happen due to date filter, but safe)
+      addToMap(resWeek.data, false);
+
+      const finalOrders = Array.from(orderMap.values()).sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+      );
+
+      set({
+        orders: finalOrders,
+        filteredOrders: finalOrders,
+        totalOrders: finalOrders.length,
+        totalPages: 1, // Disable pagination
+        currentPage: 1,
+        loading: false,
+        currentFilter: "AGGREGATOR_WEEKLY", // Marker logic
+      });
+    } catch (err) {
+      console.error("Aggregator Error:", err);
+      set({ loading: false, error: err.message });
+    }
+  },
+
+  // 1.6. ARCHIVE ORDER (Context Menu Action)
+  archiveOrder: async (orderId) => {
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ is_archived: true })
+        .eq("id", orderId);
+
+      if (error) throw error;
+
+      // Optimistic UI Remove
+      set((state) => ({
+        orders: state.orders.filter((o) => o.id !== orderId),
+        filteredOrders: state.filteredOrders.filter((o) => o.id !== orderId),
+      }));
+      return true;
+    } catch (err) {
+      console.error("Archive Failed:", err);
+      return false;
+    }
+  },
+
   // 2. LOAD SUMMARY (HYBRID INTELLIGENCE)
   loadSummary: async (dateRange = null) => {
     try {
