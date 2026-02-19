@@ -39,4 +39,28 @@ export const useCustomerStore = create((set, get) => ({
       };
     });
   },
+
+  // Hapus Pelanggan (System Design: Delete from DB -> Update State)
+  deleteCustomer: async (customerId) => {
+    set({ isLoading: true });
+    try {
+      const { error } = await supabase
+        .from("customers")
+        .delete()
+        .eq("id", customerId);
+
+      if (error) throw error;
+
+      // Update Local State (Immutable pattern)
+      set((state) => ({
+        customers: state.customers.filter((c) => c.id !== customerId),
+      }));
+      return { success: true };
+    } catch (err) {
+      console.error("Gagal hapus customer:", err);
+      return { success: false, error: err.message };
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 }));

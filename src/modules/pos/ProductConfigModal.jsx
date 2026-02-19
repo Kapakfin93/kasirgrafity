@@ -988,16 +988,15 @@ export default function ProductConfigModal({
                 </button>
                 <input
                   type="number"
-                  value={sheetsPerBook}
+                  value={qty}
                   onFocus={(e) => e.target.select()}
                   onBlur={() => {
-                    if (!sheetsPerBook || sheetsPerBook < 1)
-                      setSheetsPerBook(10);
+                    if (!qty || qty < 1) setQty(1);
                   }}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === "") setSheetsPerBook("");
-                    else setSheetsPerBook(parseInt(val));
+                    if (val === "") setQty("");
+                    else setQty(parseInt(val));
                   }}
                   className="w-full bg-transparent text-center text-4xl font-black text-white focus:outline-none focus:text-yellow-400 transition-colors placeholder-slate-700"
                 />
