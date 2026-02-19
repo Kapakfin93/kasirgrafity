@@ -500,9 +500,13 @@ export default function ProductConfigModal({
       selected_details: { variant: variantLabel, notes },
     });
 
+    // SAFETY: Ensure qty is valid (default to 1 if empty/0)
+    const safeQty = qty && qty > 0 ? qty : 1;
+    const safeGrandTotal = (finalUnitPrice + finishingTotal) * safeQty;
+
     onAddToCart({
       product: { ...safeProduct, pricing_model: inputMode },
-      qty,
+      qty: safeQty,
       // === LEGACY FIELDS (keep for backward compatibility) ===
       dimensions:
         isArea || isLinear
@@ -521,13 +525,13 @@ export default function ProductConfigModal({
             : { variantLabel },
       finishings: finishingsArray,
       selected_details: { variant: variantLabel, notes },
-      finalTotal: grandTotal,
+      finalTotal: safeGrandTotal,
       pricingSnapshot: {
         basePrice: currentBasePrice,
         finalUnitPrice,
         finishingTotal,
-        grandTotal,
-        qty,
+        grandTotal: safeGrandTotal,
+        qty: safeQty,
       },
       // === 🔥 NEW: SPECS (CTO DIRECTIVE) ===
       specs: specs,
@@ -984,11 +988,18 @@ export default function ProductConfigModal({
                 </button>
                 <input
                   type="number"
-                  value={qty}
-                  onChange={(e) =>
-                    setQty(Math.max(1, parseInt(e.target.value) || 1))
-                  }
-                  className="flex-1 bg-transparent text-center text-white text-3xl font-black outline-none"
+                  value={sheetsPerBook}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => {
+                    if (!sheetsPerBook || sheetsPerBook < 1)
+                      setSheetsPerBook(10);
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") setSheetsPerBook("");
+                    else setSheetsPerBook(parseInt(val));
+                  }}
+                  className="w-full bg-transparent text-center text-4xl font-black text-white focus:outline-none focus:text-yellow-400 transition-colors placeholder-slate-700"
                 />
                 <button
                   onClick={() => setQty((q) => q + 1)}
