@@ -16,6 +16,9 @@ import { supabase } from "../services/supabaseClient";
 import { db } from "../data/db/schema"; // Top-level import for stability
 import { OrderSyncService } from "../services/OrderSyncService"; // Top-level import
 
+// Request ID Guard — buang hasil request lama jika minggu diganti cepat
+let _activeAggregatorId = 0;
+
 import {
   logPOSOrderCreated,
   logPaymentRecorded,
@@ -383,12 +386,18 @@ export const useOrderStore = create((set, get) => ({
 
   // 1.5. LOAD AGGREGATOR (WEEKLY ORDERS + BACKLOG)
   loadOrdersByDateRange: async (startDate, endDate) => {
-    set({ loading: true, error: null });
+    // Lock request ini — request sebelumnya yang masih jalan akan diabaikan
+    const requestId = ++_activeAggregatorId;
+
+    // Bersihkan data lama segera — hilangkan data bocor ke minggu baru
+    set({ loading: true, error: null, orders: [], filteredOrders: [] });
     try {
       if (!navigator.onLine) throw new Error("Fitur Aggregator wajib online.");
 
       // A. Query Backlog (90 Hari Terakhir, Belum Beres, Bukan Arsip)
-      // Logic: (Payment != PAID OR Production != DELIVERED) AND is_archived = false
+      // Strategi: 2 query terpisah (UNION) karena Supabase JS tidak mendukung
+      // OR antar kolom berbeda secara native. Query 1: unpaid. Query 2: not delivered.
+      // Dedupe dilakukan di sisi client via Map (by ID).
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
@@ -429,6 +438,14 @@ export const useOrderStore = create((set, get) => ({
       if (resUnpaid.error) throw resUnpaid.error;
       if (resNotDone.error) throw resNotDone.error;
       if (resWeek.error) throw resWeek.error;
+
+      // Staleness Check — buang hasil jika ada request lebih baru yang sudah jalan
+      if (requestId !== _activeAggregatorId) {
+        console.log(
+          `[Aggregator] Request #${requestId} discarded (superseded by #${_activeAggregatorId})`,
+        );
+        return; // Jangan update state — request ini sudah basi
+      }
 
       // C. Merge & Deduplicate
       const orderMap = new Map();

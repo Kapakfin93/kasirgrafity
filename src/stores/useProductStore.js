@@ -357,6 +357,10 @@ export const useProductStore = create((set, get) => ({
    * Fetch all master data and reconstruct nested structure
    */
   fetchMasterData: async () => {
+    if (get().isInitialized) {
+      console.log("⚡ fetchMasterData skipped — already initialized");
+      return get().categories;
+    }
     set({ loading: true, error: null });
     try {
       await Promise.all([

@@ -689,10 +689,70 @@ export function Workspace() {
         totalAmount={calculateTotal()}
         paymentState={paymentState}
         isLocked={isLocked}
-        onPrint={handleThermalPrint} // <--- SEKARANG TOMBOL PRINT DI PANEL KANAN AKAN MENCETAK STRUK
+        onPrint={handleThermalPrint}
         onReset={handleNewTransaction}
         customerSnapshot={customerSnapshot}
         onOpenPaymentModal={() => setIsPaymentModalOpen(true)}
+        onLoadDraft={(draft) => {
+          console.log("📂 LOAD DRAFT TRIGGERED:", draft);
+          // 1. Reset Form
+          resetTransaction();
+
+          // 2. Hydrate Customer
+          if (draft.customer_name) {
+            updateCustomerSnapshot({
+              name: draft.customer_name,
+              whatsapp: draft.customer_phone || "",
+              phone: draft.customer_phone || "",
+            });
+          }
+
+          // 3. Hydrate Items (Sequential Restore)
+          // FIX: Handle structure both direct items (legacy) and items_json (POS V2)
+          const itemsToLoad = draft.items || draft.items_json?.items || [];
+
+          if (Array.isArray(itemsToLoad)) {
+            // Small delay to ensure reset state is processed if needed,
+            // but usually callback updates are queue-safe.
+            // We map items to ensure they match 'preConfiguredItem' expectation
+            itemsToLoad.forEach((item) => {
+              // Mapping EKSPLISIT (Tanpa Spread) untuk keamanan maksimal
+              const restoreItem = {
+                // 1. Mandatory Object Structure (Pemicu "New Structure" di useTransaction)
+                product: {
+                  id: item.productId || item.product_id,
+                  name: item.productName || item.product_name || item.name,
+                  price: item.unitPrice || item.price || 0,
+                },
+
+                // 2. Core Quantity & Price Bypass
+                qty: item.qty || 1,
+                finalTotal: item.totalPrice > 0 ? item.totalPrice : undefined, // Guard per request
+                pricingSnapshot: item.pricingSnapshot || null,
+
+                // 3. Configuration / Specs
+                dimensions: item.dimensions || {},
+                finishings: item.finishings || [], // Default empty array
+                specs: item.specs || null,
+                pricingType: item.pricingType || "MANUAL", // Default MANUAL
+
+                // 4. Metadata & Notes
+                notes: item.notes || item.selected_details?.notes || "",
+                selected_details: item.selected_details || null,
+                detail_options: item.detail_options || null,
+
+                // 5. Advanced Financials
+                revenue_print: item.revenue_print || 0,
+                revenue_finish: item.revenue_finish || 0,
+              };
+
+              addItemToCart(restoreItem);
+            });
+          }
+
+          // 4. Feedback
+          // alert("✅ Draft dimuat!"); // Optional, maybe too noisy
+        }}
       />
 
       {/* Payment Modal */}

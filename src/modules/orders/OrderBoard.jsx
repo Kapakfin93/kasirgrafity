@@ -230,12 +230,25 @@ export function OrderBoard() {
     );
   }
 
-  // Get counts for UI Badges (Optional, from summary)
-  const counts = {
-    PENDING: summaryData?.countByProductionStatus?.PENDING || 0,
-    IN_PROGRESS: summaryData?.countByProductionStatus?.IN_PROGRESS || 0,
-    READY: summaryData?.countByProductionStatus?.READY || 0,
-  };
+  // Sprint 2: Badge dari data yang sedang tampil (weekly atau summary global)
+  const counts =
+    viewMode === "WEEKLY"
+      ? {
+          PENDING: orders.filter((o) => o.productionStatus === "PENDING")
+            .length,
+          IN_PROGRESS: orders.filter(
+            (o) => o.productionStatus === "IN_PROGRESS",
+          ).length,
+          READY: orders.filter((o) => o.productionStatus === "READY").length,
+        }
+      : {
+          PENDING: summaryData?.countByProductionStatus?.PENDING || 0,
+          IN_PROGRESS: summaryData?.countByProductionStatus?.IN_PROGRESS || 0,
+          READY: summaryData?.countByProductionStatus?.READY || 0,
+        };
+
+  // Sprint 2: Filter tidak berlaku di WEEKLY mode — disable agar tidak menyesatkan
+  const isFilterDisabled = viewMode === "WEEKLY";
 
   return (
     <div className="order-board">
@@ -311,7 +324,23 @@ export function OrderBoard() {
       )}
 
       {/* Filters Area */}
-      <div className="board-filters">
+      <div
+        className="board-filters"
+        style={isFilterDisabled ? { opacity: 0.4, pointerEvents: "none" } : {}}
+      >
+        {/* Label info saat WEEKLY mode */}
+        {isFilterDisabled && (
+          <div
+            style={{
+              fontSize: "11px",
+              color: "#94a3b8",
+              marginBottom: "6px",
+              fontStyle: "italic",
+            }}
+          >
+            Filter tidak aktif di mode Mingguan
+          </div>
+        )}
         {/* Payment Filter */}
         <div className="filter-group">
           <label>Status Pembayaran:</label>
@@ -319,6 +348,7 @@ export function OrderBoard() {
             {["ALL", "UNPAID", "PARTIAL", "PAID"].map((status) => (
               <button
                 key={status}
+                disabled={isFilterDisabled}
                 className={`filter-btn ${status.toLowerCase()} ${paymentFilter === status ? "active" : ""}`}
                 onClick={() => handlePaymentFilter(status)}
               >
@@ -339,29 +369,32 @@ export function OrderBoard() {
           <label>Status Produksi:</label>
           <div className="filter-buttons">
             <button
+              disabled={isFilterDisabled}
               className={`filter-btn ${productionFilter === "ALL" ? "active" : ""}`}
               onClick={() => handleProductionFilter("ALL")}
             >
               Semua
             </button>
             <button
+              disabled={isFilterDisabled}
               className={`filter-btn pending ${productionFilter === "PENDING" ? "active" : ""}`}
               onClick={() => handleProductionFilter("PENDING")}
             >
-              Pending {productionFilter === "ALL" && `(${counts.PENDING})`}
+              Pending ({counts.PENDING})
             </button>
             <button
+              disabled={isFilterDisabled}
               className={`filter-btn progress ${productionFilter === "IN_PROGRESS" ? "active" : ""}`}
               onClick={() => handleProductionFilter("IN_PROGRESS")}
             >
-              Dikerjakan{" "}
-              {productionFilter === "ALL" && `(${counts.IN_PROGRESS})`}
+              Dikerjakan ({counts.IN_PROGRESS})
             </button>
             <button
+              disabled={isFilterDisabled}
               className={`filter-btn ready ${productionFilter === "READY" ? "active" : ""}`}
               onClick={() => handleProductionFilter("READY")}
             >
-              Siap {productionFilter === "ALL" && `(${counts.READY})`}
+              Siap ({counts.READY})
             </button>
           </div>
         </div>

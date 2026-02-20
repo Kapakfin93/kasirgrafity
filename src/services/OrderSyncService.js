@@ -346,6 +346,11 @@ export const OrderSyncService = {
    * Start Background Interval
    */
   start(intervalMs = 60000) {
+    if (this.isStarted) {
+      console.log("⚡ OrderSyncService already running — skipped");
+      return;
+    }
+    this.isStarted = true;
     console.log("🚀 Order Sync Service Started");
 
     // Initial Run

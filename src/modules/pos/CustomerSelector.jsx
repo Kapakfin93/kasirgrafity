@@ -34,11 +34,16 @@ export function CustomerSelector({
     setSelectedIndex(-1); // Reset selection on input change
 
     if (input.length > 1) {
-      const matches = customers.filter(
-        (c) =>
-          c.name.toLowerCase().includes(input.toLowerCase()) ||
-          (c.phone && c.phone.includes(input)),
-      );
+      const matches = customers
+        .filter(
+          (c) =>
+            c.name.toLowerCase().includes(input.toLowerCase()) ||
+            (c.phone && c.phone.includes(input)),
+        )
+        // Dedupe: tampilkan hanya 1 per nama (ambil yang pertama ditemukan)
+        .filter(
+          (c, idx, arr) => arr.findIndex((x) => x.name === c.name) === idx,
+        );
       setSuggestions(matches);
       setShowSuggestions(true);
     } else {

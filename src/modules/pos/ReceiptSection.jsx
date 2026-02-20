@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { formatRupiah } from "../../core/formatters";
+import useDraftStore from "../../stores/useDraftStore";
+import DraftListModal from "./DraftListModal";
+import { buildWAMessage } from "../../utils/waMessageBuilder";
 
 /**
  * ReceiptSection - Wall Street Theme (Bloomberg Terminal Aesthetic)
@@ -16,10 +19,136 @@ export function ReceiptSection({
   customerSnapshot,
   onOpenPaymentModal,
   paymentState,
+  onLoadDraft, // New Prop: Hydrate POS from Draft
 }) {
   const isLocked = isLockedProp || paymentState?.isLocked;
   const { mode, amountPaid } = paymentState || {};
   const paid = Number.parseFloat(amountPaid) || 0;
+
+  // --- DRAFT & PRE-CHECKOUT LOGIC ---
+  const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+  const { saveDraft, drafts, releaseDraft, fetchDrafts } = useDraftStore();
+
+  // Active Draft Tracking (Local ID for release)
+  const [activeDraftId, setActiveDraftId] = useState(null);
+
+  // 🛡️ Initial Fetch for Badge Count
+  useEffect(() => {
+    fetchDrafts();
+  }, [fetchDrafts]);
+
+  // 🛡️ Auto-Release on Unload
+  useEffect(() => {
+    const handleUnload = () => {
+      if (activeDraftId) releaseDraft(activeDraftId);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [activeDraftId, releaseDraft]);
+
+  // Handle Save Draft
+  const handleSaveDraft = async () => {
+    console.log("💾 SAVE DRAFT CLICKED");
+    if (items.length === 0) return alert("Keranjang kosong!");
+
+    // Normalisasi subtotal/meta
+    const payload = {
+      customer: customerSnapshot,
+      total:
+        typeof totalAmount === "object" ? totalAmount.finalAmount : totalAmount,
+      items: items,
+      meta: {
+        note: "Saved from POS",
+      },
+    };
+
+    console.log("📦 DRAFT PAYLOAD:", payload);
+
+    const result = await saveDraft(payload, activeDraftId); // 🔑 UPDATE if existing, INSERT if new
+    console.log("✅ SAVE RESULT:", result, "| activeDraftId:", activeDraftId);
+
+    if (result.success) {
+      if (
+        window.confirm(
+          "✅ Draft berhasil disimpan! Reset keranjang untuk pelanggan baru?",
+        )
+      ) {
+        handleReset(); // Reset UI after save confirmation
+      }
+    } else {
+      console.error("❌ SAVE FAILED:", result.error);
+      alert(`❌ Gagal: ${result.error}`);
+    }
+  };
+
+  // Handle Share WA (Auto-Save First)
+  const handleShareWA = async () => {
+    if (items.length === 0) return alert("Keranjang kosong!");
+
+    // 1. AUTO-SAVE DRAFT (Guard against tab switching loss)
+    const payload = {
+      customer: customerSnapshot,
+      total:
+        typeof totalAmount === "object" ? totalAmount.finalAmount : totalAmount,
+      items: items,
+      meta: {
+        note: "Auto-saved via WA Estimasi",
+      },
+    };
+
+    try {
+      const saveResult = await saveDraft(payload, activeDraftId); // 🔑 UPDATE if existing
+      if (!saveResult.success) {
+        alert(`Gagal menyimpan draft: ${saveResult.error}`);
+        return; // Stop if save fails
+      }
+      console.log("✅ Auto-Save Success:", saveResult);
+    } catch (err) {
+      console.error("Auto-save error:", err);
+      alert("Gagal menyimpan draft (System Error)");
+      return;
+    }
+
+    // 2. Proceed to WhatsApp (Only if saved)
+    let phone = customerSnapshot?.phone || "";
+    // Normalize
+    phone = phone.replace(/\D/g, "");
+    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+
+    if (!phone) {
+      const input = prompt("Masukkan Nomor WA (62...):");
+      if (!input) return;
+      phone = input.replace(/\D/g, "");
+      if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+    }
+
+    // Build Message using Helper (Shared Logic)
+    const msg = buildWAMessage({
+      items: items,
+      customer: customerSnapshot,
+      total: totalAmount,
+    });
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+  };
+
+  // Handle Load Draft
+  const handleLoadDraftAction = (draft) => {
+    // 1. Hydrate UI (Call parent)
+    if (onLoadDraft) onLoadDraft(draft);
+    // 2. Set Active ID tracking
+    setActiveDraftId(draft.id);
+  };
+
+  // Handle Reset (Interstitial to release draft)
+  const handleReset = () => {
+    if (activeDraftId) {
+      releaseDraft(activeDraftId);
+      setActiveDraftId(null);
+    }
+    onReset?.();
+  };
 
   // FAIL-SAFE DISCOUNT LOGIC (User Request)
   // 1. Calculate Real Subtotal (Sum of all item totals)
@@ -64,6 +193,12 @@ export function ReceiptSection({
         border: "1px solid #334155",
       }}
     >
+      <DraftListModal
+        isOpen={isDraftModalOpen}
+        onClose={() => setIsDraftModalOpen(false)}
+        onLoadDraft={handleLoadDraftAction}
+      />
+
       {/* NEON TOP STRIP - Emerald */}
       <div
         style={{
@@ -74,7 +209,10 @@ export function ReceiptSection({
         }}
       />
 
-      <ReceiptHeader />
+      <ReceiptHeader
+        onOpenDrafts={() => setIsDraftModalOpen(true)}
+        draftCount={drafts.length} // Note: This requires fetchDrafts to trigger initially or periodically
+      />
 
       {/* ITEMS LIST - Scrollable Dark */}
       <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
@@ -108,7 +246,7 @@ export function ReceiptSection({
             subtotal={subtotal}
             appliedDiscount={appliedDiscount}
             onPrint={onPrint}
-            onReset={onReset}
+            onReset={handleReset}
           />
         ) : (
           <CheckoutView
@@ -119,6 +257,8 @@ export function ReceiptSection({
             itemsCount={items.length}
             canProceed={canProceed}
             onOpenPaymentModal={onOpenPaymentModal}
+            onShareWA={handleShareWA}
+            onSaveDraft={handleSaveDraft}
           />
         )}
       </div>
@@ -165,19 +305,35 @@ ReceiptSection.propTypes = {
     mode: PropTypes.string,
     amountPaid: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   }),
+  onLoadDraft: PropTypes.func,
 };
 
 // --- SUB COMPONENTS ---
 
-const ReceiptHeader = () => (
+const ReceiptHeader = ({ onOpenDrafts, draftCount }) => (
   <div
     style={{
       padding: "20px",
       textAlign: "center",
       borderBottom: "1px solid #334155",
       background: "rgba(15, 23, 42, 0.8)",
+      position: "relative",
     }}
   >
+    {/* Draft Button Absolute Position */}
+    <button
+      onClick={onOpenDrafts}
+      className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+      title="Buka Estimasi Pending"
+    >
+      <span className="text-xl">📁</span>
+      {draftCount > 0 && (
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold px-1 rounded-full animate-pulse shadow-sm">
+          {draftCount}
+        </span>
+      )}
+    </button>
+
     <h1
       style={{
         fontSize: "20px",
@@ -355,6 +511,29 @@ const ReceiptItem = ({ item, isLocked, onRemove }) => {
             >
               ×{qty}
             </span>
+            {/* Material / Spec Chip — Fallback chain semua tipe produk */}
+            {(() => {
+              const spec =
+                item.specs?.inputs?.material ||
+                item.specs?.inputs?.paper ||
+                item.specs?.inputs?.variant ||
+                null;
+              return spec ? (
+                <span
+                  style={{
+                    background: "#451a03",
+                    color: "#fbbf24",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    fontSize: "10px",
+                    fontWeight: "600",
+                    border: "1px solid #92400e",
+                  }}
+                >
+                  {spec}
+                </span>
+              ) : null;
+            })()}
           </div>
           {finishings && finishings.length > 0 && (
             <div
@@ -612,6 +791,8 @@ const CheckoutView = ({
   itemsCount,
   canProceed,
   onOpenPaymentModal,
+  onShareWA,
+  onSaveDraft,
 }) => (
   <>
     {/* Summary */}
@@ -699,6 +880,24 @@ const CheckoutView = ({
       </div>
     )}
 
+    {/* PRE-CHECKOUT ACTIONS (New) */}
+    <div className="flex gap-2 mb-3">
+      <button
+        onClick={onShareWA}
+        className="flex-1 bg-green-900/40 border border-green-700 hover:border-green-500 text-green-400 py-2 rounded-lg text-xs font-bold transition-all"
+        title="Kirim rincian via WhatsApp"
+      >
+        📱 WA ESTIMASI
+      </button>
+      <button
+        onClick={onSaveDraft}
+        className="flex-1 bg-yellow-900/40 border border-yellow-700 hover:border-yellow-500 text-yellow-400 py-2 rounded-lg text-xs font-bold transition-all"
+        title="Simpan sementara (Parkir)"
+      >
+        💾 SIMPAN DRAFT
+      </button>
+    </div>
+
     {/* CHECKOUT BUTTON - Emerald Gradient */}
     <button
       onClick={onOpenPaymentModal}
@@ -736,4 +935,6 @@ CheckoutView.propTypes = {
   itemsCount: PropTypes.number.isRequired,
   canProceed: PropTypes.bool.isRequired,
   onOpenPaymentModal: PropTypes.func,
+  onShareWA: PropTypes.func,
+  onSaveDraft: PropTypes.func,
 };
