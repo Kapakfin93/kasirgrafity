@@ -1144,6 +1144,36 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
+  // === UPDATE: Nomor Order Server (Dipanggil setelah sync berhasil) ===
+  updateOrderServerNumber: async (localId, serverOrderNumber) => {
+    try {
+      // 1. Update Zustand state (React re-renders otomatis kalau struk masih terbuka)
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === localId || o.localId === localId
+            ? { ...o, orderNumber: serverOrderNumber, serverOrderNumber }
+            : o,
+        ),
+      }));
+
+      // 2. Update Dexie agar konsisten (server_order_number sudah diset OrderSyncService,
+      //    tapi orderNumber (camelCase) perlu diupdate juga agar query lokal tetap benar)
+      await db.orders.update(localId, {
+        orderNumber: serverOrderNumber,
+        server_order_number: serverOrderNumber,
+      });
+
+      console.log(
+        `✅ [STATE SYNC] Zustand + Dexie updated: ${localId} → ${serverOrderNumber}`,
+      );
+    } catch (err) {
+      // Non-fatal: log saja, jangan ganggu alur utama
+      console.warn(
+        `⚠️ [STATE SYNC WARN] Gagal update orderNumber lokal: ${err.message}`,
+      );
+    }
+  },
+
   // === HELPER: OMNI-SEARCH & SELF-HEALING ===
   _resolveOrder: async (idOrString) => {
     if (!idOrString) return null;
@@ -1409,10 +1439,17 @@ export const useOrderStore = create((set, get) => ({
   },
 
   // 12. APPROVE MARKETING CONTENT
-  approveMarketingContent: async (orderId, isApproved) => {
+  approveMarketingContent: async (
+    orderId,
+    isApproved,
+    actorName,
+    actorRole,
+  ) => {
     try {
       const updates = {
         is_approved_for_social: isApproved,
+        approved_by: actorName || null, // ← Jejak siapa yang approve
+        approved_by_role: actorRole || null, // ← Jejak role yang approve
         sync_status: "UPDATE_PENDING",
         updatedAt: new Date().toISOString(),
       };
@@ -1437,7 +1474,14 @@ export const useOrderStore = create((set, get) => ({
 
       set((state) => ({
         orders: state.orders.map((o) =>
-          o.id === orderId ? { ...o, isApprovedForSocial: isApproved } : o,
+          o.id === orderId
+            ? {
+                ...o,
+                isApprovedForSocial: isApproved,
+                approvedBy: actorName || null, // ← camelCase mapping
+                approvedByRole: actorRole || null, // ← camelCase mapping
+              }
+            : o,
         ),
       }));
 
@@ -1451,14 +1495,16 @@ export const useOrderStore = create((set, get) => ({
     }
   },
 
-  // 13. REJECT MARKETING CONTENT
+  // 13. REJECT MARKETING CONTENT (Arsip, bukan hapus)
   rejectMarketingContent: async (orderId) => {
     try {
+      const now = new Date().toISOString();
       const updates = {
         is_public_content: false,
         is_approved_for_social: false,
+        archived_at: now, // ← ARSIP: Catat waktu reject
         sync_status: "UPDATE_PENDING",
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       };
 
       const updatedCount = await db.orders.update(orderId, updates);
@@ -1479,7 +1525,12 @@ export const useOrderStore = create((set, get) => ({
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === orderId
-            ? { ...o, isPublicContent: false, isApprovedForSocial: false }
+            ? {
+                ...o,
+                isPublicContent: false,
+                isApprovedForSocial: false,
+                archivedAt: now, // ← mapping camelCase untuk filter Gallery
+              }
             : o,
         ),
       }));

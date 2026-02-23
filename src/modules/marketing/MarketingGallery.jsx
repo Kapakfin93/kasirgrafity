@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Download, CheckCircle, Clock, XCircle } from "lucide-react";
 import { useOrderStore } from "../../stores/useOrderStore";
+import { useAuthStore } from "../../stores/useAuthStore";
 
 /**
  * MarketingGallery
@@ -14,6 +15,7 @@ export function MarketingGallery() {
     rejectMarketingContent,
     loading,
   } = useOrderStore();
+  const { currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState("PENDING"); // PENDING | APPROVED
 
   // Initial Load
@@ -31,12 +33,14 @@ export function MarketingGallery() {
   // Filter Logic:
   // 1. Must have Evidence URL
   // 2. Must be flagged as Public Content by Cashier
-  // 3. Status based on Tab
+  // 3. Must NOT be archived (rejected previously)
+  // 4. Status based on Tab
   const galleryItems = orders.filter((o) => {
     const hasEvidence = !!o.marketingEvidenceUrl;
     const isPublic = o.isPublicContent;
+    const isNotArchived = !o.archivedAt; // ← Sembunyikan foto yang sudah diarsipkan
 
-    if (!hasEvidence || !isPublic) return false;
+    if (!hasEvidence || !isPublic || !isNotArchived) return false;
 
     if (activeTab === "PENDING") {
       return !o.isApprovedForSocial;
@@ -47,14 +51,20 @@ export function MarketingGallery() {
 
   const handleApprove = async (id) => {
     if (window.confirm("Approve this photo for social media?")) {
-      await approveMarketingContent(id, true);
+      // Kirim data actor (siapa yang approve) untuk jejak audit
+      await approveMarketingContent(
+        id,
+        true,
+        currentUser?.name || "Unknown",
+        currentUser?.role || "unknown",
+      );
     }
   };
 
   const handleReject = async (id) => {
     if (
       window.confirm(
-        "Tolak foto ini? (Akan dihapus dari antrean dan ditandai privat)",
+        "Tolak foto ini? (Akan diarsipkan dan tidak muncul di antrean lagi)",
       )
     ) {
       await rejectMarketingContent(id);

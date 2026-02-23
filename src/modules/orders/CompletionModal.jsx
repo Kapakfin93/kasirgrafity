@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { X, Share2, AlertTriangle, CheckCircle, WifiOff } from "lucide-react";
+import ReactDOM from "react-dom";
+import {
+  X,
+  Share2,
+  AlertTriangle,
+  CheckCircle,
+  WifiOff,
+  RefreshCw,
+} from "lucide-react";
 import { EvidenceUpload } from "./EvidenceUpload";
 import { supabase } from "../../services/supabaseClient";
 import {
@@ -11,11 +19,45 @@ import {
  * CompletionModal (The "Single Modal")
  * Unified flow for Marking Order as Done + Marketing Evidence + WA Notification
  *
- * Logic:
- * 1. Upload Evidence (Optional/Fail-safe)
- * 2. Update Order Status (Critical)
- * 3. Send WA Notification (Optional)
+ * Upload Lifecycle (enum uploadPhase):
+ *   IDLE        → default, menunggu user memilih foto
+ *   COMPRESSING → EvidenceUpload sedang mengompres gambar (dari device)
+ *   UPLOADING   → Mengirim file ke Supabase Storage
+ *   SUCCESS     → Upload & status update berhasil
+ *   ERROR       → Upload atau status update gagal
  */
+
+// ─── Upload Phase Labels & Helper ──────────────────────────────────────────
+const PHASE = {
+  IDLE: "IDLE",
+  COMPRESSING: "COMPRESSING",
+  UPLOADING: "UPLOADING",
+  SUCCESS: "SUCCESS",
+  ERROR: "ERROR",
+};
+
+function getButtonLabel(phase, hasFile) {
+  switch (phase) {
+    case PHASE.COMPRESSING:
+      return (
+        <>
+          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          Memproses Foto...
+        </>
+      );
+    case PHASE.UPLOADING:
+      return (
+        <>
+          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          Mengunggah...
+        </>
+      );
+    default:
+      return hasFile ? "Simpan & Selesai" : "Lewati & Selesai";
+  }
+}
+
+// ─── Component ─────────────────────────────────────────────────────────────
 export function CompletionModal({
   isOpen,
   order,
@@ -25,24 +67,51 @@ export function CompletionModal({
 }) {
   // --- STATE ---
   const [step, setStep] = useState("EVIDENCE"); // EVIDENCE | SUCCESS
+
+  // 🆕 Enum terpusat untuk semua fase upload
+  const [uploadPhase, setUploadPhase] = useState(PHASE.IDLE);
+  const [errorMessage, setErrorMessage] = useState(null);
+
   const [evidenceFile, setEvidenceFile] = useState(null);
   const [isPublic, setIsPublic] = useState(false);
   const [uploadedUrl, setUploadedUrl] = useState(null);
 
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
-
   if (!isOpen || !order) return null;
+
+  // --- Derived ---
+  const isBlocked =
+    uploadPhase === PHASE.COMPRESSING || uploadPhase === PHASE.UPLOADING;
 
   // --- HANDLERS ---
   const handleFileSelect = (file) => {
     setEvidenceFile(file);
-    setUploadError(null);
+    // Reset error jika user pilih file baru setelah error
+    if (uploadPhase === PHASE.ERROR) setUploadPhase(PHASE.IDLE);
+    setErrorMessage(null);
+  };
+
+  // Callback dari EvidenceUpload untuk notifikasi fase kompresi dan validasi
+  const handleEvidencePhaseChange = (phase, errorMsg) => {
+    if (phase === "COMPRESSING") {
+      setUploadPhase(PHASE.COMPRESSING);
+    } else if (phase === "IDLE") {
+      // Kembali ke IDLE hanya jika sebelumnya COMPRESSING (jangan override ERROR/UPLOADING)
+      setUploadPhase((prev) =>
+        prev === PHASE.COMPRESSING ? PHASE.IDLE : prev,
+      );
+    } else if (phase === "ERROR") {
+      // Validator menolak file — tampilkan pesan error dari validator
+      setUploadPhase(PHASE.ERROR);
+      setErrorMessage(errorMsg || "File tidak valid.");
+    }
   };
 
   const handleProcess = async () => {
-    setIsUploading(true);
-    setUploadError(null);
+    // Guard: jangan eksekusi jika sedang compressing atau uploading
+    if (isBlocked) return;
+
+    setUploadPhase(PHASE.UPLOADING);
+    setErrorMessage(null);
     let evidenceUrl = null;
 
     // 1. UPLOAD LOGIC (FAIL-SAFE)
@@ -58,7 +127,6 @@ export function CompletionModal({
 
         if (error) throw error;
 
-        // Get Public URL
         const { data: publicData } = supabase.storage
           .from("marketing-evidence")
           .getPublicUrl(fileName);
@@ -68,8 +136,8 @@ export function CompletionModal({
         console.log("✅ Evidence Uploaded:", evidenceUrl);
       } catch (err) {
         console.error("⚠️ Upload Failed (Fail-Safe Triggered):", err);
-        setUploadError("Gagal upload foto. Melanjutkan tanpa bukti...");
-        // Do NOT return here. Proceed to update status.
+        // Fail-safe: lanjutkan tanpa foto, bukan error fatal
+        setErrorMessage("Gagal upload foto. Melanjutkan tanpa bukti...");
       }
     }
 
@@ -84,31 +152,38 @@ export function CompletionModal({
         },
       });
 
-      // 3. MOVE TO SUCCESS STEP
+      // 3. SUCCESS
+      setUploadPhase(PHASE.SUCCESS);
       setStep("SUCCESS");
     } catch (err) {
       console.error("❌ Critical Error:", err);
-      alert("Gagal update status: " + err.message);
-    } finally {
-      setIsUploading(false);
+      setUploadPhase(PHASE.ERROR);
+      setErrorMessage("Gagal update status: " + err.message);
     }
+  };
+
+  // Coba lagi dari awal (IDLE) setelah ERROR
+  const handleRetry = () => {
+    setUploadPhase(PHASE.IDLE);
+    setErrorMessage(null);
   };
 
   // --- RENDER ---
   const waMessage = generateCompletionMessage(order, uploadedUrl);
   const waLink = generateWALink(order.customerPhone, waMessage);
 
-  return (
+  return ReactDOM.createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 w-full max-w-md rounded-xl shadow-2xl overflow-hidden">
+      <div className="bg-gray-900 border border-gray-700 w-full max-w-md rounded-xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         {/* HEADER */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-950/50">
+        <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-950/50 sticky top-0 z-10">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             {step === "EVIDENCE" ? "📸 Bukti & Penyelesaian" : "✅ Order Siap!"}
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-800 transition-colors"
+            disabled={isBlocked}
+            className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X size={20} />
           </button>
@@ -149,7 +224,8 @@ export function CompletionModal({
                 ) : (
                   <EvidenceUpload
                     onFileSelect={handleFileSelect}
-                    disabled={isUploading}
+                    onPhaseChange={handleEvidencePhaseChange}
+                    disabled={isBlocked}
                   />
                 )}
 
@@ -173,11 +249,43 @@ export function CompletionModal({
                 )}
               </div>
 
-              {/* Warnings / Errors */}
-              {uploadError && (
+              {/* 🆕 Upload Phase Status Banner */}
+              {uploadPhase === PHASE.COMPRESSING && (
+                <div className="flex items-center gap-2 text-blue-400 text-xs bg-blue-500/10 p-2 rounded border border-blue-500/20 animate-pulse">
+                  <span className="w-3 h-3 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                  <span>Mengompres foto, harap tunggu...</span>
+                </div>
+              )}
+
+              {uploadPhase === PHASE.UPLOADING && (
+                <div className="flex items-center gap-2 text-indigo-400 text-xs bg-indigo-500/10 p-2 rounded border border-indigo-500/20 animate-pulse">
+                  <span className="w-3 h-3 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                  <span>Mengunggah ke server...</span>
+                </div>
+              )}
+
+              {/* Error Banner dengan tombol Coba Lagi */}
+              {uploadPhase === PHASE.ERROR && errorMessage && (
+                <div className="flex items-start gap-2 text-red-400 text-xs bg-red-500/10 p-3 rounded border border-red-500/20">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="mb-2">{errorMessage}</p>
+                    <button
+                      onClick={handleRetry}
+                      className="flex items-center gap-1 text-xs font-bold text-red-300 hover:text-white bg-red-700/40 hover:bg-red-700/70 px-2 py-1 rounded transition-colors"
+                    >
+                      <RefreshCw size={11} />
+                      Coba Lagi
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Fail-safe warning (upload gagal tapi lanjut proses) */}
+              {uploadPhase !== PHASE.ERROR && errorMessage && (
                 <div className="flex items-center gap-2 text-yellow-500 text-xs bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
                   <AlertTriangle size={14} />
-                  <span>{uploadError}</span>
+                  <span>{errorMessage}</span>
                 </div>
               )}
             </div>
@@ -239,37 +347,42 @@ export function CompletionModal({
         </div>
 
         {/* FOOTER */}
-        <div className="p-4 bg-gray-800/50 border-t border-gray-800 flex justify-end gap-3">
+        <div className="p-4 bg-gray-800/50 border-t border-gray-800 flex justify-end gap-3 sticky bottom-0">
           {step === "EVIDENCE" ? (
             <>
               <button
                 onClick={onClose}
-                disabled={isUploading}
-                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                disabled={isBlocked}
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Batal
               </button>
-              <button
-                onClick={handleProcess}
-                disabled={isUploading}
-                className={`
-                  flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white text-sm transition-all
-                  ${
-                    isUploading
-                      ? "bg-gray-600 cursor-not-allowed"
-                      : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20 active:scale-95"
-                  }
-                `}
-              >
-                {isUploading ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {evidenceFile ? "Mengunggah..." : "Memproses..."}
-                  </>
-                ) : (
-                  <>{!evidenceFile ? "Lewati & Selesai" : "Simpan & Selesai"}</>
-                )}
-              </button>
+
+              {/* Tombol Coba Lagi muncul sebagai pengganti Simpan jika ERROR fatal */}
+              {uploadPhase === PHASE.ERROR ? (
+                <button
+                  onClick={handleRetry}
+                  className="flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white text-sm transition-all bg-red-600 hover:bg-red-500"
+                >
+                  <RefreshCw size={14} />
+                  Coba Lagi
+                </button>
+              ) : (
+                <button
+                  onClick={handleProcess}
+                  disabled={isBlocked}
+                  className={`
+                    flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white text-sm transition-all
+                    ${
+                      isBlocked
+                        ? "bg-gray-600 cursor-not-allowed"
+                        : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20 active:scale-95"
+                    }
+                  `}
+                >
+                  {getButtonLabel(uploadPhase, !!evidenceFile)}
+                </button>
+              )}
             </>
           ) : (
             <button
@@ -281,6 +394,7 @@ export function CompletionModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

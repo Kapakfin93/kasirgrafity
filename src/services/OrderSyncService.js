@@ -10,6 +10,7 @@
 
 import { supabase } from "./supabaseClient";
 import { db } from "../data/db/schema";
+import { useOrderStore } from "../stores/useOrderStore";
 
 const BATCH_SIZE = 5;
 const MAX_ATTEMPTS = 10;
@@ -157,6 +158,15 @@ export const OrderSyncService = {
         last_sync_error: null,
       });
 
+      // 5. Update Zustand state → NotaPreview re-render dengan nomor resmi
+      try {
+        const { updateOrderServerNumber } = useOrderStore.getState();
+        await updateOrderServerNumber(order.id, rpcResult.order_number);
+      } catch (stateErr) {
+        // Non-fatal — sync tetap dianggap berhasil
+        console.warn("⚠️ [STATE SYNC] Gagal update Zustand:", stateErr.message);
+      }
+
       return true; // Success
     } catch (err) {
       // 5. Failure Handling (INSERT)
@@ -262,6 +272,12 @@ export const OrderSyncService = {
         marketing_evidence_url: order.marketing_evidence_url,
         is_public_content: order.is_public_content,
         is_approved_for_social: order.is_approved_for_social, // <--- FIX: Added Approval Column
+
+        // GALLERY ARCHIVE & APPROVAL AUDIT TRAIL
+        archived_at: order.archivedAt ?? order.archived_at ?? null,
+        approved_by: order.approvedBy ?? order.approved_by ?? null,
+        approved_by_role:
+          order.approvedByRole ?? order.approved_by_role ?? null,
 
         updated_at: new Date().toISOString(),
         // We generally don't update 'items' or 'customer' on status changes in this V1

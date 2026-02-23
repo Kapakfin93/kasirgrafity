@@ -143,6 +143,29 @@ export function Workspace() {
 
   const [showNotaPreview, setShowNotaPreview] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
+
+  // === JEMBATAN SYNC: Update Nomor Struk Otomatis ===
+  // Ambil data terbaru dari Zustand
+  const ordersList = useOrderStore((state) => state.orders);
+
+  // Pantau jika status nomor order berubah dari LOCAL- ke ORD- hasil background sync
+  useEffect(() => {
+    if (!lastOrder?.id) return;
+    const updatedOrder = ordersList.find((o) => o.id === lastOrder.id);
+    if (
+      updatedOrder &&
+      updatedOrder.orderNumber?.startsWith("ORD-") &&
+      lastOrder.orderNumber !== updatedOrder.orderNumber
+    ) {
+      setLastOrder(updatedOrder);
+      console.log(
+        "🔄 [RECEIPT BRIDGE] Nomor struck ter-update jadi:",
+        updatedOrder.orderNumber,
+      );
+    }
+  }, [ordersList, lastOrder?.id]);
+  // ===============================================
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [gridMode, setGridMode] = useState("normal");
   const [isTempo, setIsTempo] = useState(false);

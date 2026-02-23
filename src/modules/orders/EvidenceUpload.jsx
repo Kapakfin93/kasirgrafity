@@ -1,13 +1,21 @@
 import React, { useState } from "react";
 import imageCompression from "browser-image-compression";
-import { Upload, X, Image as ImageIcon, CheckCircle } from "lucide-react";
+import { Upload, X, CheckCircle } from "lucide-react";
+import { validateImageFile } from "../../utils/uploadValidator";
 
 /**
  * EvidenceUpload Component
  * Handles image selection, compression, and preview.
- * Returns the compressed file to the parent.
+ * Returns the compressed file to the parent via onFileSelect.
+ * Notifies parent about compression lifecycle via onPhaseChange.
+ *
+ * onPhaseChange(phase): "COMPRESSING" | "IDLE" | "ERROR"
  */
-export function EvidenceUpload({ onFileSelect, disabled = false }) {
+export function EvidenceUpload({
+  onFileSelect,
+  onPhaseChange,
+  disabled = false,
+}) {
   const [preview, setPreview] = useState(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState(null);
@@ -18,13 +26,23 @@ export function EvidenceUpload({ onFileSelect, disabled = false }) {
 
     // Reset states
     setError(null);
+
+    // ─── TITIK 1: Validasi Lapis 1 + 2 (sebelum preview & kompresi) ──────
+    const preValidation = validateImageFile(imageFile);
+    if (!preValidation.valid) {
+      setError(preValidation.error);
+      onPhaseChange?.("ERROR", preValidation.error);
+      return; // Hentikan proses
+    }
+
     setPreview(URL.createObjectURL(imageFile)); // Optimistic preview
     setIsCompressing(true);
+    onPhaseChange?.("COMPRESSING"); // 🔔 Notify parent
 
     try {
       const options = {
-        maxSizeMB: 1, // Target smaller size for faster upload
-        maxWidthOrHeight: 1280, // HD is enough for evidence
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1280,
         useWebWorker: true,
       };
 
@@ -38,16 +56,23 @@ export function EvidenceUpload({ onFileSelect, disabled = false }) {
         `✅ Compressed to ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`,
       );
 
-      // Update preview with compressed version (optional, but good for verification)
-      // setPreview(URL.createObjectURL(compressedFile));
+      // ─── TITIK 2: Validasi Lapis 3 (setelah kompresi selesai) ───────────
+      const postValidation = validateImageFile(imageFile, compressedFile);
+      if (!postValidation.valid) {
+        setError(postValidation.error);
+        onPhaseChange?.("ERROR", postValidation.error);
+        onFileSelect(null); // Clear parent state
+        return; // Hentikan proses
+      }
 
       onFileSelect(compressedFile);
-    } catch (error) {
-      console.error("❌ Compression failed:", error);
+    } catch (err) {
+      console.error("❌ Compression failed:", err);
       setError("Gagal memproses gambar. Coba gambar lain.");
       onFileSelect(null); // Clear parent state
     } finally {
       setIsCompressing(false);
+      onPhaseChange?.("IDLE"); // 🔔 Notify parent compression done
     }
   };
 

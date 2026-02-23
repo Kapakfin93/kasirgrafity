@@ -1061,6 +1061,7 @@ export function OrderCard({ order }) {
           }
         />
         <CompletionModal
+          key={completionModal.show ? order.id : "closed"}
           isOpen={completionModal.show}
           order={order}
           onClose={() => setCompletionModal({ show: false })}
