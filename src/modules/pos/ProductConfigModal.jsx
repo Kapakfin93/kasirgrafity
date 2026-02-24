@@ -292,8 +292,17 @@ export default function ProductConfigModal({
 
   const areaCalculation = useMemo(() => {
     if (!isArea && !isLinear) return { area: 0, chargeable: 0 };
-    const rawArea = dimensions.length * dimensions.width;
-    const chargeable = isArea ? Math.ceil(rawArea) : dimensions.length;
+
+    // Konversi CM -> Meter HANYA untuk produk AREA (spanduk/banner)
+    // Produk LINEAR (DTF, stiker meteran, print kain) tetap dalam meter
+    const lengthM = isArea ? dimensions.length / 100 : dimensions.length;
+    const widthM = isArea ? dimensions.width / 100 : dimensions.width;
+
+    const rawArea = lengthM * widthM;
+
+    // Minimum 1 m² hanya berlaku untuk produk AREA
+    const chargeable = isArea ? Math.max(1, rawArea) : lengthM;
+
     return { area: rawArea, chargeable };
   }, [dimensions, isArea, isLinear]);
 
@@ -374,6 +383,11 @@ export default function ProductConfigModal({
   const grandTotal = (finalUnitPrice + finishingTotal) * qty;
 
   const handleSave = () => {
+    // Konversi CM -> Meter sebelum keluar modal
+    // Hanya untuk produk AREA — Linear tetap dalam meter
+    const outLength = isArea ? dimensions.length / 100 : dimensions.length;
+    const outWidth = isArea ? dimensions.width / 100 : dimensions.width;
+
     if (isMatrix && (!matrixSelection.step1 || !matrixSelection.step2)) {
       alert("Mohon lengkapi pilihan ukuran dan bahan");
       return;
@@ -392,7 +406,7 @@ export default function ProductConfigModal({
         variantLabel = `${matrixSelection.step1} | ${matrixSelection.step2}`;
       }
     } else if ((isArea || isLinear) && selectedVariant) {
-      variantLabel = `${selectedVariant.label} (${dimensions.length}m x ${dimensions.width}m)`;
+      variantLabel = `${selectedVariant.label} (${outLength}m x ${outWidth}m)`;
     } else if (selectedVariant) {
       variantLabel = selectedVariant.label;
     }
@@ -407,7 +421,7 @@ export default function ProductConfigModal({
             if (opt) {
               let finalOptPrice = opt.price || 0;
               if (isLinear && group.price_mode === "PER_METER")
-                finalOptPrice = opt.price * dimensions.length;
+                finalOptPrice = opt.price * outLength;
               finishingsArray.push({
                 id: opt.label,
                 name: opt.label,
@@ -435,13 +449,13 @@ export default function ProductConfigModal({
     // === AREA (Spanduk, Outdoor) ===
     if (isArea) {
       specs.inputs = {
-        length: dimensions.length,
-        width: dimensions.width,
+        length: outLength,
+        width: outWidth,
         area: areaCalculation.area,
         material: selectedVariant?.label || "Standard",
         finishing: finishingNames,
       };
-      specs.summary = `${dimensions.length}m x ${dimensions.width}m • ${selectedVariant?.label || "Standard"}`;
+      specs.summary = `${dimensions.length}cm x ${dimensions.width}cm • ${selectedVariant?.label || "Standard"}`;
       if (finishingNames.length > 0) {
         specs.summary += ` • Fin: ${finishingNames.join(", ")}`;
       }
@@ -449,11 +463,11 @@ export default function ProductConfigModal({
     // === LINEAR (Roll, Stiker Meteran) ===
     else if (isLinear) {
       specs.inputs = {
-        length: dimensions.length,
-        width: dimensions.width,
+        length: outLength,
+        width: outWidth,
         material: selectedVariant?.label || "Standard",
       };
-      specs.summary = `${dimensions.length}m • ${selectedVariant?.label || "Standard"}`;
+      specs.summary = `${outLength}m • ${selectedVariant?.label || "Standard"}`;
     }
     // === MATRIX (Poster A0/A1) ===
     else if (isMatrix) {
@@ -511,8 +525,8 @@ export default function ProductConfigModal({
       dimensions:
         isArea || isLinear
           ? {
-              length: dimensions.length,
-              width: dimensions.width,
+              length: outLength,
+              width: outWidth,
               area: areaCalculation.area,
               variantLabel,
             }
@@ -614,12 +628,12 @@ export default function ProductConfigModal({
         <div className="flex items-center gap-4">
           <div className="flex-1">
             <label className="text-xs text-slate-500 mb-2 block font-bold uppercase tracking-wider">
-              Panjang (m)
+              {isArea ? "Panjang (cm)" : "Panjang (m)"}
             </label>
             <input
               type="number"
-              step="0.1"
-              min="0.1"
+              step={isArea ? "1" : "0.1"}
+              min={isArea ? "1" : "0.1"}
               value={dimensions.length === 0 ? "" : dimensions.length}
               placeholder="0"
               onFocus={(e) => e.target.select()}
@@ -637,7 +651,7 @@ export default function ProductConfigModal({
           <div className="text-slate-600 font-black text-xl pt-6">X</div>
           <div className="flex-1 relative">
             <label className="text-xs text-slate-500 mb-2 font-bold uppercase tracking-wider flex justify-between">
-              Lebar (m){" "}
+              {isArea ? "Lebar (cm)" : "Lebar (m)"}{" "}
               {isLinear && <Lock size={12} className="text-amber-500" />}
             </label>
             <input
