@@ -9,6 +9,8 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import { formatRupiah } from "../../core/formatters";
+import { sendWAMessage } from "../../services/fontteService";
+import { supabase } from "../../services/supabaseClient";
 
 // --- HELPER: PENERJEMAH BAHASA MANUSIA (Agar Nota Rapi) ---
 const humanizeActor = (actorCode) => {
@@ -245,6 +247,8 @@ export const NotaPreview = React.forwardRef(
     // --- 3. STATE & HANDLERS ---
     const [isGenerating, setIsGenerating] = useState(false);
     const [showWatermark, setShowWatermark] = useState(false);
+    const [waStatus, setWaStatus] = useState(null);
+    // null | "sending" | "sent" | "failed"
     const [printMode, setPrintMode] = useState(type); // Use type prop as initial
 
     // REF Element for overlay (outside click)
@@ -357,10 +361,12 @@ export const NotaPreview = React.forwardRef(
       if (!internalRef.current || isGenerating) return;
       setIsGenerating(true);
       setShowWatermark(true);
+      setWaStatus(null);
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       try {
+        // STEP 1 — Generate canvas
         const canvas = await html2canvas(internalRef.current, {
           scale: 2,
           backgroundColor: "#ffffff",
@@ -369,7 +375,7 @@ export const NotaPreview = React.forwardRef(
           logging: false,
         });
 
-        // Backup Manual Watermark
+        // STEP 2 — Watermark (preserved from original)
         const ctx = canvas.getContext("2d");
         ctx.save();
         ctx.globalAlpha = 0.08;
@@ -382,43 +388,96 @@ export const NotaPreview = React.forwardRef(
         ctx.fillText("JOGLO PRINT", 0, 0);
         ctx.restore();
 
+        // STEP 3 — Download PNG (preserved)
         const image = canvas.toDataURL("image/png");
         const link = document.createElement("a");
         link.href = image;
         link.download = `NOTA-${orderNumber}-${Date.now()}.png`;
         link.click();
 
-        // Smart WA Share
-        const formatWA = (number) => {
-          if (!number) return "";
-          let clean = number.replaceAll(/\D/g, "");
-          if (clean.startsWith("0")) clean = "62" + clean.slice(1);
-          if (!clean.startsWith("62")) clean = "62" + clean;
-          return clean;
-        };
+        // STEP 4 — Upload ke Supabase nota-shares
+        let notaImageUrl = null;
+        try {
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png", 0.8),
+          );
 
+          // Hapus file lama order ini sebelum upload baru
+          const { data: existingFiles } = await supabase.storage
+            .from("nota-shares")
+            .list("", { search: `nota-${orderNumber}` });
+
+          if (existingFiles && existingFiles.length > 0) {
+            const oldFiles = existingFiles.map((f) => f.name);
+            await supabase.storage.from("nota-shares").remove(oldFiles);
+            console.log("🗑️ File nota lama dihapus:", oldFiles);
+          }
+
+          const fileName = `nota-${orderNumber}-${Date.now()}.png`;
+          const { error: uploadError } = await supabase.storage
+            .from("nota-shares")
+            .upload(fileName, blob, {
+              contentType: "image/png",
+              upsert: false,
+            });
+
+          if (!uploadError) {
+            const { data: urlData } = supabase.storage
+              .from("nota-shares")
+              .getPublicUrl(fileName);
+            notaImageUrl = urlData?.publicUrl || null;
+            console.log("📤 Nota uploaded:", notaImageUrl);
+          } else {
+            console.warn("⚠️ Upload nota gagal:", uploadError.message);
+          }
+        } catch (uploadErr) {
+          console.warn("⚠️ Upload nota error:", uploadErr.message);
+          // Lanjut kirim WA tanpa gambar jika upload gagal
+        }
+
+        // STEP 5 — Kirim via Fonnte
         if (custWA) {
-          const text = `Halo Kak *${custName}*,\n\nTerima kasih sudah order di *JOGLO PRINTING* 🎨\n\nBerikut kami lampirkan nota digital pesanan:\n📋 *${orderNumber}*\n\n💰 Total: ${formatRupiah(safeTotal)}\n📌 Status: ${statusText}\n\n_Gambar nota sudah didownload._\nMohon dicek kembali. Terima kasih! 🙏`;
-          const waUrl = `https://wa.me/${formatWA(custWA)}?text=${encodeURIComponent(text)}`;
-          setTimeout(() => window.open(waUrl, "_blank"), 500);
+          const text =
+            `Halo Kak *${custName}*,\n\n` +
+            `Terima kasih sudah order di *JOGLO PRINTING* 🎨\n\n` +
+            `Berikut kami lampirkan nota digital pesanan:\n` +
+            `📋 *${orderNumber}*\n\n` +
+            `💰 Total: ${formatRupiah(safeTotal)}\n` +
+            `📌 Status: ${statusText}\n\n` +
+            `_Gambar nota terlampir._\n` +
+            `Mohon dicek kembali. Terima kasih! 🙏`;
+
+          setWaStatus("sending");
+          const result = await sendWAMessage(custWA, text, notaImageUrl);
+
+          if (result.success) {
+            setWaStatus("sent");
+            console.log("✅ WA Nota + gambar terkirim ke:", result.target);
+          } else {
+            console.warn("⚠️ Fonnte gagal:", result.error, "— fallback wa.me");
+            setWaStatus("failed");
+            const cleanNum = custWA.replace(/\D/g, "").replace(/^0/, "62");
+            const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(text)}`;
+            setTimeout(() => window.open(waUrl, "_blank"), 300);
+          }
         } else {
           alert("✅ Gambar nota didownload!\n⚠️ No WA tidak tersedia.");
         }
       } catch (err) {
-        console.error("Gagal generate image:", err);
-        alert("Gagal membuat gambar.");
+        console.error("❌ handleShareImage error:", err);
+        setWaStatus("failed");
       } finally {
         setShowWatermark(false);
         setIsGenerating(false);
       }
     }, [
+      internalRef,
       isGenerating,
       orderNumber,
-      custName,
       custWA,
+      custName,
       safeTotal,
       statusText,
-      internalRef,
     ]);
 
     // --- 4. RENDER JSX ---
@@ -1191,14 +1250,27 @@ export const NotaPreview = React.forwardRef(
                 padding: "12px 20px",
                 borderRadius: "10px",
                 border: "none",
-                background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
+                background:
+                  waStatus === "sent"
+                    ? "linear-gradient(135deg, #059669 0%, #10b981 100%)"
+                    : waStatus === "failed"
+                      ? "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)"
+                      : "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
                 color: "white",
                 fontWeight: "700",
                 fontSize: "13px",
                 cursor: isGenerating ? "wait" : "pointer",
               }}
             >
-              {isGenerating ? "⏳..." : "📸 SHARE WA"}
+              {isGenerating && waStatus === "sending"
+                ? "📤 Mengirim WA..."
+                : waStatus === "sent"
+                  ? "✅ WA Terkirim!"
+                  : waStatus === "failed"
+                    ? "⚠️ Gagal — cek WA"
+                    : isGenerating
+                      ? "⏳..."
+                      : "📸 SHARE WA"}
             </button>
             <button
               onClick={() => {

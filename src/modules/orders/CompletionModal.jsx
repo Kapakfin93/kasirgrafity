@@ -14,6 +14,8 @@ import {
   generateWALink,
   generateCompletionMessage,
 } from "../../utils/waHelper";
+import { sendWAMessage } from "../../services/fontteService";
+import { logger } from "../../utils/logger";
 
 /**
  * CompletionModal (The "Single Modal")
@@ -88,6 +90,8 @@ export function CompletionModal({
   const [evidenceFile, setEvidenceFile] = useState(null);
   const [isPublic, setIsPublic] = useState(false);
   const [uploadedUrl, setUploadedUrl] = useState(null);
+  const [waPhase, setWaPhase] = useState("IDLE");
+  // IDLE | SENDING | SENT | FAILED
 
   if (!isOpen || !order) return null;
 
@@ -155,10 +159,10 @@ export function CompletionModal({
         evidenceUrl = publicData?.publicUrl || null;
         setUploadedUrl(evidenceUrl);
         setUploadPhase("DONE");
-        console.log("✅ Evidence Uploaded:", evidenceUrl);
+        logger.debug("✅ Evidence Uploaded:", evidenceUrl);
       } catch (err) {
         // Fail-safe: foto gagal/timeout → lanjut tanpa foto
-        console.error("⚠️ Upload Failed (Fail-Safe):", err.message);
+        logger.error("⚠️ Upload Failed (Fail-Safe):", err.message);
         setUploadPhase("FAILED");
         setErrorMessage("Foto gagal diupload. Melanjutkan tanpa bukti...");
         // Jangan return — lanjut ke Blok 2
@@ -182,9 +186,10 @@ export function CompletionModal({
 
       // Berhasil
       setSubmitPhase("DONE");
+      setWaPhase("IDLE"); // Reset WA phase untuk step SUCCESS
       setStep("SUCCESS");
     } catch (err) {
-      console.error("❌ Critical Error:", err.message);
+      logger.error("❌ Critical Error:", err.message);
       setSubmitPhase("FAILED");
       setErrorMessage(
         err.message.includes("timeout")
@@ -204,6 +209,22 @@ export function CompletionModal({
   // --- RENDER ---
   const waMessage = generateCompletionMessage(order, uploadedUrl);
   const waLink = generateWALink(order.customerPhone, waMessage);
+
+  const handleSendWA = async () => {
+    if (waPhase === "SENDING") return;
+    setWaPhase("SENDING");
+
+    const result = await sendWAMessage(order.customerPhone, waMessage);
+
+    if (result.success) {
+      setWaPhase("SENT");
+      logger.debug("✅ WA Completion terkirim ke:", result.target);
+    } else {
+      logger.warn("⚠️ Fonnte gagal:", result.error, "— fallback wa.me");
+      setWaPhase("FAILED");
+      if (waLink) window.open(waLink, "_blank");
+    }
+  };
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -352,7 +373,7 @@ export function CompletionModal({
               <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg text-left mt-4">
                 <div className="flex gap-3">
                   <Share2 className="text-blue-400 shrink-0" size={20} />
-                  <div>
+                  <div className="w-full">
                     <h5 className="text-sm font-bold text-blue-300 mb-1">
                       Kirim Notifikasi WA?
                     </h5>
@@ -360,26 +381,40 @@ export function CompletionModal({
                       Kirim pesan otomatis ke pelanggan bahwa pesanan sudah
                       selesai.
                     </p>
-                    <a
-                      href={waLink || "#"}
-                      onClick={(e) => {
-                        if (!waLink) {
-                          e.preventDefault();
-                          alert("Nomor WA tidak valid");
-                          return;
-                        }
-                        onClose();
-                      }}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center justify-center w-full px-4 py-2 text-sm font-bold rounded-lg transition-colors ${
-                        waLink
-                          ? "bg-green-600 hover:bg-green-500 text-white"
-                          : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                    {/* Tombol Fonnte — kirim otomatis */}
+                    <button
+                      onClick={handleSendWA}
+                      disabled={waPhase === "SENDING" || waPhase === "SENT"}
+                      className={`w-full py-3 px-4 rounded-xl font-bold text-white transition-all ${
+                        waPhase === "SENT"
+                          ? "bg-green-600 cursor-default"
+                          : waPhase === "FAILED"
+                            ? "bg-amber-500 hover:bg-amber-600"
+                            : waPhase === "SENDING"
+                              ? "bg-blue-500 cursor-wait"
+                              : "bg-green-500 hover:bg-green-600"
                       }`}
                     >
-                      📱 BUKA WHATSAPP
-                    </a>
+                      {waPhase === "SENDING" && "📤 Mengirim WA..."}
+                      {waPhase === "SENT" && "✅ WA Terkirim!"}
+                      {waPhase === "FAILED" && "⚠️ Gagal — cek WA"}
+                      {waPhase === "IDLE" && "💬 Kirim WA & Update"}
+                    </button>
+
+                    {/* Fallback manual — tetap ada */}
+                    {waLink && waPhase !== "SENT" && (
+                      <a
+                        href={waLink}
+                        onClick={() => {
+                          onClose();
+                        }}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-center text-xs text-slate-400 hover:text-slate-300 mt-1 underline"
+                      >
+                        atau buka WhatsApp manual
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>

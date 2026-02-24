@@ -11,18 +11,37 @@
 import { supabase } from "./supabaseClient";
 import { db } from "../data/db/schema";
 import { useOrderStore } from "../stores/useOrderStore";
+import { logger } from "../utils/logger";
 
 const BATCH_SIZE = 5;
 const MAX_ATTEMPTS = 10;
 
+// Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s cap + random jitter
+const getBackoffMs = (attempts) => {
+  const base = Math.min(30000, 1000 * Math.pow(2, attempts));
+  const jitter = Math.random() * 1000;
+  return base + jitter;
+};
+
 export const OrderSyncService = {
+  // --- Resource & State Tracking ---
+  _isSyncing: false,
+  _intervalId: null,
+  _onlineHandler: null,
+
   /**
    * Main Sync Function
    * Call this on interval (e.g., 60s) or window.online event
    */
   async syncOfflineOrders() {
+    if (this._isSyncing) {
+      logger.debug("⏳ Sync sudah berjalan — skip");
+      return;
+    }
+    this._isSyncing = true;
+
     if (!navigator.onLine) {
-      // console.log("📴 Offline: Skipping Sync");
+      this._isSyncing = false;
       return;
     }
 
@@ -36,14 +55,25 @@ export const OrderSyncService = {
 
       if (pendingOrders.length === 0) return;
 
-      console.log(
-        `🚀 [SYNC START] Found ${pendingOrders.length} pending operations...`,
+      // 2. Filter orders still in backoff cooldown
+      const now = Date.now();
+      const readyOrders = pendingOrders.filter((order) => {
+        if (!order.last_sync_attempt_at || !order.sync_attempts) return true;
+        const backoffMs = getBackoffMs(order.sync_attempts);
+        const elapsed = now - new Date(order.last_sync_attempt_at).getTime();
+        return elapsed >= backoffMs;
+      });
+
+      if (readyOrders.length === 0) return;
+
+      logger.debug(
+        `🚀 [SYNC START] Found ${readyOrders.length} ready (${pendingOrders.length} total pending)...`,
       );
 
       let successCount = 0;
       let failCount = 0;
 
-      for (const order of pendingOrders) {
+      for (const order of readyOrders) {
         let success = false;
 
         // ROUTING LOGIC
@@ -59,11 +89,13 @@ export const OrderSyncService = {
         else failCount++;
       }
 
-      console.log(
-        `📊 [RESULT] Succes: ${successCount}, Fail: ${failCount}, Pending: ${pendingOrders.length - successCount - failCount}`,
+      logger.debug(
+        `📊 [RESULT] Success: ${successCount}, Fail: ${failCount}, Pending: ${readyOrders.length - successCount - failCount}`,
       );
     } catch (err) {
-      console.error("❌ Sync Service Error:", err);
+      logger.error("❌ Sync Service Error:", err);
+    } finally {
+      this._isSyncing = false;
     }
   },
 
@@ -82,7 +114,7 @@ export const OrderSyncService = {
         finalUuid = crypto.randomUUID();
         // CRITICAL: Persist the new UUID locally first!
         await db.orders.update(order.id, { uuid: finalUuid });
-        console.log(
+        logger.debug(
           `⚠️ [SELF-HEAL] Generated missing UUID for Order #${order.id}`,
         );
       }
@@ -123,7 +155,7 @@ export const OrderSyncService = {
       delete payload.sync_status;
       delete payload.last_sync_error;
 
-      console.log("📦 [INSERT START] Payload prepared:", {
+      logger.debug("📦 [INSERT START] Payload prepared:", {
         ref_id: payload.ref_local_id,
         items: payload.items?.length || 0,
         customer: payload.customer.name,
@@ -145,7 +177,7 @@ export const OrderSyncService = {
       }
 
       // 4. Success Handling
-      console.log(
+      logger.debug(
         `✅ [INSERT SUCCESS] Server ID: ${rpcResult.order_number} (Latency: ${latency}ms)`,
       );
 
@@ -164,7 +196,7 @@ export const OrderSyncService = {
         await updateOrderServerNumber(order.id, rpcResult.order_number);
       } catch (stateErr) {
         // Non-fatal — sync tetap dianggap berhasil
-        console.warn("⚠️ [STATE SYNC] Gagal update Zustand:", stateErr.message);
+        logger.warn("⚠️ [STATE SYNC] Gagal update Zustand:", stateErr.message);
       }
 
       return true; // Success
@@ -178,7 +210,7 @@ export const OrderSyncService = {
         err.message?.includes("duplicate key") ||
         err.message?.includes("idx_orders_ref_local_id")
       ) {
-        console.warn(
+        logger.warn(
           "⚠️ Duplicate Key Detected (Ghost Sync). Attempting self-healing...",
           order.id,
         );
@@ -192,7 +224,7 @@ export const OrderSyncService = {
             .single();
 
           if (existingServerOrder) {
-            console.log(
+            logger.debug(
               "✅ Self-Healing Success! Linking to:",
               existingServerOrder.order_number,
             );
@@ -210,12 +242,12 @@ export const OrderSyncService = {
             return true; // ANGGAP SUKSES!
           }
         } catch (recoverErr) {
-          console.error("❌ Self-Healing Failed:", recoverErr);
+          logger.error("❌ Self-Healing Failed:", recoverErr);
           // Fallthrough ke logic error biasa
         }
       }
 
-      console.error(
+      logger.error(
         `❌ [INSERT FAIL] ID: ${order.ref_local_id || order.id}`,
         err.message,
       );
@@ -224,13 +256,14 @@ export const OrderSyncService = {
       const updates = {
         sync_attempts: attempts,
         last_sync_error: err.message,
+        last_sync_attempt_at: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
       // Give up after MAX_ATTEMPTS
       if (attempts >= MAX_ATTEMPTS) {
         updates.sync_status = "SYNC_FAILED";
-        console.error(
+        logger.error(
           `🛑 Giving up on order ${order.orderNumber} after ${attempts} attempts.`,
         );
       }
@@ -254,7 +287,7 @@ export const OrderSyncService = {
         );
       }
 
-      console.log(`📝 [UPDATE START] Syncing changes for ID: ${targetId}`);
+      logger.debug(`📝 [UPDATE START] Syncing changes for ID: ${targetId}`);
 
       // Map Local State -> Server Columns
       const payload = {
@@ -283,11 +316,11 @@ export const OrderSyncService = {
         // We generally don't update 'items' or 'customer' on status changes in this V1
       };
 
-      console.log(
+      logger.debug(
         "👉 [SYNC DEBUG] Update Payload:",
         JSON.stringify(payload, null, 2),
       );
-      console.log("👉 [SYNC DEBUG] Target Server ID:", targetId);
+      logger.debug("👉 [SYNC DEBUG] Target Server ID:", targetId);
 
       // --- 🛡️ NETWORK RESILIENCE WRAPPER ---
       // Wrap Supabase call in a Promise.race to enforce a 20s timeout
@@ -306,13 +339,13 @@ export const OrderSyncService = {
       const { error } = await Promise.race([updatePromise, timeoutPromise]);
 
       if (error) {
-        console.error("❌ [SYNC ERROR] Supabase Update Failed:", error);
+        logger.error("❌ [SYNC ERROR] Supabase Update Failed:", error);
         throw error;
       } else {
-        console.log("✅ [SYNC SUCCESS] Supabase Updated!");
+        logger.debug("✅ [SYNC SUCCESS] Supabase Updated!");
       } // Secure lookup by ID
 
-      console.log(`✅ [UPDATE SUCCESS] State synced for ${order.orderNumber}`);
+      logger.debug(`✅ [UPDATE SUCCESS] State synced for ${order.orderNumber}`);
 
       // Update Local Sync Status
       await db.orders.update(order.id, {
@@ -329,11 +362,11 @@ export const OrderSyncService = {
         err.message?.includes("network");
 
       if (isNetworkIssue) {
-        console.warn(
+        logger.warn(
           `⚠️ [NETWORK ISSUE] Update ID: ${order.id} - ${err.message}`,
         );
       } else {
-        console.error(
+        logger.error(
           `❌ [UPDATE FAIL] ID: ${order.id} / Server: ${order.server_id}`,
           err.message,
         );
@@ -343,12 +376,13 @@ export const OrderSyncService = {
       const updates = {
         sync_attempts: attempts,
         last_sync_error: err.message,
+        last_sync_attempt_at: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
       if (attempts >= MAX_ATTEMPTS) {
         updates.sync_status = "SYNC_FAILED";
-        console.error(
+        logger.error(
           `🛑 Giving up on update ${order.orderNumber} after ${attempts} attempts.`,
         );
       }
@@ -363,22 +397,40 @@ export const OrderSyncService = {
    */
   start(intervalMs = 60000) {
     if (this.isStarted) {
-      console.log("⚡ OrderSyncService already running — skipped");
+      logger.debug("⚡ OrderSyncService already running — skipped");
       return;
     }
     this.isStarted = true;
-    console.log("🚀 Order Sync Service Started");
+    logger.debug("🚀 Order Sync Service Started");
 
     // Initial Run
     this.syncOfflineOrders();
 
-    // Loop
-    setInterval(() => this.syncOfflineOrders(), intervalMs);
+    // Loop (save ref for cleanup)
+    this._intervalId = setInterval(() => this.syncOfflineOrders(), intervalMs);
 
-    // Event Listener
-    window.addEventListener("online", () => {
-      console.log("🌐 Network Restored: Triggering Sync...");
+    // Event Listener (save ref for cleanup)
+    this._onlineHandler = () => {
+      logger.debug("🌐 Network Restored: Triggering Sync...");
       this.syncOfflineOrders();
-    });
+    };
+    window.addEventListener("online", this._onlineHandler);
+  },
+
+  /**
+   * Stop Background Interval & Cleanup
+   */
+  stop() {
+    if (this._intervalId) {
+      clearInterval(this._intervalId);
+      this._intervalId = null;
+    }
+    if (this._onlineHandler) {
+      window.removeEventListener("online", this._onlineHandler);
+      this._onlineHandler = null;
+    }
+    this.isStarted = false;
+    this._isSyncing = false;
+    logger.debug("🛑 Order Sync Service Stopped");
   },
 };

@@ -13,6 +13,7 @@ import {
   generateCompletionMessage,
   generateDeliveryMessage,
 } from "../utils/waHelper";
+import { sendWAMessage } from "../services/fontteService";
 
 export function WANotificationModal({
   isOpen,
@@ -24,12 +25,15 @@ export function WANotificationModal({
 }) {
   const [message, setMessage] = useState("");
   const [isValidWA, setIsValidWA] = useState(false);
+  const [waPhase, setWaPhase] = useState("IDLE");
+  // IDLE | SENDING | SENT | FAILED
 
   // Generate initial message when modal opens
   useEffect(() => {
     if (isOpen && order) {
       // Defer state updates
       queueMicrotask(() => {
+        setWaPhase("IDLE");
         let initialMessage = "";
 
         // Calculate dynamic values
@@ -82,12 +86,29 @@ export function WANotificationModal({
     order.remainingAmount ?? order.totalAmount - (order.paidAmount || 0);
   const isLunas = remaining <= 0;
 
-  const handleSendWA = () => {
-    const waLink = generateWALink(phone, message);
-    if (waLink) {
-      window.open(waLink, "_blank");
+  const handleSendWA = async () => {
+    if (waPhase === "SENDING") return;
+
+    setWaPhase("SENDING");
+
+    const result = await sendWAMessage(phone, message);
+
+    if (result.success) {
+      setWaPhase("SENT");
+      console.log("✅ WA Status terkirim ke:", result.target);
+      // Panggil callback update status setelah WA berhasil
+      onConfirmWithWA();
+    } else {
+      console.warn("⚠️ Fonnte gagal:", result.error, "— fallback wa.me");
+      setWaPhase("FAILED");
+      // Fallback: buka wa.me sebagai cadangan
+      const waLink = generateWALink(phone, message);
+      if (waLink) {
+        window.open(waLink, "_blank");
+      }
+      // Tetap panggil callback meski via fallback
+      onConfirmWithWA();
     }
-    onConfirmWithWA();
   };
 
   const getTitle = () => {
@@ -177,10 +198,13 @@ export function WANotificationModal({
           <button
             className="wa-btn wa-btn-wa"
             onClick={handleSendWA}
-            disabled={!isValidWA}
+            disabled={!isValidWA || waPhase === "SENDING"}
             title={!isValidWA ? "Nomor HP tidak valid" : "Kirim pesan WhatsApp"}
           >
-            💬 Kirim WA & Update
+            {waPhase === "SENDING" && "📤 Mengirim WA..."}
+            {waPhase === "SENT" && "✅ WA Terkirim!"}
+            {waPhase === "FAILED" && "⚠️ Gagal — cek WA"}
+            {waPhase === "IDLE" && "💬 Kirim WA & Update"}
           </button>
         </div>
       </div>
