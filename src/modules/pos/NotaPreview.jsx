@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import { formatRupiah } from "../../core/formatters";
 import { sendWAMessage } from "../../services/fontteService";
+import { logger } from "../../utils/logger";
 import { supabase } from "../../services/supabaseClient";
 
 // --- HELPER: PENERJEMAH BAHASA MANUSIA (Agar Nota Rapi) ---
@@ -139,7 +140,7 @@ export const NotaPreview = React.forwardRef(
     const items = order?.items || [];
 
     // 💰 NOTA TOTALS DEBUG
-    console.log("💰 NOTA TOTALS DEBUG:", {
+    logger.debug("💰 NOTA TOTALS DEBUG:", {
       order_totalAmount: order?.totalAmount,
       order_total_amount: order?.total_amount,
       order_paidAmount: order?.paidAmount,
@@ -410,7 +411,7 @@ export const NotaPreview = React.forwardRef(
           if (existingFiles && existingFiles.length > 0) {
             const oldFiles = existingFiles.map((f) => f.name);
             await supabase.storage.from("nota-shares").remove(oldFiles);
-            console.log("🗑️ File nota lama dihapus:", oldFiles);
+            logger.debug("🗑️ File nota lama dihapus:", oldFiles);
           }
 
           const fileName = `nota-${orderNumber}-${Date.now()}.png`;
@@ -426,12 +427,12 @@ export const NotaPreview = React.forwardRef(
               .from("nota-shares")
               .getPublicUrl(fileName);
             notaImageUrl = urlData?.publicUrl || null;
-            console.log("📤 Nota uploaded:", notaImageUrl);
+            logger.debug("📤 Nota uploaded:", notaImageUrl);
           } else {
-            console.warn("⚠️ Upload nota gagal:", uploadError.message);
+            logger.warn("⚠️ Upload nota gagal:", uploadError.message);
           }
         } catch (uploadErr) {
-          console.warn("⚠️ Upload nota error:", uploadErr.message);
+          logger.warn("⚠️ Upload nota error:", uploadErr.message);
           // Lanjut kirim WA tanpa gambar jika upload gagal
         }
 
@@ -452,9 +453,9 @@ export const NotaPreview = React.forwardRef(
 
           if (result.success) {
             setWaStatus("sent");
-            console.log("✅ WA Nota + gambar terkirim ke:", result.target);
+            logger.debug("✅ WA Nota + gambar terkirim ke:", result.target);
           } else {
-            console.warn("⚠️ Fonnte gagal:", result.error, "— fallback wa.me");
+            logger.warn("⚠️ Fontte gagal:", result.error, "— fallback wa.me");
             setWaStatus("failed");
             const cleanNum = custWA.replace(/\D/g, "").replace(/^0/, "62");
             const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(text)}`;
@@ -464,7 +465,7 @@ export const NotaPreview = React.forwardRef(
           alert("✅ Gambar nota didownload!\n⚠️ No WA tidak tersedia.");
         }
       } catch (err) {
-        console.error("❌ handleShareImage error:", err);
+        logger.error("❌ handleShareImage error:", err);
         setWaStatus("failed");
       } finally {
         setShowWatermark(false);
@@ -676,7 +677,7 @@ export const NotaPreview = React.forwardRef(
                   const dims = item.dimensions || item.specs || {};
 
                   // 🕵️ DEBUG SPK: Log actual item data
-                  console.log(`📋 SPK ITEM #${idx + 1}:`, {
+                  logger.debug(`📋 SPK ITEM #${idx + 1}:`, {
                     product_name: item.productName || item.product_name,
                     dims_summary: dims.summary,
                     dims_material: dims.material,
@@ -718,7 +719,7 @@ export const NotaPreview = React.forwardRef(
                       smartSummary ||
                       "-";
 
-                  console.log(`✅ SPK DISPLAY:`, {
+                  logger.debug(`✅ SPK DISPLAY:`, {
                     smartSummary,
                     hasDetailedSummary,
                     finalDisplaySpecs: displaySpecs,
@@ -731,7 +732,7 @@ export const NotaPreview = React.forwardRef(
                   const notes =
                     item.notes || item.note || item.specs?.notes || "";
 
-                  console.log(`📝 SPK NOTES:`, notes);
+                  logger.debug(`📝 SPK NOTES:`, notes);
 
                   return (
                     <div
