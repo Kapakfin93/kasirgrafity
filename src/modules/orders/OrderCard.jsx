@@ -690,6 +690,11 @@ export function OrderCard({ order }) {
               >
                 x{item.qty} {item.productName}
               </div>
+              {item.specs?.summary && (
+                <div className="text-xs text-slate-400 mt-0.5">
+                  {item.specs.summary}
+                </div>
+              )}
               {item.description && (
                 <div
                   style={{

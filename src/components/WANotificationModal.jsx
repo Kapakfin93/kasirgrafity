@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { formatRupiah } from "../core/formatters";
 import {
   isValidPhone,
@@ -103,7 +104,7 @@ export function WANotificationModal({
     return "Order akan ditandai SIAP AMBIL";
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div className="wa-modal-overlay" onClick={onCancel}>
       <div className="wa-modal" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -183,7 +184,8 @@ export function WANotificationModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
