@@ -28,6 +28,16 @@ export const OrderSyncService = {
   _isSyncing: false,
   _intervalId: null,
   _onlineHandler: null,
+  _onSyncFailed: null,
+  _onSyncSuccess: null,
+
+  /**
+   * Register sync result callbacks (called from App.jsx)
+   */
+  onSyncResult({ onFailed, onSuccess }) {
+    this._onSyncFailed = onFailed;
+    this._onSyncSuccess = onSuccess;
+  },
 
   /**
    * Main Sync Function
@@ -199,6 +209,7 @@ export const OrderSyncService = {
         logger.warn("⚠️ [STATE SYNC] Gagal update Zustand:", stateErr.message);
       }
 
+      this._onSyncSuccess?.(order.id);
       return true; // Success
     } catch (err) {
       // 5. Failure Handling (INSERT)
@@ -269,6 +280,18 @@ export const OrderSyncService = {
       }
 
       await db.orders.update(order.id, updates);
+
+      // Notify UI tentang kegagalan sync
+      if (navigator.onLine) {
+        this._onSyncFailed?.({
+          id: order.id,
+          orderNumber: order.orderNumber || order.server_order_number,
+          customerName: order.customerName,
+          totalAmount: order.totalAmount || order.paidAmount,
+          error: err.message,
+        });
+      }
+
       return false; // Failed
     }
   },
@@ -354,6 +377,7 @@ export const OrderSyncService = {
         updatedAt: new Date().toISOString(),
       });
 
+      this._onSyncSuccess?.(order.id);
       return true;
     } catch (err) {
       const isNetworkIssue =
@@ -388,6 +412,18 @@ export const OrderSyncService = {
       }
 
       await db.orders.update(order.id, updates);
+
+      // Notify UI tentang kegagalan sync
+      if (navigator.onLine) {
+        this._onSyncFailed?.({
+          id: order.id,
+          orderNumber: order.orderNumber || order.server_order_number,
+          customerName: order.customerName,
+          totalAmount: order.totalAmount || order.paidAmount,
+          error: err.message,
+        });
+      }
+
       return false;
     }
   },

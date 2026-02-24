@@ -28,11 +28,17 @@ import "./index.css";
 
 // Services
 import { OrderSyncService } from "./services/OrderSyncService";
+import { SyncToast } from "./components/SyncToast";
+import { useSyncFeedbackStore } from "./stores/useSyncFeedbackStore";
 
 function App() {
   // 🔥 Start Background Sync Service
   React.useEffect(() => {
     OrderSyncService.start();
+    OrderSyncService.onSyncResult({
+      onFailed: useSyncFeedbackStore.getState().addFailedOrder,
+      onSuccess: useSyncFeedbackStore.getState().markSuccess,
+    });
   }, []);
 
   return (
@@ -101,6 +107,7 @@ function App() {
             {/* Fallback 404 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <SyncToast />
         </BrowserRouter>
       </CSProvider>
     </AuthProvider>
