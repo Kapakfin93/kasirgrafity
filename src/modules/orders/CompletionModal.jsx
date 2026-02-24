@@ -32,30 +32,42 @@ const PHASE = {
   IDLE: "IDLE",
   COMPRESSING: "COMPRESSING",
   UPLOADING: "UPLOADING",
-  SUCCESS: "SUCCESS",
+  SUCCESS: "SUCCESS", // Masih ada karena dipanggil di catch luar (jika terlewat)
   ERROR: "ERROR",
+  DONE: "DONE",
+  FAILED: "FAILED",
 };
 
-function getButtonLabel(phase, hasFile) {
-  switch (phase) {
-    case PHASE.COMPRESSING:
+function getButtonLabel(uploadPhase, submitPhase, hasFile) {
+  if (submitPhase === "SUBMITTING") {
+    if (uploadPhase === PHASE.COMPRESSING || uploadPhase === PHASE.UPLOADING) {
       return (
         <>
           <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          Memproses Foto...
+          📸 Mengunggah foto... (1/2)
         </>
       );
-    case PHASE.UPLOADING:
-      return (
-        <>
-          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          Mengunggah...
-        </>
-      );
-    default:
-      return hasFile ? "Simpan & Selesai" : "Lewati & Selesai";
+    }
+    return (
+      <>
+        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        ✅ Menyimpan pesanan... (2/2)
+      </>
+    );
   }
+  return hasFile ? "Simpan & Selesai" : "Lewati & Selesai";
 }
+
+const withTimeout = (promise, ms, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${label} timeout setelah ${ms / 1000} detik`)),
+        ms,
+      ),
+    ),
+  ]);
 
 // ─── Component ─────────────────────────────────────────────────────────────
 export function CompletionModal({
@@ -70,6 +82,7 @@ export function CompletionModal({
 
   // 🆕 Enum terpusat untuk semua fase upload
   const [uploadPhase, setUploadPhase] = useState(PHASE.IDLE);
+  const [submitPhase, setSubmitPhase] = useState("IDLE"); // IDLE | SUBMITTING | DONE | FAILED
   const [errorMessage, setErrorMessage] = useState(null);
 
   const [evidenceFile, setEvidenceFile] = useState(null);
@@ -80,7 +93,9 @@ export function CompletionModal({
 
   // --- Derived ---
   const isBlocked =
-    uploadPhase === PHASE.COMPRESSING || uploadPhase === PHASE.UPLOADING;
+    uploadPhase === PHASE.COMPRESSING ||
+    uploadPhase === PHASE.UPLOADING ||
+    submitPhase === "SUBMITTING";
 
   // --- HANDLERS ---
   const handleFileSelect = (file) => {
@@ -107,64 +122,82 @@ export function CompletionModal({
   };
 
   const handleProcess = async () => {
-    // Guard: jangan eksekusi jika sedang compressing atau uploading
     if (isBlocked) return;
 
-    setUploadPhase(PHASE.UPLOADING);
+    // Kunci semua tombol sejak awal
+    setSubmitPhase("SUBMITTING");
     setErrorMessage(null);
     let evidenceUrl = null;
 
-    // 1. UPLOAD LOGIC (FAIL-SAFE)
-    if (evidenceFile && !isOffline) {
+    // BLOK 1 — Upload Foto (opsional, fail-safe, timeout 15 detik)
+    if (evidenceFile) {
+      setUploadPhase(PHASE.UPLOADING);
       try {
-        const fileName = `${order.id}_${Date.now()}.jpg`;
-        const { error } = await supabase.storage
-          .from("marketing-evidence")
-          .upload(fileName, evidenceFile, {
-            cacheControl: "3600",
-            upsert: false,
-          });
+        const fileName = `evidence_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2)}.jpg`;
 
-        if (error) throw error;
+        await withTimeout(
+          supabase.storage
+            .from("marketing-evidence")
+            .upload(fileName, evidenceFile, {
+              cacheControl: "3600",
+              upsert: false,
+            }),
+          15000,
+          "Upload foto",
+        );
 
         const { data: publicData } = supabase.storage
           .from("marketing-evidence")
           .getPublicUrl(fileName);
 
-        evidenceUrl = publicData.publicUrl;
+        evidenceUrl = publicData?.publicUrl || null;
         setUploadedUrl(evidenceUrl);
+        setUploadPhase("DONE");
         console.log("✅ Evidence Uploaded:", evidenceUrl);
       } catch (err) {
-        console.error("⚠️ Upload Failed (Fail-Safe Triggered):", err);
-        // Fail-safe: lanjutkan tanpa foto, bukan error fatal
-        setErrorMessage("Gagal upload foto. Melanjutkan tanpa bukti...");
+        // Fail-safe: foto gagal/timeout → lanjut tanpa foto
+        console.error("⚠️ Upload Failed (Fail-Safe):", err.message);
+        setUploadPhase("FAILED");
+        setErrorMessage("Foto gagal diupload. Melanjutkan tanpa bukti...");
+        // Jangan return — lanjut ke Blok 2
       }
     }
 
-    // 2. STATUS UPDATE LOGIC (CRITICAL)
+    // BLOK 2 — Update Status Order via RPC (kritis, timeout 15 detik)
     try {
-      await onSubmit({
-        orderId: order.id,
-        status: "READY",
-        evidence: {
-          url: evidenceUrl,
-          isPublic: isPublic,
-        },
-      });
+      await withTimeout(
+        onSubmit({
+          orderId: order.id,
+          status: "READY",
+          evidence: {
+            url: evidenceUrl,
+            isPublic: isPublic,
+          },
+        }),
+        15000,
+        "Update status order",
+      );
 
-      // 3. SUCCESS
-      setUploadPhase(PHASE.SUCCESS);
+      // Berhasil
+      setSubmitPhase("DONE");
       setStep("SUCCESS");
     } catch (err) {
-      console.error("❌ Critical Error:", err);
-      setUploadPhase(PHASE.ERROR);
-      setErrorMessage("Gagal update status: " + err.message);
+      console.error("❌ Critical Error:", err.message);
+      setSubmitPhase("FAILED");
+      setErrorMessage(
+        err.message.includes("timeout")
+          ? "Koneksi terlalu lambat. Coba lagi."
+          : "Gagal menyimpan pesanan: " + err.message,
+      );
     }
   };
 
   // Coba lagi dari awal (IDLE) setelah ERROR
   const handleRetry = () => {
     setUploadPhase(PHASE.IDLE);
+    setSubmitPhase("IDLE");
     setErrorMessage(null);
   };
 
@@ -250,22 +283,26 @@ export function CompletionModal({
               </div>
 
               {/* 🆕 Upload Phase Status Banner */}
-              {uploadPhase === PHASE.COMPRESSING && (
-                <div className="flex items-center gap-2 text-blue-400 text-xs bg-blue-500/10 p-2 rounded border border-blue-500/20 animate-pulse">
-                  <span className="w-3 h-3 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
-                  <span>Mengompres foto, harap tunggu...</span>
-                </div>
-              )}
+              {submitPhase === "SUBMITTING" &&
+                (uploadPhase === PHASE.COMPRESSING ||
+                  uploadPhase === PHASE.UPLOADING) && (
+                  <div className="flex items-center gap-2 text-blue-400 text-xs bg-blue-500/10 p-2 rounded border border-blue-500/20 animate-pulse">
+                    <span className="w-3 h-3 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                    <span>📸 Mengunggah foto ke server...</span>
+                  </div>
+                )}
 
-              {uploadPhase === PHASE.UPLOADING && (
-                <div className="flex items-center gap-2 text-indigo-400 text-xs bg-indigo-500/10 p-2 rounded border border-indigo-500/20 animate-pulse">
-                  <span className="w-3 h-3 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
-                  <span>Mengunggah ke server...</span>
-                </div>
-              )}
+              {submitPhase === "SUBMITTING" &&
+                uploadPhase !== PHASE.COMPRESSING &&
+                uploadPhase !== PHASE.UPLOADING && (
+                  <div className="flex items-center gap-2 text-indigo-400 text-xs bg-indigo-500/10 p-2 rounded border border-indigo-500/20 animate-pulse">
+                    <span className="w-3 h-3 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                    <span>✅ Menyimpan status pesanan...</span>
+                  </div>
+                )}
 
-              {/* Error Banner dengan tombol Coba Lagi */}
-              {uploadPhase === PHASE.ERROR && errorMessage && (
+              {/* Error Banner RPC dengan tombol Coba Lagi */}
+              {submitPhase === "FAILED" && errorMessage && (
                 <div className="flex items-start gap-2 text-red-400 text-xs bg-red-500/10 p-3 rounded border border-red-500/20">
                   <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                   <div className="flex-1">
@@ -281,13 +318,17 @@ export function CompletionModal({
                 </div>
               )}
 
-              {/* Fail-safe warning (upload gagal tapi lanjut proses) */}
-              {uploadPhase !== PHASE.ERROR && errorMessage && (
-                <div className="flex items-center gap-2 text-yellow-500 text-xs bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
-                  <AlertTriangle size={14} />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
+              {/* Fail-safe warning (upload foto gagal tapi RPC lanjut/sedang proses) */}
+              {submitPhase !== "FAILED" &&
+                uploadPhase === "FAILED" &&
+                errorMessage && (
+                  <div className="flex items-center gap-2 text-yellow-500 text-xs bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
+                    <AlertTriangle size={14} />
+                    <span>
+                      ⚠️ Foto gagal diupload. Melanjutkan tanpa bukti...
+                    </span>
+                  </div>
+                )}
             </div>
           )}
 
@@ -359,7 +400,7 @@ export function CompletionModal({
               </button>
 
               {/* Tombol Coba Lagi muncul sebagai pengganti Simpan jika ERROR fatal */}
-              {uploadPhase === PHASE.ERROR ? (
+              {submitPhase === "FAILED" || uploadPhase === PHASE.ERROR ? (
                 <button
                   onClick={handleRetry}
                   className="flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white text-sm transition-all bg-red-600 hover:bg-red-500"
@@ -380,7 +421,7 @@ export function CompletionModal({
                     }
                   `}
                 >
-                  {getButtonLabel(uploadPhase, !!evidenceFile)}
+                  {getButtonLabel(uploadPhase, submitPhase, !!evidenceFile)}
                 </button>
               )}
             </>

@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import imageCompression from "browser-image-compression";
 import { Upload, X, CheckCircle } from "lucide-react";
-import { validateImageFile } from "../../utils/uploadValidator";
+import {
+  validateImageFile,
+  validateImageDimensions,
+} from "../../utils/uploadValidator";
 
 /**
  * EvidenceUpload Component
@@ -27,7 +30,7 @@ export function EvidenceUpload({
     // Reset states
     setError(null);
 
-    // ─── TITIK 1: Validasi Lapis 1 + 2 (sebelum preview & kompresi) ──────
+    // ─── TITIK 1: Validasi Lapis 1 + 2 (Tipe & Ukuran File Awal) ──────
     const preValidation = validateImageFile(imageFile);
     if (!preValidation.valid) {
       setError(preValidation.error);
@@ -35,9 +38,20 @@ export function EvidenceUpload({
       return; // Hentikan proses
     }
 
+    // ─── GUARDIAN: STATE CHECK 1 (PRE-COMPRESS) - Dimensi Fisik ───────
+    setIsCompressing(true); // Tampilkan status ke user selagi ngecek dimensi asinkron
+    onPhaseChange?.("COMPRESSING");
+
+    const dimensionCheck = await validateImageDimensions(imageFile);
+    if (!dimensionCheck.valid) {
+      setIsCompressing(false);
+      setError(dimensionCheck.error);
+      onPhaseChange?.("ERROR", dimensionCheck.error);
+      return; // Hentikan proses, jangan lanjut kompresi
+    }
+
     setPreview(URL.createObjectURL(imageFile)); // Optimistic preview
-    setIsCompressing(true);
-    onPhaseChange?.("COMPRESSING"); // 🔔 Notify parent
+    // Status isCompressing dan onPhaseChange sudah diset di atas sebelum dimensionCheck
 
     try {
       const options = {
