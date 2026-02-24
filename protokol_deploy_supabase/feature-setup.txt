@@ -1,0 +1,31 @@
+Protokol Deploy 5 Checkpoint
+Checkpoint 1:
+bashgit status
+git diff --name-only
+Tabel: File | Kategori | Alasan. Tunggu konfirmasi sebelum lanjut.
+Checkpoint 2:
+bashgit diff --stat HEAD
+Verifikasi semua perubahan sesuai konteks. Tunggu konfirmasi.
+Checkpoint 3:
+bashnpm run build
+Harus EXIT CODE 0. Tunggu konfirmasi.
+Checkpoint 4:
+bashgit status --short
+```
+Verifikasi tiga poin keamanan:
+```
+[ ] .env tidak masuk staged
+[ ] dist/ tidak muncul
+[ ] .agent/ tidak masuk staged
+Tunggu konfirmasi.
+Checkpoint 5 — Eksekusi setelah owner konfirmasi:
+bashgit add src/stores/useSyncFeedbackStore.js
+git add src/components/SyncToast.jsx
+git add src/services/OrderSyncService.js
+git add src/App.jsx
+git commit -m "feat: sync feedback system — toast informatif + retry + circuit observer"
+git push origin feature/supabase-setup
+```
+```
+❌ JANGAN git add .
+✅ Lapor setiap checkpoint sebelum lanjut
