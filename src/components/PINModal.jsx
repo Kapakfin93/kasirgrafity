@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 
-const OWNER_PIN = "1234"; // Hardcoded for now, can be moved to import.meta.env.VITE_OWNER_PIN
+const OWNER_PIN = import.meta.env.VITE_OWNER_PIN;
 const PIN_SESSION_KEY = "owner_pin_verified";
 
 export function PINModal({ onSuccess, onCancel }) {
