@@ -1089,6 +1089,7 @@ export const useOrderStore = create((set, get) => ({
         const offlineIntent = {
           id: localOrderId,
           ref_local_id: localOrderId,
+          uuid: localOrderId, // Pre-assign UUID — mencegah SELF-HEAL di OrderSyncService
           status: "PENDING_LOCAL",
           sync_status: "PENDING",
           sync_attempts: 0,

@@ -4,7 +4,7 @@
  * Fixes: Pagination Logic, Dashboard Sync, & Dead Code Removal
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import { OrderCard } from "./OrderCard";
@@ -45,6 +45,19 @@ export function OrderBoard() {
   });
 
   const [currentWeekRange, setCurrentWeekRange] = useState(null);
+
+  // === REFS: Capture nilai terkini tanpa trigger re-render ===
+  const filtersRef = useRef({ currentPage, paymentFilter, productionFilter });
+  const searchRef = useRef({ storeSearchQuery, localSearchQuery });
+
+  // Sync refs setiap kali nilai berubah
+  useEffect(() => {
+    filtersRef.current = { currentPage, paymentFilter, productionFilter };
+  }, [currentPage, paymentFilter, productionFilter]);
+
+  useEffect(() => {
+    searchRef.current = { storeSearchQuery, localSearchQuery };
+  }, [storeSearchQuery, localSearchQuery]);
 
   // Persist View Mode
   useEffect(() => {
@@ -106,31 +119,30 @@ export function OrderBoard() {
     loadOrdersByDateRange,
   ]);
 
-  // Keep Sync Trigger for Dashboard only (Optional)
-  // Keep Sync Trigger for Dashboard only (Optional)
-  // [PHASE 2] AUTO-SYNC INTERVAL (30 Minutes)
+  // [PHASE 2] AUTO-SYNC INTERVAL (30 Minutes) — Stable via useRef
+  // Interval TIDAK pernah di-recreate. Refs baca nilai terkini.
   useEffect(() => {
-    // Initial Load
-    loadSummary();
-
-    // Setup Interval: 30 Menit = 30 * 60 * 1000 = 1,800,000 ms
-    // Setup Interval: 30 Menit = 30 * 60 * 1000 = 1,800,000 ms
     const intervalId = setInterval(async () => {
       console.log(
         `[${new Date().toLocaleTimeString()}] ⏰ Auto-Sync Initiated`,
       );
 
-      // 🛡️ RACE CONDITION GUARD:
-      // Jangan refresh jika user sedang mengetik search!
-      if (!storeSearchQuery && !localSearchQuery) {
+      // 🛡️ RACE CONDITION GUARD: Baca dari ref (nilai terkini)
+      const { storeSearchQuery: sq, localSearchQuery: lq } = searchRef.current;
+      if (!sq && !lq) {
         console.time("Auto-Sync Duration");
         try {
+          const {
+            currentPage: cp,
+            paymentFilter: pf,
+            productionFilter: prf,
+          } = filtersRef.current;
           console.log("🔄 Auto-Sync: Fetching Orders...");
           await loadOrders({
-            page: currentPage,
+            page: cp,
             limit: 20,
-            paymentStatus: paymentFilter,
-            productionStatus: productionFilter,
+            paymentStatus: pf,
+            productionStatus: prf,
           });
 
           console.log("🔄 Auto-Sync: Fetching Summary...");
@@ -143,26 +155,16 @@ export function OrderBoard() {
           console.timeEnd("Auto-Sync Duration");
         }
       } else {
-        console.warn(
-          `⏸️ Auto-Sync Paused: User is searching (Store: "${storeSearchQuery}", Local: "${localSearchQuery}")`,
-        );
+        console.warn("⏸️ Auto-Sync Paused: User is searching");
       }
     }, 1800000); // 30 Menit
 
-    // CLEANUP PROTOCOL
     return () => {
       console.log("🧹 Auto-Sync Interval Cleared.");
       clearInterval(intervalId);
     };
-  }, [
-    currentPage,
-    paymentFilter,
-    productionFilter,
-    storeSearchQuery,
-    localSearchQuery,
-    loadOrders,
-    loadSummary,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Stable — tidak pernah di-reset
 
   // === 2. SEARCH HANDLER (Debounce) ===
   // Still useful for updating UI state, providing search query param
