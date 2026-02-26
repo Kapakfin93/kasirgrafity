@@ -26,20 +26,21 @@ export const sendWAMessage = async (phone, message, imageUrl = null) => {
   }
 
   try {
+    const formData = new FormData();
+    formData.append("target", cleanPhone);
+    formData.append("message", message);
+    formData.append("delay", "2");
+    formData.append("countryCode", "62");
+    if (imageUrl) formData.append("url", imageUrl);
+
     const response = await withTimeout(
       fetch(FONNTE_URL, {
         method: "POST",
         headers: {
           Authorization: FONNTE_TOKEN,
-          "Content-Type": "application/json",
+          // Content-Type sengaja tidak di-set — browser handle otomatis
         },
-        body: JSON.stringify({
-          target: cleanPhone,
-          message: message,
-          delay: "2",
-          countryCode: "62",
-          ...(imageUrl && { url: imageUrl }),
-        }),
+        body: formData,
       }),
       15000,
       "Kirim WA",
