@@ -393,23 +393,47 @@ export const useProductStore = create((set, get) => ({
     }
   },
 
+  /**
+   * Rebuild Zustand dari Dexie — tanpa guard, tanpa cloud sync
+   * Dipakai oleh CRUD dan realtime setelah data Dexie diupdate
+   */
+  refreshMasterData: async () => {
+    const allCategories = await db.categories.toArray();
+    const categoriesRaw = allCategories.filter((c) => c.is_active !== false);
+    const allProducts = await db.products.toArray();
+    const productsRaw = allProducts.filter(
+      (p) => p.is_active !== false && p.is_archived !== 1,
+    );
+    const allFinishings = await db.finishings.toArray();
+    const finishingsRaw = allFinishings.filter((f) => f.is_active !== false);
+    const categories = categoriesRaw.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      logic_type: cat.logic_type,
+      products: productsRaw.filter((p) => p.categoryId === cat.id),
+      finishings: finishingsRaw.filter((f) => f.categoryId === cat.id),
+    }));
+    set({ categories });
+    return categories;
+  },
+
   // Standard CRUD wrappers
   getCategories: () => get().categories,
   addCategory: async (d) => {
     await db.categories.put(new Category(d).toJSON());
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   updateCategory: async (id, d) => {
     await db.categories.update(id, d);
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   deleteCategory: async (id) => {
     await db.categories.update(id, { is_active: false });
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   addProduct: async (catId, d) => {
     await db.products.put(new Product({ ...d, categoryId: catId }).toJSON());
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
 
   // =========================================================================
@@ -695,28 +719,28 @@ export const useProductStore = create((set, get) => ({
         .syncCloudProducts()
         .then(() => {
           console.log("🔄 Auto-Sync post-update selesai. Refreshing UI...");
-          get().fetchMasterData(); // 👈 WAJIB: Agar UI update harga baru dari Supabase
+          get().refreshMasterData(); // rebuild Zustand setelah sync cloud
         });
     }, 1000);
   },
 
   deleteProduct: async (id) => {
     await db.products.update(id, { is_active: false });
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   addFinishing: async (catId, d) => {
     await db.finishings.put(
       new Finishing({ ...d, categoryId: catId }).toJSON(),
     );
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   updateFinishing: async (id, d) => {
     await db.finishings.update(id, d);
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   deleteFinishing: async (id) => {
     await db.finishings.update(id, { is_active: false });
-    await get().fetchMasterData();
+    await get().refreshMasterData();
   },
   /**
    * ⚡ REALTIME SUBSCRIPTION - With Debounce Guard
@@ -744,9 +768,10 @@ export const useProductStore = create((set, get) => ({
       if (debounceTimer) clearTimeout(debounceTimer);
 
       // Tunggu 2 detik hening, baru Sync
-      debounceTimer = setTimeout(() => {
+      debounceTimer = setTimeout(async () => {
         console.log("🔄 Triggering Full Sync after debounce...");
-        get().syncCloudProducts();
+        await get().syncCloudProducts();
+        await get().refreshMasterData(); // rebuild Zustand setelah sync cloud
       }, 2000);
     };
 
@@ -801,7 +826,8 @@ export const useProductStore = create((set, get) => ({
 }));
 
 if (typeof window !== "undefined") {
-  window.reloadMasterData = () => useProductStore.getState().fetchMasterData();
+  window.reloadMasterData = () =>
+    useProductStore.getState().refreshMasterData();
 }
 
 export default useProductStore;
