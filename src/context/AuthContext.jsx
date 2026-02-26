@@ -127,6 +127,8 @@ export function AuthProvider({ children }) {
       await supabase.auth.signOut();
       setUser(null);
       setProfile(null);
+      // Bersihkan CS lock saat kasir logout
+      localStorage.removeItem("cs_lock_state");
     } catch (err) {
       console.warn("Sign out failed:", err);
     }

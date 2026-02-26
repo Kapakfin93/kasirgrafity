@@ -1,7 +1,7 @@
 /**
  * CSContext - Simple CS Name Lock
  * Purpose: Lock CS name to avoid re-entering per transaction
- * Storage: sessionStorage (resets on tab close)
+ * Storage: localStorage (persists across tabs/sessions)
  * No PIN, No Auth, No Database
  */
 
@@ -15,10 +15,10 @@ export function CSProvider({ children }) {
   const [csName, setCSNameState] = useState(null);
   const [locked, setLocked] = useState(false);
 
-  // Restore from sessionStorage on mount
+  // Restore from localStorage on mount
   useEffect(() => {
     try {
-      const stored = sessionStorage.getItem(SESSION_KEY);
+      const stored = localStorage.getItem(SESSION_KEY);
       if (stored) {
         const { csName: savedName, locked: savedLocked } = JSON.parse(stored);
         setCSNameState(savedName);
@@ -29,10 +29,10 @@ export function CSProvider({ children }) {
     }
   }, []);
 
-  // Persist to sessionStorage on change
+  // Persist to localStorage on change
   useEffect(() => {
     try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ csName, locked }));
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ csName, locked }));
     } catch (err) {
       console.error("Failed to save CS state:", err);
     }
@@ -56,7 +56,7 @@ export function CSProvider({ children }) {
   const clear = () => {
     setCSNameState(null);
     setLocked(false);
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
   };
 
   return (

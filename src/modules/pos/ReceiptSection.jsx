@@ -35,7 +35,10 @@ export function ReceiptSection({
   // 🛡️ Initial Fetch for Badge Count
   useEffect(() => {
     fetchDrafts();
-  }, [fetchDrafts]);
+    // Hanya fetch saat komponen mount — refresh ditangani
+    // oleh saveDraft/deleteDraft/releaseDraft di useDraftStore
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 🛡️ Auto-Release on Unload
   useEffect(() => {
