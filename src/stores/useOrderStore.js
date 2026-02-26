@@ -231,6 +231,27 @@ export const useOrderStore = create((set, get) => ({
     // 1. SETUP VARS DENGAN STALE DATA
     // AMBIL DATA YANG SAAT INI ADA DI LAYAR! (Ini kunci Stale-While-Revalidate menghindari layar kosong)
     let appOrders = get().orders || [];
+
+    // WARM CACHE: Seed Zustand dari localStorage saat fresh load
+    if (appOrders.length === 0) {
+      try {
+        const cached = localStorage.getItem("orderBoard_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const isExpired = Date.now() - parsed.timestamp > 30 * 60 * 1000;
+          if (!isExpired && parsed.orders?.length > 0) {
+            appOrders = parsed.orders;
+            set({ orders: appOrders, loading: true });
+            console.log(
+              `♻️ Warm cache: ${appOrders.length} orders dari localStorage`,
+            );
+          }
+        }
+      } catch (e) {
+        /* silent — cache corrupt atau tidak ada */
+      }
+    }
+
     let serverCount = get().totalOrders || 0;
     let shouldUseServerData = false;
 
@@ -377,6 +398,22 @@ export const useOrderStore = create((set, get) => ({
         console.error("❌ Critical Local DB Error:", localError);
         // Fallback terakhir: jika dexie error, tetap tampilkan stale data agar layar tidak kosong
         set({ error: "Local DB Error: " + localError.message });
+      }
+
+      // PERSIST WARM CACHE: Simpan 20 order terbaru untuk next fresh load
+      try {
+        const toCache = appOrders.slice(0, 20);
+        if (toCache.length > 0) {
+          localStorage.setItem(
+            "orderBoard_cache",
+            JSON.stringify({
+              orders: toCache,
+              timestamp: Date.now(),
+            }),
+          );
+        }
+      } catch (e) {
+        /* silent — localStorage full */
       }
 
       // 5. FINAL STATE RESET (Mencegah Loading Zombie)
