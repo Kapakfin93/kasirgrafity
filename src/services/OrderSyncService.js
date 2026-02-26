@@ -134,6 +134,7 @@ export const OrderSyncService = {
 
         // INJECT THESE MISSING FIELDS:
         id: finalUuid, // FORCE Supabase ID to be the UUID
+        order_number: order.orderNumber, // MAPPING: camelCase → snake_case untuk RPC
 
         ref_local_id: order.id, // MANDATORY: Maps Dexie ID
         local_created_at: order.createdAt, // MANDATORY: Maps Original Time

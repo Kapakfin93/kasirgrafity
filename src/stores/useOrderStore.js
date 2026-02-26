@@ -1075,8 +1075,16 @@ export const useOrderStore = create((set, get) => ({
       // === OPTIMISTIC UI: SAVE LOCAL & RETURN IMMEDIATELY ===
       try {
         const localOrderId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const localOrderNumber = `LOCAL-${Date.now()}`;
         const localCreatedAt = new Date().toISOString();
+
+        // JGL Format: JGL-YYMMDD-{6 char UUID} — nomor final, tidak ditukar server
+        const now = new Date();
+        const dateStr =
+          now.getFullYear().toString().slice(2) +
+          String(now.getMonth() + 1).padStart(2, "0") +
+          String(now.getDate()).padStart(2, "0");
+        const shortUUID = crypto.randomUUID().replace(/-/g, "").slice(0, 6);
+        const localOrderNumber = `JGL-${dateStr}-${shortUUID}`;
 
         const offlineIntent = {
           id: localOrderId,
