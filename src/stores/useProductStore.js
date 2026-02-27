@@ -23,26 +23,38 @@ export const useProductStore = create((set, get) => ({
   loading: false,
   error: null,
   isInitialized: false,
+  _initPromise: null, // ✅ Promise mutex — mencegah double init saat race condition
   realtimeChannel: null, // ✅ NEW: Realtime subscription reference
 
   /**
    * Initialize: Load master data from DB
+   * ✅ Promise Mutex — prevents duplicate init during race conditions
    */
   initialize: async () => {
+    // 1. Sudah selesai → return langsung
     if (get().isInitialized) return get().categories;
-    set({ loading: true, error: null });
-    try {
-      const categories = await get().fetchMasterData();
 
-      // ✅ NEW: Start realtime subscription after initial load
-      await get().subscribeToRealtimeUpdates();
+    // 2. Sedang berjalan → return promise yang sama
+    if (get()._initPromise) return get()._initPromise;
 
-      set({ isInitialized: true, loading: false });
-      return categories;
-    } catch (error) {
-      set({ error: error.message, loading: false });
-      throw error;
-    }
+    // 3. Belum ada → buat promise baru (mutex)
+    const promise = (async () => {
+      set({ loading: true, error: null });
+      try {
+        const categories = await get().fetchMasterData();
+        await get().subscribeToRealtimeUpdates();
+        set({ isInitialized: true, loading: false });
+        return categories;
+      } catch (error) {
+        set({ error: error.message, loading: false });
+        throw error;
+      } finally {
+        set({ _initPromise: null }); // bersihkan setelah selesai/error
+      }
+    })();
+
+    set({ _initPromise: promise });
+    return promise;
   },
 
   /**

@@ -46,7 +46,7 @@ import { useOrderStore } from "./stores/useOrderStore";
     // Setelah semua data siap di Dexie, tarik ke memori aplikasi
 
     console.log("📥 Loading data to App State...");
-    await useProductStore.getState().fetchMasterData();
+    await useProductStore.getState().initialize();
 
     // E. STATE 3: SYNC SERVICE
     // Now handled by OrderSyncService in App.jsx
