@@ -31,6 +31,7 @@ function ProductFormModal({
   onAddCategory, // Callback to open category modal
   preselectedCategory, // NEW: Auto-select category in TABLE mode
 }) {
+  const { isSaving } = useProductStore();
   const [formData, setFormData] = useState({
     name: "",
     price: 0,
@@ -1457,8 +1458,12 @@ function ProductFormModal({
             <button type="button" className="btn-cancel" onClick={onClose}>
               Batal
             </button>
-            <button type="submit" className="btn-save" disabled={isSubmitting}>
-              {isSubmitting ? "⏳ Menyimpan..." : "💾 Simpan"}
+            <button
+              type="submit"
+              className="btn-save"
+              disabled={isSaving || isSubmitting}
+            >
+              {isSaving || isSubmitting ? "⏳ Menyimpan..." : "💾 Simpan"}
             </button>
           </div>
         </form>
@@ -1855,7 +1860,11 @@ export function ProductManager() {
   const handleSaveProduct = async (data, productId) => {
     if (productId) {
       // Update existing
-      await updateProduct(productId, data);
+      const result = await updateProduct(productId, data);
+      if (result && !result.success) {
+        alert(`Gagal menyimpan: ${result.error}`);
+        throw new Error(result.error); // throw to stop modal from closing
+      }
     } else {
       // Add new
       await addProduct(data.categoryId, data);
