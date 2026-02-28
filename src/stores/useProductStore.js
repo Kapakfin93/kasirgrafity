@@ -433,7 +433,41 @@ export const useProductStore = create((set, get) => ({
   // Standard CRUD wrappers
   getCategories: () => get().categories,
   addCategory: async (d) => {
-    await db.categories.put(new Category(d).toJSON());
+    const { supabase } = await import("../services/supabaseClient");
+
+    // Buat object kategori baru dengan ID
+    const newCategory = new Category(d).toJSON();
+
+    // STEP 1: INSERT ke Supabase dulu
+    const insertPayload = {
+      id: newCategory.id,
+      name: newCategory.name,
+      logic_type: newCategory.logic_type || "UNIT",
+      sort_order: newCategory.sort_order || 0,
+      is_active:
+        newCategory.is_active !== undefined ? newCategory.is_active : true,
+    };
+
+    const { error: insertError } = await supabase
+      .from("product_categories")
+      .insert(insertPayload);
+
+    if (insertError) {
+      console.error(
+        "❌ GAGAL INSERT KATEGORI KE SUPABASE:",
+        insertError.message,
+      );
+      throw new Error(
+        "Gagal menyimpan kategori ke server: " + insertError.message,
+      );
+    }
+
+    console.log("✅ INSERT KATEGORI SUPABASE SUKSES:", newCategory.id);
+
+    // STEP 2: Simpan ke Dexie lokal setelah Supabase berhasil
+    await db.categories.put(newCategory);
+
+    // STEP 3: Refresh UI
     await get().refreshMasterData();
   },
   updateCategory: async (id, d) => {
@@ -445,7 +479,41 @@ export const useProductStore = create((set, get) => ({
     await get().refreshMasterData();
   },
   addProduct: async (catId, d) => {
-    await db.products.put(new Product({ ...d, categoryId: catId }).toJSON());
+    const { supabase } = await import("../services/supabaseClient");
+
+    // Buat object produk baru dengan ID
+    const newProduct = new Product({ ...d, categoryId: catId }).toJSON();
+
+    // STEP 1: INSERT ke Supabase dulu
+    const insertPayload = {
+      id: newProduct.id,
+      name: newProduct.name,
+      category_id: newProduct.categoryId,
+      input_mode: newProduct.input_mode || d.input_mode || null,
+      calc_engine: newProduct.calc_engine || d.calc_engine || null,
+      is_active:
+        newProduct.is_active !== undefined ? newProduct.is_active : true,
+      base_price: newProduct.base_price || 0,
+      advanced_features: newProduct.advanced_features || null,
+    };
+
+    const { error: insertError } = await supabase
+      .from("products")
+      .insert(insertPayload);
+
+    if (insertError) {
+      console.error("❌ GAGAL INSERT PRODUK KE SUPABASE:", insertError.message);
+      throw new Error(
+        "Gagal menyimpan produk ke server: " + insertError.message,
+      );
+    }
+
+    console.log("✅ INSERT PRODUK SUPABASE SUKSES:", newProduct.id);
+
+    // STEP 2: Simpan ke Dexie lokal setelah Supabase berhasil
+    await db.products.put(newProduct);
+
+    // STEP 3: Refresh UI
     await get().refreshMasterData();
   },
 
