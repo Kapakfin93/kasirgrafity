@@ -343,9 +343,8 @@ export const useProductStore = create((set, get) => ({
         if (isOfficial) return false;
 
         const isTargetCategory = targetCategories.includes(p.categoryId);
-        const isSuspiciousName = /DTF|Stiker|Meteran/i.test(p.name);
 
-        return isTargetCategory || isSuspiciousName;
+        return isTargetCategory;
       });
 
       if (ghostProducts.length > 0) {
