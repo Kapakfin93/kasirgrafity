@@ -31,6 +31,18 @@ export const useExpenseStore = create((set, get) => ({
   syncStatus: "idle", // idle | syncing | synced | error
   realtimeSubscription: null,
 
+  // HR Matrix State
+  hrMatrixData: [],
+  isHrMatrixLoading: false,
+
+  // Operational Matrix State
+  opMatrixData: [],
+  isOpMatrixLoading: false,
+
+  // Matrix Detail Modal State (Lazy Fetch)
+  matrixDetailData: [],
+  isMatrixDetailLoading: false,
+
   // ====================================
   // LOAD EXPENSES
   // ====================================
@@ -41,6 +53,17 @@ export const useExpenseStore = create((set, get) => ({
         .orderBy("createdAt")
         .reverse()
         .toArray();
+      console.log(
+        "🐛 [DEBUG LOKAL] loadExpenses() - Mengambil dari Dexie (Memori Lokal). Total Data:",
+        expenses.length,
+      );
+      if (expenses.length > 0) {
+        console.log(
+          "🐛 [DEBUG LOKAL] loadExpenses() - Sampel Data Index 0:",
+          expenses[0].id,
+          expenses[0].amount,
+        );
+      }
       set({ expenses, loading: false });
     } catch (error) {
       console.error("❌ Load expenses failed:", error);
@@ -76,29 +99,35 @@ export const useExpenseStore = create((set, get) => ({
         throw new Error("Pilih karyawan untuk kategori Gaji/Kasbon");
       }
 
-      // Step 1: Save to Dexie (Offline-First)
+      // 🛡️ PESSIMISTIC SYNC VALIDATOR (Bila Online)
+      if (navigator.onLine) {
+        console.log("📡 Online: Menunggu validasi dari Supabase...");
+        // Await the sync directly, this will throw if it fails
+        const syncedData = await syncExpenseToSupabase(newExpense);
+        if (syncedData) {
+          newExpense.isSynced = 1;
+        }
+      }
+
+      // Step 1: Save to Dexie (Offline-First / Confirmed)
       await db.expenses.add(newExpense);
       console.log("💾 Expense saved to Dexie:", newExpense.category);
 
-      set((state) => ({
-        expenses: [newExpense, ...state.expenses],
-      }));
+      // Update Zustand Data
+      set((state) => {
+        // Prevent double insertion if Realtime already broadcasted it first
+        const exists = state.expenses.some((e) => e.id === newExpense.id);
+        if (exists) return state;
 
-      // Step 2: Background Sync
-      syncExpenseToSupabase(newExpense)
-        .then(() => {
-          // Update Sync Status on Success
-          db.expenses.update(newExpense.id, { isSynced: 1 });
-        })
-        .catch((err) => {
-          console.error("⚠️ Expense sync failed (saved locally):", err);
-          // Remains isSynced: 0, will be picked up by processSyncQueue
-        });
+        return {
+          expenses: [newExpense, ...state.expenses],
+        };
+      });
 
       return newExpense;
     } catch (error) {
       console.error("❌ Add expense failed:", error);
-      throw error;
+      throw error; // UI akan menangkap error ini dan menghentikan loading
     }
   },
 
@@ -156,6 +185,9 @@ export const useExpenseStore = create((set, get) => ({
   // ====================================
   syncFromCloud: async () => {
     set({ syncStatus: "syncing" });
+    console.log(
+      "🐛 [DEBUG LOKAL] syncFromCloud() - Memulai tarikan paksa dari Supabase awan...",
+    );
     try {
       const today = new Date();
       // SAFETY FIX: Add 24h buffer to prevent "Ghost Data" if Admin PC is ahead of Owner PC
@@ -170,7 +202,18 @@ export const useExpenseStore = create((set, get) => ({
         limitDate,
       );
 
+      console.log(
+        "🐛 [DEBUG LOKAL] syncFromCloud() - Supabase menjawab dengan total:",
+        cloudExpenses.length,
+        "data.",
+      );
+
       if (cloudExpenses.length > 0) {
+        console.log(
+          "🐛 [DEBUG LOKAL] syncFromCloud() - Sampel Supabase Index 0:",
+          cloudExpenses[0].id,
+          cloudExpenses[0].amount,
+        );
         const dexieExpenses = mapCloudToDexie(cloudExpenses).map((e) => ({
           ...e,
           isSynced: 1, // Mark as synced since it came from cloud
@@ -184,6 +227,127 @@ export const useExpenseStore = create((set, get) => ({
     } catch (error) {
       console.error("❌ Sync from cloud failed:", error);
       set({ syncStatus: "error" });
+    }
+  },
+
+  // ====================================
+  // FETCH HR MATRIX (SERVER-SIDE RPC)
+  // ====================================
+  fetchHrMatrixSummary: async (month, year) => {
+    set({ isHrMatrixLoading: true });
+    try {
+      const { supabase } = await import("../services/supabaseClient");
+      if (!supabase) throw new Error("Supabase client not initialized");
+
+      console.log(
+        `📡 Fetching HR Matrix from Supabase for ${month}/${year}...`,
+      );
+
+      const { data, error } = await supabase.rpc("get_hr_matrix_summary", {
+        target_month: month,
+        target_year: year,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(
+        "✅ HR Matrix fetched successfully. Total Employees:",
+        data?.length || 0,
+      );
+      set({ hrMatrixData: data || [], isHrMatrixLoading: false });
+    } catch (error) {
+      console.error("❌ Failed to fetch HR Matrix from Supabase:", error);
+      set({ hrMatrixData: [], isHrMatrixLoading: false, error: error.message });
+    }
+  },
+
+  // ====================================
+  // FETCH OPERATIONAL MATRIX (SERVER-SIDE RPC)
+  // ====================================
+  fetchOpMatrixSummary: async (month, year) => {
+    set({ isOpMatrixLoading: true });
+    try {
+      const { supabase } = await import("../services/supabaseClient");
+      if (!supabase) throw new Error("Supabase client not initialized");
+
+      console.log(
+        `📡 Fetching Operational Matrix from Supabase for ${month}/${year}...`,
+      );
+
+      const { data, error } = await supabase.rpc(
+        "get_operational_matrix_summary",
+        {
+          target_month: month,
+          target_year: year,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(
+        "✅ Operational Matrix fetched successfully. Total Categories:",
+        data?.length || 0,
+      );
+      set({ opMatrixData: data || [], isOpMatrixLoading: false });
+    } catch (error) {
+      console.error(
+        "❌ Failed to fetch Operational Matrix from Supabase:",
+        error,
+      );
+      set({ opMatrixData: [], isOpMatrixLoading: false, error: error.message });
+    }
+  },
+
+  // ====================================
+  // FETCH MATRIX CELL DETAILS (LAZY LOAD VIA RPC)
+  // ====================================
+  fetchMatrixCellDetails: async (
+    category,
+    month,
+    year,
+    week,
+    employeeId = null,
+  ) => {
+    set({ isMatrixDetailLoading: true, matrixDetailData: [] });
+    try {
+      const { supabase } = await import("../services/supabaseClient");
+      if (!supabase) throw new Error("Supabase client not initialized");
+
+      console.log(
+        `📡 Fetching Details for Cat:${category}, M:${month}, Y:${year}, W:${week}, Emp:${employeeId || "ALL"}...`,
+      );
+
+      const { data, error } = await supabase.rpc("get_matrix_detail_rows", {
+        p_category: category,
+        p_month: parseInt(month, 10),
+        p_year: parseInt(year, 10),
+        p_week: week,
+        p_employee_id: employeeId,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(
+        `✅ Detail Row fetched successfully. Rows:`,
+        data?.length || 0,
+      );
+      set({ matrixDetailData: data || [], isMatrixDetailLoading: false });
+    } catch (error) {
+      console.error(
+        "❌ Failed to fetch Matrix Detail Rows from Supabase:",
+        error,
+      );
+      set({
+        matrixDetailData: [],
+        isMatrixDetailLoading: false,
+        error: error.message,
+      });
     }
   },
 
@@ -220,12 +384,25 @@ export const useExpenseStore = create((set, get) => ({
           };
 
           // Update Store
-          set((state) => ({
-            expenses: [newExpense, ...state.expenses],
-          }));
+          set((state) => {
+            const exists = state.expenses.some((e) => e.id === newExpense.id);
+            if (exists) {
+              // Jika data sudah ada (hasil input lokal sendiri), jangan duplikat
+              // cukup perbarui status sync-nya ke 1
+              db.expenses.update(newExpense.id, { isSynced: 1 });
+              return {
+                expenses: state.expenses.map((e) =>
+                  e.id === newExpense.id ? { ...e, isSynced: 1 } : e,
+                ),
+              };
+            }
 
-          // Update Dexie (Mirror)
-          db.expenses.put(newExpense);
+            // Jika belum ada (input dari PC lain), Update Dexie (Mirror) & UI
+            db.expenses.put(newExpense);
+            return {
+              expenses: [newExpense, ...state.expenses],
+            };
+          });
         },
       )
       .on(
