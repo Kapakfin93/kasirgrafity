@@ -114,12 +114,42 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
                   )}
 
                   {/* Finishing */}
-                  {Array.isArray(meta.finishing_list) &&
-                    meta.finishing_list.length > 0 && (
-                      <div style={styles.small}>
-                        Finishing: {meta.finishing_list.join(", ")}
-                      </div>
-                    )}
+                  {(() => {
+                    const specs =
+                      typeof item.specs_snapshot === "string"
+                        ? (() => {
+                            try {
+                              return JSON.parse(item.specs_snapshot);
+                            } catch {
+                              return {};
+                            }
+                          })()
+                        : item.specs_snapshot || {};
+
+                    const finishing =
+                      specs.finishing ||
+                      specs.specs?.finishing ||
+                      (Array.isArray(item.finishings) &&
+                      item.finishings.length > 0
+                        ? item.finishings.map((f) => f.name).join(", ")
+                        : null) ||
+                      meta.finishing_list;
+
+                    if (
+                      !finishing ||
+                      finishing === "" ||
+                      (Array.isArray(finishing) && finishing.length === 0)
+                    )
+                      return null;
+
+                    const finishingText = Array.isArray(finishing)
+                      ? finishing.join(", ")
+                      : finishing;
+
+                    return (
+                      <div style={styles.small}>Finishing: {finishingText}</div>
+                    );
+                  })()}
 
                   {/* Catatan - ALWAYS VISIBLE (with placeholder if empty) */}
                   <div
