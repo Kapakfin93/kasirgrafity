@@ -219,6 +219,7 @@ function ProductFormModal({
 
   const addVariant = () => {
     const newVariant = {
+      id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
       label: "Varian Baru",
       price: 0,
       specs: "",
