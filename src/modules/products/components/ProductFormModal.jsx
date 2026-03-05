@@ -45,13 +45,20 @@ function ProductFormModal({
         print_modes: product.print_modes || null,
       });
     } else {
+      const defaultEngine =
+        product?.calc_engine ||
+        categories
+          .find((c) => c.id === preselectedCategory)
+          ?.logic_type?.toUpperCase() ||
+        "UNIT";
+
       setFormData({
         name: "",
         price: 0,
         categoryId: preselectedCategory || categories[0]?.id || "",
         prices: null,
         input_mode: "",
-        calc_engine: "", // ✅ WAJIB
+        calc_engine: defaultEngine, // ✅ Explicit engine selection
         variants: null,
         finishing_groups: [],
         price_tiers: null,
@@ -398,6 +405,30 @@ function ProductFormModal({
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Engine Selector (Explicitly for new products) */}
+              <div className="form-group">
+                <label>⚙️ Mesin Kalkulasi (Calc Engine)</label>
+                <select
+                  value={formData.calc_engine}
+                  onChange={(e) =>
+                    setFormData({ ...formData, calc_engine: e.target.value })
+                  }
+                  required
+                  disabled={!!product} // Cannot change engine when editing
+                >
+                  <option value="UNIT">Per Satuan (Unit)</option>
+                  <option value="AREA">Per Meter Persegi (m²)</option>
+                  <option value="LINEAR_METER">Per Meter Lari</option>
+                  <option value="MATRIX">Matrix (Ukuran × Bahan)</option>
+                  <option value="BOOKLET">Per Halaman (Jilid)</option>
+                  <option value="MANUAL">Input Manual Kasir</option>
+                </select>
+                <p className="form-hint text-xs text-slate-500 mt-1">
+                  Menentukan bagaimana harga dihitung di kasir (tidak bisa
+                  diubah setelah disimpan).
+                </p>
               </div>
 
               {/* Product Name */}
@@ -1452,6 +1483,5 @@ function ProductFormModal({
     </div>
   );
 }
-
 
 export default ProductFormModal;

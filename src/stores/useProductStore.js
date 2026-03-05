@@ -483,16 +483,21 @@ export const useProductStore = create((set, get) => ({
     // Buat object produk baru dengan ID
     const newProduct = new Product({ ...d, categoryId: catId }).toJSON();
 
+    const category = get().categories.find((c) => c.id === catId);
+    const resolvedEngine =
+      newProduct.calc_engine || d.calc_engine || category?.logic_type || "UNIT";
+
     // STEP 1: INSERT ke Supabase dulu
     const insertPayload = {
       id: newProduct.id,
       name: newProduct.name,
       category_id: newProduct.categoryId,
       input_mode: newProduct.input_mode || d.input_mode || null,
-      calc_engine: newProduct.calc_engine || d.calc_engine || null,
+      calc_engine: resolvedEngine,
       is_active:
         newProduct.is_active !== undefined ? newProduct.is_active : true,
       base_price: newProduct.base_price || 0,
+      // advanced_features added safely
       advanced_features: newProduct.advanced_features || null,
     };
 
