@@ -119,6 +119,44 @@ function ProductFormModal({
       return;
     }
 
+    // Layer 1: Validasi finishing placeholder
+    const PLACEHOLDER_TITLES_CHECK = ["Finishing Baru", "Group Baru"];
+    const PLACEHOLDER_LABELS_CHECK = ["Opsi 1", "Opsi Baru", "Nama Finishing"];
+
+    // Cek grup dengan title placeholder
+    const groupsWithPlaceholderTitle = (formData.finishing_groups || []).filter(
+      (g) => PLACEHOLDER_TITLES_CHECK.includes(g.title?.trim()),
+    );
+
+    // Cek opsi yang belum diisi (label placeholder DAN price = 0)
+    const hasUnfilledOptions = (formData.finishing_groups || []).some((g) =>
+      (g.options || []).some(
+        (opt) =>
+          PLACEHOLDER_LABELS_CHECK.includes(opt.label?.trim()) &&
+          Number(opt.price) === 0,
+      ),
+    );
+
+    if (groupsWithPlaceholderTitle.length > 0) {
+      const konfirmasi = window.confirm(
+        `⚠️ Ada ${groupsWithPlaceholderTitle.length} grup finishing dengan nama default "Finishing Baru".\n\n` +
+          `Contoh nama yang baik:\n` +
+          `• Laminasi Cover\n` +
+          `• Pilihan Kertas\n` +
+          `• Jenis Jilid\n\n` +
+          `Lanjutkan simpan tanpa mengubah nama?`,
+      );
+      if (!konfirmasi) return;
+    }
+
+    if (hasUnfilledOptions) {
+      alert(
+        `⚠️ Ada opsi finishing dengan label atau harga yang belum diisi.\n` +
+          `Opsi yang belum diisi tidak akan disimpan.`,
+      );
+      // Tidak return — hanya informasi
+    }
+
     setIsSubmitting(true);
     try {
       await onSave(formData, product?.id);

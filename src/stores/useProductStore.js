@@ -668,10 +668,31 @@ export const useProductStore = create((set, get) => ({
             console.log("➡️ ROUTE: FINISHING SYNC...");
 
             // Flatten Groups -> Options Rows
+            const PLACEHOLDER_TITLES = ["Finishing Baru", "Group Baru"];
+            const PLACEHOLDER_LABELS = [
+              "Opsi 1",
+              "Opsi Baru",
+              "Nama Finishing",
+            ];
+
+            // Helper: true HANYA JIKA group title, option label, DAN price semuanya masih default
+            const isUnchangedPlaceholder = (group, opt) =>
+              PLACEHOLDER_TITLES.includes(group.title?.trim()) &&
+              PLACEHOLDER_LABELS.includes(opt.label?.trim()) &&
+              Number(opt.price) === 0;
+
             const allOptions = [];
             d.finishing_groups.forEach((group, gIdx) => {
               if (group.options) {
                 group.options.forEach((opt, oIdx) => {
+                  // Skip HANYA jika benar-benar tidak diubah sama sekali
+                  if (isUnchangedPlaceholder(group, opt)) {
+                    console.warn(
+                      `⏭️ Skip unchanged placeholder: "${group.title}" > "${opt.label}"`,
+                    );
+                    return;
+                  }
+
                   allOptions.push({
                     group_key: group.id || `fin_grp_${gIdx}`,
                     group_title: group.title,
