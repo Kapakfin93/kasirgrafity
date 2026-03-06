@@ -126,14 +126,37 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
                           })()
                         : item.specs_snapshot || {};
 
-                    const finishing =
-                      specs.finishing ||
-                      specs.specs?.finishing ||
-                      (Array.isArray(item.finishings) &&
-                      item.finishings.length > 0
-                        ? item.finishings.map((f) => f.name).join(", ")
-                        : null) ||
-                      meta.finishing_list;
+                    const finishing = (() => {
+                      const fromSpecs =
+                        specs.finishing || specs.specs?.finishing;
+                      if (fromSpecs) return fromSpecs;
+
+                      if (
+                        Array.isArray(item.finishings) &&
+                        item.finishings.length > 0
+                      ) {
+                        const names = item.finishings
+                          .map((f) => f.name || f.label || f.id)
+                          .filter(Boolean);
+                        if (names.length > 0) return names.join(", ");
+                      }
+
+                      if (
+                        Array.isArray(meta.finishing_list) &&
+                        meta.finishing_list.length > 0
+                      ) {
+                        const names = meta.finishing_list
+                          .map((f) =>
+                            typeof f === "string"
+                              ? f
+                              : f.name || f.label || f.id || "",
+                          )
+                          .filter(Boolean);
+                        if (names.length > 0) return names.join(", ");
+                      }
+
+                      return null;
+                    })();
 
                     if (
                       !finishing ||

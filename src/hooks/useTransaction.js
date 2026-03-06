@@ -702,7 +702,9 @@ export function useTransaction() {
             metadata: {
               original_name: item.name,
               original_specs: item.dimensions, // Legacy
-              finishing_list: item.finishings || [],
+              finishing_list: (item.finishings || [])
+                .map((f) => f.name || f.label || f.id)
+                .filter(Boolean),
               notes: item.notes || "",
               variant_info: item.specs?.summary || item.variantLabel || "",
             },

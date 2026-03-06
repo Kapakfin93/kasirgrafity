@@ -120,7 +120,6 @@ export const useProductStore = create((set, get) => ({
       const { data: products, error: productError } = await supabase
         .from("products")
         .select("*")
-        .in("category_id", targetCategories)
         .eq("is_active", true);
 
       if (productError) throw productError;

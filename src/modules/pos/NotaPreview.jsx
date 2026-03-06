@@ -37,24 +37,29 @@ const humanizeActor = (actorCode) => {
  */
 const extractFinishingDetails = (dims, item) => {
   const parts = [];
+  const meta = item.metadata || item.meta || {};
 
-  // STEP 1: Extract from finishing_list (Array) - Spanduk style
+  // STEP 0: Directly from item.finishings (DRAFT MODE / POS V2)
+  if (Array.isArray(item.finishings) && item.finishings.length > 0) {
+    const names = item.finishings
+      .map((f) => f.name || f.label || f.id)
+      .filter(Boolean);
+    if (names.length > 0) parts.push(...names);
+  }
+
+  // STEP 1: Extract from finishing_list (Array) - Original Spanduk style
   if (dims.finishing_list && Array.isArray(dims.finishing_list)) {
     const names = dims.finishing_list.map((f) => f.name || f).filter(Boolean);
     parts.push(...names);
   }
-  // ✅ ALSO CHECK: item.meta.finishing_list (X-Banner style)
-  else if (
-    item.meta?.finishing_list &&
-    Array.isArray(item.meta.finishing_list)
-  ) {
-    const names = item.meta.finishing_list
-      .map((f) => f.name || f)
-      .filter(Boolean);
+
+  // ✅ STEP 2: ALSO CHECK meta.finishing_list (POST-PAYMENT DB MODE)
+  if (meta.finishing_list && Array.isArray(meta.finishing_list)) {
+    const names = meta.finishing_list.map((f) => f.name || f).filter(Boolean);
     parts.push(...names);
   }
 
-  // STEP 2: Extract from selected_details (Dynamic Object) - Complex variants
+  // STEP 3: Extract from selected_details (Dynamic Object) - Complex variants
   // Exclude common non-finishing keys to avoid duplication
   const excludeKeys = ["size", "material", "qty", "quantity", "variantLabel"];
 
@@ -121,7 +126,8 @@ const extractFinishingDetails = (dims, item) => {
   }
 
   // STEP 7: Return formatted string or fallback
-  return parts.length > 0 ? parts.join(", ") : "-";
+  const uniqueParts = [...new Set(parts)];
+  return uniqueParts.length > 0 ? uniqueParts.join(", ") : "-";
 };
 
 export const NotaPreview = React.forwardRef(
