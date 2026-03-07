@@ -249,7 +249,7 @@ export async function runLargeFormatReconstruction() {
     for (const cat of categoriesToSync) {
       // Backup ke Supabase
       await supabase
-        .from("categories")
+        .from("product_categories")
         .upsert(cat, { onConflict: "id", ignoreDuplicates: false });
       // Masuk ke Dexie (UI) - Pastikan is_active: 1
       await db.categories.put({ ...cat, is_active: 1 });
