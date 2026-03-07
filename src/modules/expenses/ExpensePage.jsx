@@ -62,7 +62,8 @@ export function ExpensePage() {
     isMatrixDetailLoading, // NEW: detail pop-up state
     fetchMatrixCellDetails, // NEW: detail pop-up action
   } = useExpenseStore();
-  const { loadEmployees } = useEmployeeStore();
+  const { loadEmployees, syncFromCloud: syncEmployeesFromCloud } =
+    useEmployeeStore();
 
   const { isOwner } = usePermissions(); // DETEKTOR PERAN (Owner vs Karyawan)
 
@@ -75,8 +76,9 @@ export function ExpensePage() {
     if (isOwner) {
       loadExpenses();
     }
-    // Always load employees for dropdown
+    // Always load employees for dropdown and trigger cloud sync for safety
     loadEmployees();
+    syncEmployeesFromCloud();
 
     // 📡 REALTIME SUBSCRIPTION
     subscribeToExpenses();

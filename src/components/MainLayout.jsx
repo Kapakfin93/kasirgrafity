@@ -79,8 +79,8 @@ export function MainLayout() {
           });
           // ✅ PERBAIKAN SELESAI
 
-          // 🔄 AUTO-SYNC DATA UNTUK ADMIN (BACKGROUND, SEKALI SAAT LOGIN)
-          if (profile.role === "admin") {
+          // 🔄 AUTO-SYNC DATA UNTUK ADMIN & OWNER (BACKGROUND, SEKALI SAAT LOGIN)
+          if (profile.role === "admin" || profile.role === "owner") {
             useEmployeeStore.getState().syncFromCloud();
             useExpenseStore.getState().syncFromCloud();
             useAttendanceStore.getState().syncFromCloud();

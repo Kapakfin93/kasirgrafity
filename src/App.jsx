@@ -30,6 +30,7 @@ import "./index.css";
 import { OrderSyncService } from "./services/OrderSyncService";
 import { SyncToast } from "./components/SyncToast";
 import { useSyncFeedbackStore } from "./stores/useSyncFeedbackStore";
+import { Toaster } from "react-hot-toast";
 
 function App() {
   // 🔥 Start Background Sync Service
@@ -107,6 +108,7 @@ function App() {
             {/* Fallback 404 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <Toaster position="top-center" reverseOrder={false} />
           <SyncToast />
         </BrowserRouter>
       </CSProvider>

@@ -5,11 +5,14 @@ import {
 } from "../../stores/useExpenseStore";
 import { useEmployeeStore } from "../../stores/useEmployeeStore";
 import { formatCurrencyInput, parseCurrencyInput } from "../../core/formatters";
+import { toast } from "react-hot-toast";
 
 const ExpenseInputForm = ({ onClose }) => {
   const { addExpense } = useExpenseStore();
-  const { getActiveEmployees } = useEmployeeStore();
-  const activeEmployees = getActiveEmployees();
+  const { employees } = useEmployeeStore();
+
+  // Compute active employees directly from reactive state so component re-renders
+  const activeEmployees = employees.filter((emp) => emp.status === "ACTIVE");
 
   const [formData, setFormData] = useState({
     displayAmount: "",
@@ -82,6 +85,11 @@ const ExpenseInputForm = ({ onClose }) => {
         createdBy: formData.createdBy,
       });
 
+      toast.success(
+        "✅ Pengeluaran dicatat!\n(Otomatis tersinkronisasi server)",
+        { duration: 3000 },
+      );
+
       setFormData({
         displayAmount: "",
         rawAmount: 0,
@@ -95,6 +103,7 @@ const ExpenseInputForm = ({ onClose }) => {
     } catch (error) {
       console.error("Failed to add expense:", error);
       setFormError(error.message || "Gagal menyimpan data");
+      toast.error(error.message || "Gagal menyimpan data");
     } finally {
       setIsSubmitting(false);
     }

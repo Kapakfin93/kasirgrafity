@@ -71,6 +71,14 @@ Bagi AI maupun Manusia yang akan memodifikasi area ini:
 - ✅ **SELALU** gunakan komponen formating mata uang terpusat `formatRupiah` dari `src/core/formatters.js`, bukan mengetik format `Intl.NumberFormat` secara manual di setiap komponen.
 - ✅ Jika ada bug pada pemuatan (Loading State) atau modal tidak muncul, periksa ikatan `selectedDetail` state di `ExpensePage.jsx` sebelum mengurai tempat lain.
 
+## 6. State Reactivity & Sync Architecture (Employee Dropdown)
+
+**Pelajaran dari Bug Dropdown Kosong (Maret 2026):**
+Ada ketergantungan _state_ yang kritis antara Modul Absensi dan Pengeluaran terkait pemanggilan data Karyawan (`useEmployeeStore`).
+
+- **Reactivity**: Dilarang menggunakan _Getter Statis_ (seperti `getActiveEmployees()`) saat mengisi _Dropdown List_ di Form Pengeluaran karena _getter_ tidak memicu _re-render_ di React saat IndexedDB lambat memuat data. **SELALU** _subscribe_ langsung ke _state array_ utamanya (cth: `const { employees } = useEmployeeStore()`) dan lakukan fungsi `.filter()` secara reaktif di dalam komponen.
+- **Independent Cloud Sync**: Halaman `ExpensePage.jsx` tidak boleh berasumsi bahwa data karyawan sudah disinkronisasi oleh halaman lain (seperti halaman Absensi). `ExpensePage` **DIWAJIBKAN** memanggil `syncFromCloud()` milik `useEmployeeStore` pada saat _mount_ (di dalam `useEffect`) untuk memastikan data terbaru dari Supabase selalu ditarik (redundansi keamanan).
+
 ---
 
-_Dokumen ini dibuat otomatis pada sesi restrukturisasi UI Expense Module._
+_Dokumen ini dibuat otomatis pada sesi restrukturisasi UI Expense Module dan diperbarui paska perbaikan arsitektur Sinkronisasi state._
