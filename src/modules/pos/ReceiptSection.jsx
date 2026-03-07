@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { formatRupiah } from "../../core/formatters";
 import useDraftStore from "../../stores/useDraftStore";
 import DraftListModal from "./DraftListModal";
-import { buildWAMessage } from "../../utils/waMessageBuilder";
+import { WAEstimasiModal } from "../../components/WAEstimasiModal";
 
 /**
  * ReceiptSection - Wall Street Theme (Bloomberg Terminal Aesthetic)
@@ -27,6 +27,7 @@ export function ReceiptSection({
 
   // --- DRAFT & PRE-CHECKOUT LOGIC ---
   const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+  const [isWAModalOpen, setIsWAModalOpen] = useState(false); // NEW
   const { saveDraft, drafts, releaseDraft, fetchDrafts } = useDraftStore();
 
   // Active Draft Tracking (Local ID for release)
@@ -84,7 +85,7 @@ export function ReceiptSection({
     }
   };
 
-  // Handle Share WA (Auto-Save First)
+  // Handle Share WA (Auto-Save First then Open Modal)
   const handleShareWA = async () => {
     if (items.length === 0) return alert("Keranjang kosong!");
 
@@ -112,28 +113,8 @@ export function ReceiptSection({
       return;
     }
 
-    // 2. Proceed to WhatsApp (Only if saved)
-    let phone = customerSnapshot?.phone || "";
-    // Normalize
-    phone = phone.replace(/\D/g, "");
-    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
-
-    if (!phone) {
-      const input = prompt("Masukkan Nomor WA (62...):");
-      if (!input) return;
-      phone = input.replace(/\D/g, "");
-      if (phone.startsWith("0")) phone = "62" + phone.slice(1);
-    }
-
-    // Build Message using Helper (Shared Logic)
-    const msg = buildWAMessage({
-      items: items,
-      customer: customerSnapshot,
-      total: totalAmount,
-    });
-
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
+    // 2. Open Dedicated WA Modal instead of using window.prompt
+    setIsWAModalOpen(true);
   };
 
   // Handle Load Draft
@@ -200,6 +181,20 @@ export function ReceiptSection({
         isOpen={isDraftModalOpen}
         onClose={() => setIsDraftModalOpen(false)}
         onLoadDraft={handleLoadDraftAction}
+      />
+
+      <WAEstimasiModal
+        isOpen={isWAModalOpen}
+        onClose={() => setIsWAModalOpen(false)}
+        customerSnapshot={customerSnapshot}
+        cartData={{
+          items,
+          totalAmount: finalAmount,
+        }}
+        onSuccess={() => {
+          // Optional callback if WA was sent successfully via Fonnte or fallback
+          console.log("WA Estimasi action completed.");
+        }}
       />
 
       {/* NEON TOP STRIP - Emerald */}
