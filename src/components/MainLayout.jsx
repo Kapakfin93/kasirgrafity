@@ -123,6 +123,7 @@ export function MainLayout() {
       { path: "/marketing-gallery", icon: "📸", label: "Gallery" }, // 🆕 Marketing Review
       { path: "/web-inbox", icon: "📩", label: "Inbox" },
       { path: "/expenses", icon: "💸", label: "Pengeluaran" },
+      { path: "/reports/mmt-production", icon: "📐", label: "Lap. Produksi" },
       { path: "/products", icon: "📦", label: "Produk" },
       { path: "/employees", icon: "👥", label: "Karyawan" },
       { path: "/attendance", icon: "⏰", label: "Absensi" },

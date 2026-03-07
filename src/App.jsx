@@ -7,7 +7,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { CSProvider } from "./context/CSContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { ProtectedWithPIN } from "./components/ProtectedWithPIN"; // Pastikan file ini ada
+import { ProtectedWithPIN } from "./components/ProtectedWithPIN";
+import { RoleProtectedRoute } from "./components/RoleProtectedRoute";
 import { MainLayout } from "./components/MainLayout";
 
 // Pages
@@ -22,6 +23,7 @@ import { ExpensePage } from "./modules/expenses/ExpensePage";
 import WebInboxPanel from "./modules/orders/WebInboxPanel";
 import { AttendanceBoard } from "./modules/employees/AttendanceBoard";
 import { MarketingGallery } from "./modules/marketing/MarketingGallery";
+import { MMTProductionReport } from "./modules/reports/MMTProductionReport";
 
 // Style
 import "./index.css";
@@ -93,6 +95,14 @@ function App() {
                   <ProtectedWithPIN>
                     <DataManagement />
                   </ProtectedWithPIN>
+                }
+              />
+              <Route
+                path="/reports/mmt-production"
+                element={
+                  <RoleProtectedRoute requiredRole="owner">
+                    <MMTProductionReport />
+                  </RoleProtectedRoute>
                 }
               />
 
