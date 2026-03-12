@@ -107,42 +107,44 @@ export function OrderCard({ order }) {
     order.productionStatus === "CANCELLED" || (isSelesai && isLunas);
 
   // === MAIN ACTION HANDLER ===
-  const handleMainAction = async () => {
+  const handleMainAction = async (action) => {
     if (!canUpdateOrderStatus) {
       alert("Anda tidak memiliki izin");
       return;
     }
-    if (!mainAction) return;
+    if (!action) return;
 
     // A. SETTLEMENT
-    if (
-      mainAction.type === "PAYMENT_FIRST" ||
-      mainAction.type === "repayment"
-    ) {
+    if (action.type === "PAYMENT_FIRST" || action.type === "repayment") {
       setSettlementReceiver("");
       setSettlementModal({ show: true });
       return;
     }
 
     // B. PRODUCTION: SPK
-    if (mainAction.type === "PROCESS_SPK") {
+    if (action.type === "PROCESS_SPK") {
       setSpkOperator("");
       setSpkModal({ show: true });
       return;
     }
 
     // C. PRODUCTION: READY / DELIVERED
-    if (mainAction.type === "COMPLETE_ORDER") {
+    if (action.type === "COMPLETE_ORDER") {
       setCompletionModal({ show: true });
       return;
     }
     if (
-      mainAction.type === "HANDOVER_STANDARD" ||
-      mainAction.type === "HANDOVER_VIP"
+      action.type === "HANDOVER_STANDARD" ||
+      action.type === "HANDOVER_VIP"
     ) {
       setWaModal({ show: true, actionType: "DELIVER" });
       return;
     }
+  };
+
+  const handlePaymentClick = () => {
+    setSettlementReceiver("");
+    setSettlementModal({ show: true });
   };
 
   // === EXECUTION HANDLERS ===
@@ -171,10 +173,14 @@ export function OrderCard({ order }) {
     setUpdating(true);
     try {
       // 2. KIRIM 'finalReceiver', BUKAN 'settlementReceiver'
-      // 👇 (Disini letak kesalahan sebelumnya)
       await addPayment(order.id, sisa, finalReceiver);
 
       setPrintConfig({ show: true, type: "NOTA", autoPrint: true });
+
+      // [PHASE 4] LOGIKA WA GATEWAY: Hanya jika DELIVERED (Hutang Tempo)
+      if (order.productionStatus === "DELIVERED") {
+        setWaModal({ show: true, actionType: "REPAYMENT" });
+      }
     } catch (err) {
       alert("❌ Gagal: " + err.message);
     }
@@ -207,6 +213,8 @@ export function OrderCard({ order }) {
       } else if (waModal.actionType === "DELIVER") {
         await updateProductionStatus(order.id, "DELIVERED", operator);
         alert("✅ Order SELESAI + WA Terkirim");
+      } else if (waModal.actionType === "REPAYMENT") {
+        alert("✅ Pelunasan Hutang + WA Terkirim");
       }
     } catch (err) {
       alert("❌ Gagal: " + err.message);
@@ -286,13 +294,9 @@ export function OrderCard({ order }) {
   const handleReprint = () =>
     setPrintConfig({ show: true, type: "NOTA", autoPrint: false });
 
-  // === SMART ACTION BUTTON ===
-  const getMainAction = () => {
-    // isLunas sudah dideklarasikan di atas, tidak perlu deklarasi ulang disini
+  // === SMART ORTHOGONAL ACTIONS ===
+  const getProductionAction = () => {
     const isTempo = order.isTempo === true;
-    const remaining =
-      order.remainingAmount ?? order.totalAmount - (order.paidAmount || 0);
-    const hasDebt = remaining > 0;
 
     switch (order.productionStatus) {
       case "PENDING":
@@ -300,52 +304,63 @@ export function OrderCard({ order }) {
           label: "🖨️ PROSES SPK",
           color: "#3b82f6",
           type: "PROCESS_SPK",
-          disabled: false,
         };
       case "IN_PROGRESS":
         return {
           label: "✅ TANDAI SELESAI",
           color: "#22c55e",
           type: "COMPLETE_ORDER",
-          disabled: false,
         };
       case "READY":
-        if (isLunas)
+        if (isLunas) {
           return {
             label: "📦 SERAHKAN",
             color: "#64748b",
             type: "HANDOVER_STANDARD",
-            disabled: false,
           };
-        else if (isTempo)
+        } else if (isTempo) {
           return {
             label: "📦 SERAHKAN (VIP)",
             color: "#f59e0b",
             type: "HANDOVER_VIP",
-            disabled: false,
           };
-        else
+        } else {
+          // Orthogonal requirement: Ready -> SERAHKAN / SERAHKAN VIP
+          // If not tempo and not lunas, usually handover_standard with payment first.
+          // But here we split the payment button.
           return {
-            label: "💰 BAYAR & AMBIL",
-            color: "#16a34a",
-            type: "PAYMENT_FIRST",
-            disabled: false,
+            label: "📦 SERAHKAN",
+            color: "#64748b",
+            type: "HANDOVER_STANDARD",
+            disabled: !isLunas && !isTempo, // Tetap di-lock sampai ada pelunasan (kecuali Tempo)
           };
+        }
       case "DELIVERED":
-        if (hasDebt)
-          return {
-            label: "💳 LUNASI TAGIHAN",
-            color: "#16a34a",
-            type: "repayment",
-            disabled: false,
-          };
-        return null;
+        return null; // Aksi produksi berhenti di Delivered
       default:
         return null;
     }
   };
 
-  const mainAction = getMainAction();
+  const getPaymentAction = () => {
+    const remaining =
+      order.remainingAmount ?? order.totalAmount - (order.paidAmount || 0);
+    const hasDebt = remaining > 0;
+    const isCancelled = order.productionStatus === "CANCELLED";
+
+    if (hasDebt && !isCancelled) {
+      return {
+        label: "💳 LUNASI",
+        color: "#16a34a",
+        type: "PAYMENT",
+      };
+    }
+    return null;
+  };
+
+  const productionAction = getProductionAction();
+  const paymentAction = getPaymentAction();
+
   const canCancel =
     order.productionStatus !== "CANCELLED" &&
     order.productionStatus !== "DELIVERED";
@@ -799,56 +814,95 @@ export function OrderCard({ order }) {
 
         {/* ACTION BUTTONS (Logic: HIDE if Archived) */}
         {!isLocked && order.productionStatus !== "CANCELLED" && (
-          <div style={{ display: "flex", gap: "10px" }}>
-            {mainAction && canUpdateOrderStatus && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              width: "100%",
+            }}
+          >
+            {/* Baris 1 (Atas): Aksi Produksi (Full Width) */}
+            {productionAction && canUpdateOrderStatus && (
               <button
-                onClick={handleMainAction}
-                disabled={updating || mainAction.disabled}
+                onClick={() => handleMainAction(productionAction)}
+                disabled={updating || productionAction.disabled}
                 style={{
-                  flex: 2,
-                  padding: "10px 12px", // COMPACT: Reduced from 14px
-                  backgroundColor: mainAction.color,
+                  width: "100%",
+                  padding: "12px",
+                  backgroundColor: productionAction.color,
                   color: "white",
                   border: "none",
                   borderRadius: "8px",
                   fontWeight: "900",
                   cursor:
-                    updating || mainAction.disabled ? "not-allowed" : "pointer",
+                    updating || productionAction.disabled
+                      ? "not-allowed"
+                      : "pointer",
                   fontSize: "14px",
-                  opacity: updating || mainAction.disabled ? 0.5 : 1,
+                  opacity: updating || productionAction.disabled ? 0.5 : 1,
                   textTransform: "uppercase",
-                  boxShadow: !mainAction.disabled
+                  boxShadow: !productionAction.disabled
                     ? "0 4px 12px rgba(0,0,0,0.3)"
                     : "none",
                   transition: "all 0.2s",
                 }}
               >
-                {updating ? "⏳..." : mainAction.label}{" "}
-                {mainAction.disabled && " 🔒"}
+                {updating ? "⏳..." : productionAction.label}{" "}
+                {productionAction.disabled && " 🔒"}
               </button>
             )}
-            {canCancel && canUpdateOrderStatus && (
-              <button
-                onClick={handleCancelOrder}
-                disabled={updating}
-                style={{
-                  padding: "12px 14px",
-                  backgroundColor: "transparent",
-                  color: "#ef4444",
-                  border: "2px solid #ef4444",
-                  borderRadius: "8px",
-                  fontWeight: "800",
-                  cursor: updating ? "not-allowed" : "pointer",
-                  fontSize: "12px",
-                  opacity: updating ? 0.7 : 1,
-                  transition: "all 0.2s",
-                  textTransform: "uppercase",
-                }}
-                title="Batalkan"
-              >
-                🚫 BATAL
-              </button>
-            )}
+
+            {/* Baris 2 (Bawah): Aksi Pembayaran & Batal (GRID 50:50) */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              {paymentAction && canUpdateOrderStatus && (
+                <button
+                  onClick={handlePaymentClick}
+                  disabled={updating}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    backgroundColor: paymentAction.color,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: "900",
+                    cursor: updating ? "not-allowed" : "pointer",
+                    fontSize: "13px",
+                    opacity: updating ? 0.7 : 1,
+                    transition: "all 0.2s",
+                    textTransform: "uppercase",
+                    boxShadow: "0 4px 6px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  {paymentAction.label}
+                </button>
+              )}
+
+              {canCancel && canUpdateOrderStatus && (
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={updating}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    backgroundColor: "transparent",
+                    color: "#ef4444",
+                    border: "2px solid #ef4444",
+                    borderRadius: "8px",
+                    fontWeight: "800",
+                    cursor: updating ? "not-allowed" : "pointer",
+                    fontSize: "12px",
+                    opacity: updating ? 0.7 : 1,
+                    transition: "all 0.2s",
+                    textTransform: "uppercase",
+                  }}
+                  title="Batalkan"
+                >
+                  🚫 BATAL
+                </button>
+              )}
+            </div>
           </div>
         )}
 

@@ -65,6 +65,12 @@ export function WANotificationModal({
               `Mohon diselesaikan sebelum tanggal tersebut.\n` +
               `Terima kasih. 🙏`;
           }
+        } else if (actionType === "REPAYMENT") {
+          initialMessage =
+            `Halo ${order.customerName},\n\n` +
+            `Terima kasih! Pembayaran pelunasan untuk pesanan *${order.orderNumber}* telah kami terima.\n\n` +
+            `Status: *LUNAS*\n\n` +
+            `Terima kasih telah berlangganan di Joglo Print. 🙏`;
         } else {
           // COMPLETE (Ready for pickup)
           initialMessage = generateCompletionMessage(order);
@@ -115,12 +121,18 @@ export function WANotificationModal({
     if (actionType === "DELIVER") {
       return "📦 Konfirmasi Serah Terima";
     }
+    if (actionType === "REPAYMENT") {
+      return "💸 Konfirmasi Pelunasan";
+    }
     return "✅ Konfirmasi Selesai & Notifikasi";
   };
 
   const getStatusText = () => {
     if (actionType === "DELIVER") {
       return "Order akan ditandai SELESAI DISERAHKAN";
+    }
+    if (actionType === "REPAYMENT") {
+      return "Pelunasan akan dicatat & dikirim ke WhatsApp";
     }
     return "Order akan ditandai SIAP AMBIL";
   };

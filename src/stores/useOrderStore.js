@@ -216,7 +216,40 @@ export const useOrderStore = create((set, get) => ({
     },
   },
 
+  // Decoupled Production Counters
+  productionCounts: { PENDING: 0, IN_PROGRESS: 0, READY: 0 },
+
   // === ACTIONS ===
+
+  // 0. FETCH DECOUPLED ORDER COUNTS (Head-Only Query)
+  fetchOrderCounts: async () => {
+    try {
+      if (!navigator.onLine || !supabase) return;
+
+      const statuses = ["PENDING", "IN_PROGRESS", "READY"];
+      
+      const countPromises = statuses.map(status => {
+        return supabase
+          .from("orders")
+          .select("*", { count: "exact", head: true })
+          .eq("production_status", status)
+          .eq("is_archived", false); // Optional: if you typically don't count archived
+      });
+
+      const results = await Promise.all(countPromises);
+      
+      const newCounts = { PENDING: 0, IN_PROGRESS: 0, READY: 0 };
+      results.forEach((res, index) => {
+        if (!res.error) {
+          newCounts[statuses[index]] = res.count || 0;
+        }
+      });
+
+      set({ productionCounts: newCounts });
+    } catch (err) {
+      console.error("Failed to fetch decoupled order counts:", err);
+    }
+  },
 
   // 1. LOAD ORDERS (BLOCKCHAIN / STALE-WHILE-REVALIDATE STANDARD)
   loadOrders: async ({

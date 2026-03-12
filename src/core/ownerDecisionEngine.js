@@ -53,6 +53,8 @@ export const getOwnerDailySnapshot = async () => {
 
     // Get payment validation summary
     const validationReport = await getPaymentDiscrepancyReport({
+      startDate: startOfDay,
+      endDate: endOfDay,
       onlyMismatches: true,
     });
 

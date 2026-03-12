@@ -217,15 +217,34 @@ export const getPaymentDiscrepancyReport = async (options = {}) => {
       };
     }
 
-    // Fetch all payments for these orders
+    // Fetch all payments for these orders in chunks to avoid URI Too Long error
     const orderIds = orders.map((o) => o.id);
-    const { data: payments, error: paymentsError } = await supabase
-      .from("order_payments")
-      .select("*")
-      .in("order_id", orderIds)
-      .order("created_at", { ascending: true });
+    const CHUNK_SIZE = 100;
+    const orderIdChunks = [];
+    
+    for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
+      orderIdChunks.push(orderIds.slice(i, i + CHUNK_SIZE));
+    }
 
-    if (paymentsError) throw paymentsError;
+    const chunkPromises = orderIdChunks.map((chunk) => {
+      return supabase
+        .from("order_payments")
+        .select("*")
+        .in("order_id", chunk)
+        // Note: we can't reliably globally order when using chunks, we'll sort the aggregated result
+        .order("created_at", { ascending: true });
+    });
+
+    const chunkResults = await Promise.all(chunkPromises);
+    
+    let payments = [];
+    for (const res of chunkResults) {
+      if (res.error) throw res.error;
+      if (res.data) payments = payments.concat(res.data);
+    }
+    
+    // Sort all aggregated payments by created_at ascending
+    payments.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     // Build payments map: orderId -> [payments]
     const paymentsMap = {};

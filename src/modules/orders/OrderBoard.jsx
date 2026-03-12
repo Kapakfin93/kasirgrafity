@@ -35,7 +35,7 @@ export function OrderBoard() {
 
   // STATE LOKAL UNTUK FILTER (Server-Side Trigger)
   const [paymentFilter, setPaymentFilter] = useState("ALL");
-  const [productionFilter, setProductionFilter] = useState("ALL");
+  const [productionFilter, setProductionFilter] = useState("PENDING"); // [OVERRIDE] Default PENDING
   const [localSearchQuery, setLocalSearchQuery] = useState("");
 
   // [NEW] AGGREGATOR STATE
@@ -99,7 +99,7 @@ export function OrderBoard() {
       // Default: Load Pagination Logic
       loadOrders({
         page: currentPage,
-        limit: 20,
+        limit: 50, // [OVERRIDE] Limit 50
         paymentStatus: paymentFilter,
         productionStatus: productionFilter,
       });
@@ -107,6 +107,11 @@ export function OrderBoard() {
 
     // REFRESH DASHBOARD JUGA (Agar Net Profit Owner Update!)
     loadSummary();
+    
+    // [DECOUPLED] Ambil count untuk UI independen
+    if (useOrderStore.getState().fetchOrderCounts) {
+       useOrderStore.getState().fetchOrderCounts();
+    }
   }, [
     currentPage,
     paymentFilter,
@@ -140,13 +145,17 @@ export function OrderBoard() {
           console.log("🔄 Auto-Sync: Fetching Orders...");
           await loadOrders({
             page: cp,
-            limit: 20,
+            limit: 50, // [OVERRIDE] Limit 50
             paymentStatus: pf,
             productionStatus: prf,
           });
 
           console.log("🔄 Auto-Sync: Fetching Summary...");
           await loadSummary();
+          
+          if (useOrderStore.getState().fetchOrderCounts) {
+            await useOrderStore.getState().fetchOrderCounts();
+          }
 
           console.log("✅ Auto-Sync Completed Successfully");
         } catch (err) {
@@ -232,16 +241,17 @@ export function OrderBoard() {
     );
   }
 
+  // Pull the new decoupled counts from the store
+  const { productionCounts } = useOrderStore();
+
   // Sprint 2: Badge dari data yang sedang tampil (weekly atau summary global)
+  // [MODIFIED] Use the decoupled productionCounts directly instead of filtering the loaded list
   const counts =
     viewMode === "WEEKLY"
       ? {
-          PENDING: orders.filter((o) => o.productionStatus === "PENDING")
-            .length,
-          IN_PROGRESS: orders.filter(
-            (o) => o.productionStatus === "IN_PROGRESS",
-          ).length,
-          READY: orders.filter((o) => o.productionStatus === "READY").length,
+          PENDING: productionCounts.PENDING,
+          IN_PROGRESS: productionCounts.IN_PROGRESS,
+          READY: productionCounts.READY,
         }
       : {
           PENDING: summaryData?.countByProductionStatus?.PENDING || 0,
