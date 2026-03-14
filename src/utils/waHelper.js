@@ -83,7 +83,7 @@ export function openWhatsApp(phone, message) {
  * @param {Object} order - Order object
  * @returns {string} - Formatted WA message
  */
-export function generateCompletionMessage(order, imageUrl = null) {
+export function generateCompletionMessage(order) {
   const customerName =
     order.customerName || order.customerSnapshot?.name || "Pelanggan";
   const orderNumber = order.orderNumber || `#${String(order.id).slice(0, 8)}`;

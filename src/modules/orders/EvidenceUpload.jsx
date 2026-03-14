@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import imageCompression from "browser-image-compression";
-import { Upload, X, CheckCircle } from "lucide-react";
+import { Upload, X, CheckCircle, Camera } from "lucide-react";
 import {
   validateImageFile,
   validateImageDimensions,
@@ -19,6 +19,8 @@ export function EvidenceUpload({
   onPhaseChange,
   disabled = false,
 }) {
+  const galleryRef = React.useRef(null);
+  const cameraRef = React.useRef(null);
   const [preview, setPreview] = useState(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState(null);
@@ -101,31 +103,58 @@ export function EvidenceUpload({
       {/* Upload Area */}
       {!preview ? (
         <div className="relative">
+          {/* Hidden Inputs */}
           <input
             type="file"
+            ref={galleryRef}
             accept="image/*"
             onChange={handleImageChange}
-            disabled={disabled || isCompressing}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+            hidden
           />
+          <input
+            type="file"
+            ref={cameraRef}
+            accept="image/*"
+            capture="environment"
+            onChange={handleImageChange}
+            hidden
+          />
+
           <div
             className={`
-            border-2 border-dashed rounded-lg p-6 text-center transition-colors
-            ${error ? "border-red-500 bg-red-50" : "border-gray-600 hover:border-blue-500 hover:bg-gray-800"}
-            ${disabled ? "opacity-50" : ""}
+            border-2 border-dashed rounded-lg p-8 text-center transition-all
+            ${error ? "border-red-500 bg-red-900/10" : "border-gray-600 bg-gray-800/20 hover:border-blue-500/50 hover:bg-gray-800/50"}
+            ${disabled ? "opacity-50 cursor-not-allowed" : ""}
           `}
           >
-            <div className="flex flex-col items-center justify-center space-y-2">
-              <div className="p-3 bg-gray-700 rounded-full">
-                <Upload size={24} className="text-gray-300" />
-              </div>
+            <div className="flex flex-col items-center justify-center space-y-4">
               <div className="text-sm font-medium text-gray-300">
-                {isCompressing
-                  ? "Memproses..."
-                  : "Klik untuk Upload Foto Produk"}
+                {isCompressing ? "Memproses..." : "Ambil Foto Hasil Produksi"}
               </div>
-              <p className="text-xs text-gray-500">
-                JPG/PNG, Max 5MB (Otomatis Kompresi)
+
+              <div className="flex flex-row gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={() => cameraRef.current?.click()}
+                  disabled={disabled || isCompressing}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                >
+                  <Camera size={18} />
+                  Kamera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryRef.current?.click()}
+                  disabled={disabled || isCompressing}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                >
+                  <Upload size={18} />
+                  Galeri
+                </button>
+              </div>
+
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                JPG/PNG • Max 5MB • Auto Compress
               </p>
             </div>
           </div>

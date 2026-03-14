@@ -207,14 +207,19 @@ export function CompletionModal({
   };
 
   // --- RENDER ---
-  const waMessage = generateCompletionMessage(order, uploadedUrl);
+  const waMessage = generateCompletionMessage(order);
+  console.log("🛠️ [DEBUG] Message Builder Triggered:", { 
+    orderId: order.id, 
+    hasImage: !!uploadedUrl,
+    cleanMessage: waMessage.length > 50 ? waMessage.substring(0, 50) + "..." : waMessage
+  });
   const waLink = generateWALink(order.customerPhone, waMessage);
 
   const handleSendWA = async () => {
     if (waPhase === "SENDING") return;
     setWaPhase("SENDING");
 
-    const result = await sendWAMessage(order.customerPhone, waMessage);
+    const result = await sendWAMessage(order.customerPhone, waMessage, uploadedUrl);
 
     if (result.success) {
       setWaPhase("SENT");
