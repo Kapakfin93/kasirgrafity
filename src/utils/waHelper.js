@@ -99,10 +99,6 @@ export function generateCompletionMessage(order, imageUrl = null) {
     message = `Halo Kak ${customerName}, Pesanan ${orderNumber} sudah SELESAI. Total kekurangan bayar: ${formatRupiah(remaining)}. Mohon pelunasannya saat pengambilan ya Kak. Terima kasih! 🙏`;
   }
 
-  if (imageUrl) {
-    // Ensure explicit double newline for spacing
-    message += `\n\n📸 *FOTO HASIL:*\n${imageUrl}`;
-  }
 
   return message;
 }
