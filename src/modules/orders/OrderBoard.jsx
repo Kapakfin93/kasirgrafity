@@ -45,7 +45,7 @@ export function OrderBoard() {
 
   // STATE LOKAL UNTUK FILTER (Client-Side Filtering)
   const [paymentFilter, setPaymentFilter] = useState("ALL");
-  const [productionFilter, setProductionFilter] = useState("ALL"); // [NEW] Default ALL for Local-First
+  const [productionFilter, setProductionFilter] = useState("PENDING"); // [NEW] Default PENDING for operational focus
   const [localSearchQuery, setLocalSearchQuery] = useState("");
 
   // [NEW] AGGREGATOR STATE
