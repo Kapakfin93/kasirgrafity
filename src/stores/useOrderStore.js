@@ -190,6 +190,7 @@ export const useOrderStore = create((set, get) => ({
   currentFilter: "ALL",
   loading: false,
   error: null,
+  realtimeChannel: null, // [NEW] Untuk Ghost Sync Healing
 
   // Pagination State
   currentPage: 1,
@@ -296,23 +297,27 @@ export const useOrderStore = create((set, get) => ({
           setTimeout(() => reject(new Error("Timeout_Network")), 15000),
         );
 
+        // 2. STRATEGI RELEVANSI (Bukan Pagination)
+        // Ambil semua yang MASIH BERPROSES (Pending/Progress/Ready)
+        // ATAU yang dibuat dalam 7 hari terakhir (History)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const dateThreshold = sevenDaysAgo.toISOString();
+
+        console.log("📡 Fetching relevance-based data (Active + 7 Days)...");
+
         let query = supabase
           .from("orders")
           .select(`*, items_snapshot, items:order_items(*)`, {
             count: "exact",
-          });
+          })
+          .or(`production_status.in.(PENDING,IN_PROGRESS,READY),created_at.gte.${dateThreshold}`);
 
-        if (paymentStatus !== "ALL")
-          query = query.eq("payment_status", paymentStatus);
-        if (productionStatus !== "ALL")
-          query = query.eq("production_status", productionStatus);
+        // [DECOUPLED] Kita tidak lagi membatasi query berdasarkan filter tombol, 
+        // karena filtering dilakukan secara instan di Memori (UI).
+        // Kita juga hapus .range() agar "Laci" memori terisi penuh.
 
-        const safeLimit = Math.min(limit, 100);
-        const offset = (page - 1) * safeLimit;
-
-        const queryPromise = query
-          .range(offset, offset + safeLimit - 1)
-          .order("created_at", { ascending: false });
+        const queryPromise = query.order("created_at", { ascending: false });
 
         // 3. EXECUTE WITH RACE (BALAPAN KONEKSI VS TIMEOUT)
         const { data, count, error } = await Promise.race([
@@ -377,18 +382,8 @@ export const useOrderStore = create((set, get) => ({
           localPending.forEach((local) => {
             const normalizedLocal = internalNormalizeOrder(local);
 
-            // Filter Check Lokal
+            // [DECOUPLED] Selalu masukkan data lokal agar bisa difilter di UI
             let matchesFilter = true;
-            if (
-              paymentStatus !== "ALL" &&
-              normalizedLocal.paymentStatus !== paymentStatus
-            )
-              matchesFilter = false;
-            if (
-              productionStatus !== "ALL" &&
-              normalizedLocal.productionStatus !== productionStatus
-            )
-              matchesFilter = false;
 
             if (matchesFilter) {
               if (
@@ -422,8 +417,8 @@ export const useOrderStore = create((set, get) => ({
           orders: appOrders,
           filteredOrders: appOrders,
           totalOrders: calculatedTotalOrders,
-          totalPages: Math.ceil(calculatedTotalOrders / safeLimit),
-          currentPage: page,
+          totalPages: 1, // Relevance-based: Data termuat semua di halaman 1
+          currentPage: 1,
           pageSize: safeLimit,
           currentFilter: paymentStatus,
         });
@@ -1623,4 +1618,64 @@ export const useOrderStore = create((set, get) => ({
       return false;
     }
   },
+
+  // 14. REALTIME SUBSCRIPTION & GHOST SYNC HEALING (RESILIENCE)
+  setupRealtimeSubscription: () => {
+    if (get().realtimeChannel) return;
+
+    console.log("🚀 [REALTIME] Starting Order Sync Listener...");
+    const channel = supabase
+      .channel("order-sync-resilience")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        async (payload) => {
+          const serverOrder = payload.new;
+          if (!serverOrder) return;
+
+          try {
+            // 🕵️ GHOST SYNC HEALING: Cari antrean lokal yang "nyangkut" padahal server sudah punya
+            const localPending = await db.orders
+              .where("sync_status")
+              .anyOf("PENDING", "UPDATE_PENDING")
+              .and((o) => 
+                (serverOrder.id && o.server_id === serverOrder.id) || 
+                (serverOrder.ref_local_id && o.ref_local_id === serverOrder.ref_local_id) ||
+                (serverOrder.id && o.id === serverOrder.id)
+              )
+              .first();
+
+            if (localPending) {
+              // Jika status produksi/pembayaran di server sudah sama atau lebih baru, anggap SYNCED
+              // Ini menghentikan 'Phantom Retry Loop' saat internet lambat (timeout di client tapi sukses di server)
+              console.log(`✅ [GHOST HEALING] Order ${serverOrder.order_number} ditemukan di server. Membersihkan antrean lokal.`);
+              
+              await db.orders.update(localPending.id, {
+                sync_status: "SYNCED",
+                server_id: serverOrder.id,
+                server_order_number: serverOrder.order_number,
+                last_sync_error: null,
+                updatedAt: new Date().toISOString()
+              });
+            }
+          } catch (err) {
+            console.warn("⚠️ [GHOST HEALING] Gagal cross-check data:", err);
+          }
+        }
+      )
+      .subscribe();
+
+    set({ realtimeChannel: channel });
+  },
+
+  unsubscribeFromRealtime: () => {
+    const { realtimeChannel } = get();
+    if (realtimeChannel) {
+      supabase.removeChannel(realtimeChannel);
+      set({ realtimeChannel: null });
+      console.log("🛑 [REALTIME] Order Sync Listener Stopped");
+    }
+  },
+
+  clearError: () => set({ error: null }),
 }));

@@ -10,6 +10,14 @@ import { usePermissions } from "../../hooks/usePermissions";
 import { OrderCard } from "./OrderCard";
 import WeekNavigator from "../../components/WeekNavigator"; // [NEW] Aggregator Component
 import { db } from "../../data/db/schema";
+import { CompletionModal } from "./CompletionModal"; // [PHASE 1] Elevated
+import { ConfirmModal } from "../../components/ConfirmModal"; // [PHASE 2]
+import { PromptModal } from "../../components/PromptModal"; // [PHASE 3]
+import { formatRupiah } from "../../core/formatters"; // [PHASE 2]
+import { useAuthStore } from "../../stores/useAuthStore";
+import { AuditLogModal } from "../../components/AuditLogModal"; // [PHASE 4]
+import { NotaPreview } from "../pos/NotaPreview"; // [PHASE 4]
+import { WANotificationModal } from "../../components/WANotificationModal"; // [PHASE 4]
 
 export function OrderBoard() {
   const {
@@ -18,24 +26,26 @@ export function OrderBoard() {
     error,
     // Pagination state
     currentPage,
-    totalPages,
     totalOrders,
     searchQuery: storeSearchQuery,
     // Actions
     loadOrders,
-    searchOrders,
     loadSummary, // PENTING: Untuk update Dashboard Owner
-    summaryData,
     manualRefreshOrders, // 🛡️ FITUR BARU: Manual Refresh
     loadOrdersByDateRange, // [NEW] Aggregator Action
+    updateProductionStatus, // [PHASE 1]
+    addPayment, // [PHASE 2]
+    cancelOrder, // [PHASE 3]
   } = useOrderStore();
+
+  const { user } = useAuthStore();
 
   const permissions = usePermissions();
   const canViewOrders = permissions.canViewOrders();
 
-  // STATE LOKAL UNTUK FILTER (Server-Side Trigger)
+  // STATE LOKAL UNTUK FILTER (Client-Side Filtering)
   const [paymentFilter, setPaymentFilter] = useState("ALL");
-  const [productionFilter, setProductionFilter] = useState("PENDING"); // [OVERRIDE] Default PENDING
+  const [productionFilter, setProductionFilter] = useState("ALL"); // [NEW] Default ALL for Local-First
   const [localSearchQuery, setLocalSearchQuery] = useState("");
 
   // [NEW] AGGREGATOR STATE
@@ -45,6 +55,163 @@ export function OrderBoard() {
   });
 
   const [currentWeekRange, setCurrentWeekRange] = useState(null);
+
+  // [PHASE 1 & 2] Unified Modal Elevation State (Single Source of Truth)
+  const [activeModal, setActiveModal] = useState({ type: null, order: null });
+  const [settlementReceiver, setSettlementReceiver] = useState("");
+
+  // [PHASE 3] Operational Helper States
+  const [spkOperator, setSpkOperator] = useState("");
+  const [cancelData, setCancelData] = useState({
+    reason: "",
+    financialAction: "NONE",
+  });
+
+  // [PHASE 4] Viewer Config States
+  const [modalConfig, setModalConfig] = useState({});
+
+  // === VIRTUALIZATION / INFINITE SCROLL STATE ===
+  const [visibleCount, setVisibleCount] = useState(20);
+  const sentinelRef = useRef(null);
+  const gridContainerRef = useRef(null);
+  const observerRef = useRef(null);
+
+  const openModal = (type, order, config = {}) => {
+    setActiveModal({ type, order });
+    setModalConfig(config);
+    if (type === "PAYMENT") {
+      setSettlementReceiver("");
+    } else if (type === "SPK") {
+      setSpkOperator("");
+    } else if (type === "CANCEL_REASON") {
+      setCancelData({ reason: "", financialAction: "NONE" });
+    }
+  };
+
+  const closeModal = () => {
+    setActiveModal({ type: null, order: null });
+    setSettlementReceiver("");
+    setSpkOperator("");
+    setCancelData({ reason: "", financialAction: "NONE" });
+    setModalConfig({});
+  };
+
+  const handleCompletionSubmit = async ({ orderId, status, evidence }) => {
+    try {
+      const actorName = user?.name || "Admin/Operator";
+      await updateProductionStatus(orderId, status, actorName, {
+        marketing_evidence_url: evidence?.url,
+        is_public_content: evidence?.isPublic,
+      });
+      console.log("✅ Elevated Completion Success");
+    } catch (err) {
+      console.error("❌ Elevated Completion Failed:", err);
+      throw err;
+    }
+  };
+
+  const handleSettlementSubmit = async () => {
+    const order = activeModal.order;
+    if (!order) return;
+
+    const sisa = order.remainingAmount || order.totalAmount - order.paidAmount;
+    const finalReceiver = settlementReceiver.trim() || "Admin Pelunasan";
+
+    try {
+      await addPayment(order.id, sisa, finalReceiver);
+      console.log("✅ Elevated Settlement Success");
+      closeModal();
+      // Optional: Trigger print check here if needed in Phase 2+
+    } catch (err) {
+      console.error("❌ Elevated Settlement Failed:", err);
+      alert("Gagal pelunasan: " + err.message);
+    }
+  };
+
+  // [PHASE 3] OPERATIONAL HANDLERS
+  const handleSpkSubmit = async () => {
+    const order = activeModal.order;
+    if (!order) return;
+
+    const operatorName = spkOperator.trim() || "Operator";
+    try {
+      await updateProductionStatus(order.id, "IN_PROGRESS", operatorName);
+      console.log("✅ Elevated SPK Success");
+      // [REGRESI FIX] Otomatis buka Nota SPK setelah proses
+      openModal("NOTA", order, { printType: "SPK", autoPrint: true });
+    } catch (err) {
+      alert("❌ Gagal proses SPK: " + err.message);
+    }
+  };
+
+  const handleWAStatusUpdate = async () => {
+    const order = activeModal.order;
+    const actionType = modalConfig.waAction;
+    if (!order || !actionType) {
+      closeModal();
+      return;
+    }
+
+    try {
+      const actorName = user?.name || "Admin/Operator";
+      let targetStatus = null;
+
+      if (actionType === "COMPLETE") targetStatus = "READY";
+      if (actionType === "DELIVER") targetStatus = "DELIVERED";
+
+      if (targetStatus) {
+        await updateProductionStatus(order.id, targetStatus, actorName);
+        console.log(`✅ Elevated WA Status Update Success: ${targetStatus}`);
+      }
+
+      closeModal();
+    } catch (err) {
+      console.error("❌ Elevated WA Status Update Failed:", err);
+      alert("Gagal update status: " + err.message);
+    }
+  };
+
+  const handleCancelReasonSubmit = (reason) => {
+    const order = activeModal.order;
+    if (!order) return;
+
+    const amountPaid = order.paidAmount || 0;
+    setCancelData((prev) => ({ ...prev, reason }));
+
+    if (amountPaid > 0) {
+      setActiveModal({ type: "CANCEL_FINANCIAL", order });
+    } else {
+      setActiveModal({ type: "CANCEL_FINAL", order });
+    }
+  };
+
+  const handleFinancialRefund = () => {
+    setCancelData((prev) => ({ ...prev, financialAction: "REFUND" }));
+    setActiveModal((prev) => ({ ...prev, type: "CANCEL_FINAL" }));
+  };
+
+  const handleFinancialForfeit = () => {
+    setCancelData((prev) => ({ ...prev, financialAction: "FORFEIT" }));
+    setActiveModal((prev) => ({ ...prev, type: "CANCEL_FINAL" }));
+  };
+
+  const handleCancelExecution = async () => {
+    const order = activeModal.order;
+    if (!order) return;
+
+    try {
+      await cancelOrder(
+        order.id,
+        cancelData.reason.trim(),
+        cancelData.financialAction,
+        user?.name || "Operator"
+      );
+      console.log("✅ Elevated Cancellation Success");
+      closeModal();
+    } catch (err) {
+      alert("❌ Gagal batal order: " + err.message);
+    }
+  };
 
   // === REFS: Capture nilai terkini tanpa trigger re-render ===
   const filtersRef = useRef({ currentPage, paymentFilter, productionFilter });
@@ -89,33 +256,25 @@ export function OrderBoard() {
 
   // [PHASE 1] Restore Heartbeat Download
   useEffect(() => {
-    // Jika sedang searching, jangan load paginated biasa (biarkan fungsi searchOrders yg kerja)
-    if (storeSearchQuery) return;
+    // [DECOUPLED] We now use Pure Client-Side filter, so we always load data
 
     if (viewMode === "WEEKLY" && currentWeekRange) {
       // [NEW] Load Aggregator Logic
       loadOrdersByDateRange(currentWeekRange.start, currentWeekRange.end);
     } else {
-      // Default: Load Pagination Logic
+      // Default: Load Pagination Logic (Fetching ALL for In-Memory Filter)
       loadOrders({
         page: currentPage,
         limit: 50, // [OVERRIDE] Limit 50
-        paymentStatus: paymentFilter,
-        productionStatus: productionFilter,
+        paymentStatus: "ALL",
+        productionStatus: "ALL",
       });
     }
 
     // REFRESH DASHBOARD JUGA (Agar Net Profit Owner Update!)
     loadSummary();
-    
-    // [DECOUPLED] Ambil count untuk UI independen
-    if (useOrderStore.getState().fetchOrderCounts) {
-       useOrderStore.getState().fetchOrderCounts();
-    }
   }, [
     currentPage,
-    paymentFilter,
-    productionFilter,
     loadOrders,
     loadSummary,
     storeSearchQuery,
@@ -153,10 +312,6 @@ export function OrderBoard() {
           console.log("🔄 Auto-Sync: Fetching Summary...");
           await loadSummary();
           
-          if (useOrderStore.getState().fetchOrderCounts) {
-            await useOrderStore.getState().fetchOrderCounts();
-          }
-
           console.log("✅ Auto-Sync Completed Successfully");
         } catch (err) {
           console.error("❌ Auto-Sync Failed:", err);
@@ -175,61 +330,84 @@ export function OrderBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — tidak pernah di-reset
 
-  // === 2. SEARCH HANDLER (Debounce) ===
-  // Still useful for updating UI state, providing search query param
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localSearchQuery !== storeSearchQuery) {
-        searchOrders(localSearchQuery);
-      }
-    }, 500); // 500ms delay agar tidak spam server
-
-    return () => clearTimeout(timer);
-  }, [localSearchQuery, storeSearchQuery, searchOrders]);
-
-  // === 3. FILTER HANDLERS ===
+  // === 3. FILTER HANDLERS (PURE CLIENT-SIDE) ===
   const handlePaymentFilter = (status) => {
     setPaymentFilter(status);
-    // Reset ke halaman 1 setiap ganti filter
-    if (currentPage !== 1)
-      loadOrders({
-        page: 1,
-        paymentStatus: status,
-        productionStatus: productionFilter,
-      });
   };
 
   const handleProductionFilter = (status) => {
     setProductionFilter(status);
-    // Reset ke halaman 1 setiap ganti filter
-    if (currentPage !== 1)
-      loadOrders({
-        page: 1,
-        paymentStatus: paymentFilter,
-        productionStatus: status,
-      });
   };
 
-  // === 4. PAGINATION HANDLERS ===
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      loadOrders({
-        page: currentPage + 1,
-        paymentStatus: paymentFilter,
-        productionStatus: productionFilter,
-      });
-    }
+  // [DYNAMIC COUNTER] Hitung jumlah pesanan secara reaktif dari Memori (Zustand)
+  const counts = {
+    PENDING: orders.filter((o) => o.productionStatus === "PENDING").length,
+    IN_PROGRESS: orders.filter((o) => o.productionStatus === "IN_PROGRESS")
+      .length,
+    READY: orders.filter((o) => o.productionStatus === "READY").length,
   };
 
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      loadOrders({
-        page: currentPage - 1,
-        paymentStatus: paymentFilter,
-        productionStatus: productionFilter,
-      });
+  // Sprint 2: Filter tidak berlaku di WEEKLY mode — disable agar tidak menyesatkan
+  const isFilterDisabled = viewMode === "WEEKLY";
+
+  // === 5. PURE CLIENT-SIDE FILTERING (IN-MEMORY) ===
+  const displayOrders = orders.filter((order) => {
+    // A. Filter Status Pembayaran
+    const matchPayment =
+      paymentFilter === "ALL" || order.paymentStatus === paymentFilter;
+
+    // B. Filter Status Produksi
+    const matchProduction =
+      productionFilter === "ALL" || order.productionStatus === productionFilter;
+
+    // C. Filter Pencarian Teks (Case-Insensitive & Safety Check)
+    const searchLower = localSearchQuery.toLowerCase().trim();
+    const matchSearch =
+      !searchLower ||
+      order.customerName?.toLowerCase().includes(searchLower) ||
+      order.orderNumber?.toLowerCase().includes(searchLower) ||
+      order.items?.some((item) =>
+        item.productName?.toLowerCase().includes(searchLower),
+      );
+
+    return matchPayment && matchProduction && matchSearch;
+  });
+
+  // [VIRTUALIZATION] Final Slice — Matang di akhir
+  const visibleOrders = displayOrders.slice(0, visibleCount);
+
+  // [VIRTUALIZATION] Reset & Scroll Logic
+  useEffect(() => {
+    setVisibleCount(20);
+    // Force scroll container ke atas saat filter berubah
+    if (gridContainerRef.current) {
+      gridContainerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  };
+  }, [paymentFilter, productionFilter, localSearchQuery]);
+
+  // [VIRTUALIZATION] Intersection Observer Logic
+  useEffect(() => {
+    // Cleanup previous observer
+    if (observerRef.current) observerRef.current.disconnect();
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          console.log("📍 Sentinel reached: Loading 20 more cards...");
+          setVisibleCount((prev) => prev + 20);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (sentinelRef.current) {
+      observerRef.current.observe(sentinelRef.current);
+    }
+
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [displayOrders.length]); // Re-observe when dataset changes
 
   // Check permissions
   if (!canViewOrders) {
@@ -240,27 +418,6 @@ export function OrderBoard() {
       </div>
     );
   }
-
-  // Pull the new decoupled counts from the store
-  const { productionCounts } = useOrderStore();
-
-  // Sprint 2: Badge dari data yang sedang tampil (weekly atau summary global)
-  // [MODIFIED] Use the decoupled productionCounts directly instead of filtering the loaded list
-  const counts =
-    viewMode === "WEEKLY"
-      ? {
-          PENDING: productionCounts.PENDING,
-          IN_PROGRESS: productionCounts.IN_PROGRESS,
-          READY: productionCounts.READY,
-        }
-      : {
-          PENDING: summaryData?.countByProductionStatus?.PENDING || 0,
-          IN_PROGRESS: summaryData?.countByProductionStatus?.IN_PROGRESS || 0,
-          READY: summaryData?.countByProductionStatus?.READY || 0,
-        };
-
-  // Sprint 2: Filter tidak berlaku di WEEKLY mode — disable agar tidak menyesatkan
-  const isFilterDisabled = viewMode === "WEEKLY";
 
   return (
     <div className="order-board">
@@ -417,77 +574,267 @@ export function OrderBoard() {
       {error && <div className="board-error">❌ Error: {error}</div>}
 
       {/* Order Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {orders.length === 0 ? (
+      <div 
+        ref={gridContainerRef}
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
+        {visibleOrders.length === 0 ? (
           <div className="col-span-full text-center py-12 bg-gray-800 rounded-xl border border-gray-700">
             <p className="text-gray-400">
-              {loading ? "Memuat pesanan..." : "Belum ada pesanan."}
+              {loading ? "Memuat pesanan..." : "Belum ada pesanan yang sesuai filter."}
             </p>
           </div>
         ) : (
-          orders.map((order) => (
-            <OrderCard key={order.ref_local_id || order.id} order={order} />
-          ))
+          <>
+            {visibleOrders.map((order) => (
+              <OrderCard 
+                key={order.ref_local_id || order.id} 
+                order={order} 
+                onOpenModal={openModal}
+              />
+            ))}
+            
+            {/* [VIRTUALIZATION] Sentinel Element - Trigger Load More */}
+            {displayOrders.length > visibleCount && (
+              <div 
+                ref={sentinelRef} 
+                className="col-span-full h-20 flex items-center justify-center text-gray-500 italic"
+              >
+                Memuat lebih banyak pesanan...
+              </div>
+            )}
+          </>
         )}
       </div>
-      {/* === PAGINATION CONTROLS === */}
-      {/* Tampilkan pagination jika bukan mode search DAN total halaman > 1 DAN Mode LIST */}
-      {!storeSearchQuery && viewMode === "LIST" && totalPages > 1 && (
-        <div
-          className="pagination-controls"
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "16px",
-            padding: "24px",
-            marginTop: "16px",
-            background: "#f8fafc",
-            borderRadius: "12px",
-            border: "1px solid #e2e8f0",
-          }}
-        >
-          <button
-            onClick={handlePrevPage}
-            disabled={currentPage === 1 || loading}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              border: "none",
-              background: currentPage === 1 ? "#e2e8f0" : "#3b82f6",
-              color: currentPage === 1 ? "#94a3b8" : "white",
-              cursor: currentPage === 1 ? "not-allowed" : "pointer",
-            }}
-          >
-            ← Prev
-          </button>
 
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              fontWeight: "bold",
-              color: "#64748b",
-            }}
-          >
-            Page {currentPage} of {totalPages}
-          </span>
+      {/* [PHASE 1 & 2] ELEVATED MODALS (Single Source of Truth) */}
+      
+      {/* 1. COMPLETION MODAL */}
+      <CompletionModal
+        key={activeModal.type === "COMPLETION" ? activeModal.order?.id : "closed"}
+        isOpen={activeModal.type === "COMPLETION"}
+        order={activeModal.order}
+        onClose={closeModal}
+        onSubmit={handleCompletionSubmit}
+        isOffline={!navigator.onLine}
+      />
 
-          <button
-            onClick={handleNextPage}
-            disabled={currentPage === totalPages || loading}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              border: "none",
-              background: currentPage === totalPages ? "#e2e8f0" : "#3b82f6",
-              color: currentPage === totalPages ? "#94a3b8" : "white",
-              cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-            }}
-          >
-            Next →
-          </button>
-        </div>
+      {/* 2. SETTLEMENT (PAYMENT) MODAL */}
+      {activeModal.type === "PAYMENT" && activeModal.order && (
+        <ConfirmModal
+          isOpen={true}
+          title="💸 Konfirmasi Pelunasan"
+          message={
+            <div>
+              <p style={{ marginBottom: "8px" }}>Terima pelunasan sebesar:</p>
+              <p
+                style={{
+                  fontSize: "24px",
+                  fontWeight: "bold",
+                  color: "#22c55e",
+                  margin: "12px 0",
+                }}
+              >
+                {formatRupiah(
+                  activeModal.order.remainingAmount || 
+                  activeModal.order.totalAmount - (activeModal.order.paidAmount || 0),
+                )}
+              </p>
+              <p style={{ fontSize: "12px", color: "#94a3b8" }}>
+                Order: {activeModal.order.orderNumber}
+              </p>
+              <div style={{ marginTop: "16px", textAlign: "left" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    marginBottom: "4px",
+                    color: "#475569",
+                  }}
+                >
+                  Diterima Oleh:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Nama Kasir / Penerima..."
+                  value={settlementReceiver}
+                  onChange={(e) => setSettlementReceiver(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    backgroundColor: "white",
+                    color: "black"
+                  }}
+                  autoFocus
+                />
+              </div>
+            </div>
+          }
+          confirmText="Ya, Terima"
+          cancelText="Batal"
+          confirmColor="#22c55e"
+          onConfirm={handleSettlementSubmit}
+          onCancel={closeModal}
+        />
       )}
+
+      {/* 3. SPK MODAL */}
+      {activeModal.type === "SPK" && activeModal.order && (
+        <ConfirmModal
+          isOpen={true}
+          title="🖨️ Proses Produksi (SPK)"
+          message={
+            <div>
+              <p style={{ marginBottom: "12px", color: "#4b5563" }}>
+                Order akan ditandai <strong>IN PROGRESS</strong> dan SPK akan dicetak.
+              </p>
+              <div style={{ marginTop: "16px", textAlign: "left" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    marginBottom: "4px",
+                    color: "#374151",
+                  }}
+                >
+                  Operator / Penanggung Jawab:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Cth: Budi, Asep, dll..."
+                  value={spkOperator}
+                  onChange={(e) => setSpkOperator(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    border: "1px solid #93c5fd",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    backgroundColor: "white",
+                    color: "black"
+                  }}
+                  autoFocus
+                />
+              </div>
+            </div>
+          }
+          confirmText="🚀 Proses Sekarang"
+          cancelText="Batal"
+          confirmColor="#3b82f6"
+          onConfirm={handleSpkSubmit}
+          onCancel={closeModal}
+        />
+      )}
+
+      {/* 4. CANCEL REASON MODAL */}
+      {activeModal.type === "CANCEL_REASON" && activeModal.order && (
+        <PromptModal
+          isOpen={true}
+          title="🛑 Pembatalan Order"
+          message={`Anda akan membatalkan order: ${activeModal.order.orderNumber}`}
+          placeholder="Masukkan alasan pembatalan..."
+          submitText="Lanjutkan"
+          submitColor="#ef4444"
+          onSubmit={handleCancelReasonSubmit}
+          onCancel={closeModal}
+          required={true}
+        />
+      )}
+
+      {/* 5. CANCEL FINANCIAL AUDIT */}
+      {activeModal.type === "CANCEL_FINANCIAL" && activeModal.order && (
+        <ConfirmModal
+          isOpen={true}
+          title="⚠️ Uangnya Mau Diapakan?"
+          message={
+            <div>
+              <p style={{ marginBottom: "12px" }}>Order ini sudah ada uang masuk:</p>
+              <p style={{ fontSize: "20px", fontWeight: "bold", color: "#f59e0b", margin: "8px 0" }}>
+                {formatRupiah(activeModal.order.paidAmount || 0)}
+              </p>
+              <p style={{ marginTop: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px", fontSize: "13px", color: "#475569" }}>
+                Karena batal, uang ini mau:
+              </p>
+            </div>
+          }
+          confirmText="💸 Kembalikan ke Pelanggan"
+          cancelText="🔒 Masuk Kas Toko (Hangus)"
+          confirmColor="#f59e0b"
+          onConfirm={handleFinancialRefund}
+          onCancel={handleFinancialForfeit}
+        />
+      )}
+
+      {/* 6. CANCEL FINAL CONFIRMATION */}
+      {activeModal.type === "CANCEL_FINAL" && activeModal.order && (
+        <ConfirmModal
+          isOpen={true}
+          title="⚠️ Konfirmasi Akhir"
+          message={
+            <div style={{ textAlign: "left" }}>
+              <p style={{ marginBottom: "12px", fontWeight: "bold" }}>Ringkasan Pembatalan:</p>
+              <div style={{ padding: "12px", background: "#fef2f2", borderRadius: "8px", border: "1px solid #fecaca", fontSize: "13px" }}>
+                <p><strong>Order:</strong> {activeModal.order.orderNumber}</p>
+                <p><strong>Alasan:</strong> "{cancelData.reason}"</p>
+                <p>
+                  <strong>Status Dana:</strong>{" "}
+                  {cancelData.financialAction === "REFUND"
+                    ? "💸 Dikembalikan"
+                    : cancelData.financialAction === "FORFEIT"
+                      ? "🔥 Hangus"
+                      : "- Tidak ada"}
+                </p>
+              </div>
+            </div>
+          }
+          confirmText="Ya, Batalkan Order"
+          cancelText="Tidak Jadi"
+          confirmColor="#dc2626"
+          onConfirm={handleCancelExecution}
+          onCancel={closeModal}
+        />
+      )}
+
+      {/* 7. AUDIT LOG MODAL (PHASE 4) */}
+      <AuditLogModal
+        isOpen={activeModal.type === "AUDIT"}
+        onClose={closeModal}
+        orderId={activeModal.order?.id}
+        localId={activeModal.order?.ref_local_id}
+        orderNumber={activeModal.order?.orderNumber || String(activeModal.order?.id)}
+      />
+
+      {/* 8. NOTA PREVIEW MODAL (PHASE 4) */}
+      {activeModal.type === "NOTA" && activeModal.order && (
+        <NotaPreview
+          items={activeModal.order.items}
+          totalAmount={activeModal.order.totalAmount}
+          paymentState={{
+            amountPaid: activeModal.order.paidAmount,
+            mode: activeModal.order.paymentStatus === "PAID" ? "LUNAS" : "PARTIAL",
+          }}
+          order={activeModal.order}
+          type={modalConfig.printType || "NOTA"}
+          autoPrint={modalConfig.autoPrint || false}
+          onClose={closeModal}
+          onPrint={null} // NotaPreview handles internal thermal print better
+        />
+      )}
+
+      {/* 9. WA NOTIFICATION MODAL (PHASE 4) */}
+      <WANotificationModal
+        isOpen={activeModal.type === "WA"}
+        order={activeModal.order}
+        actionType={modalConfig.waAction}
+        onConfirmWithWA={handleWAStatusUpdate}
+        onConfirmSilent={handleWAStatusUpdate}
+        onCancel={closeModal}
+      />
     </div>
   );
 }

@@ -125,6 +125,42 @@ export function CompletionModal({
     }
   };
 
+  // handleSkip: Alur khusus jika user menekan "Lewati" saat ada foto, atau dari tombol Lewati eksplisit
+  const handleSkip = async () => {
+    if (isBlocked) return;
+
+    // Clear evidence file agar tidak diupload
+    setEvidenceFile(null);
+    setSubmitPhase("SUBMITTING");
+    setErrorMessage(null);
+
+    try {
+      // Langsung ke Blok 2 (Update Status)
+      await withTimeout(
+        onSubmit({
+          orderId: order.id,
+          status: "READY",
+          evidence: {
+            url: null,
+            isPublic: false,
+          },
+        }),
+        15000,
+        "Update status order",
+      );
+
+      // Berhasil -> Lanjut ke layar WA
+      setSubmitPhase("DONE");
+      setWaPhase("IDLE");
+      setStep("SUCCESS");
+      logger.info("✅ Order skipped photo and marked as READY");
+    } catch (err) {
+      logger.error("❌ Skip Process Failed:", err.message);
+      setSubmitPhase("FAILED");
+      setErrorMessage("Gagal memproses skip: " + err.message);
+    }
+  };
+
   const handleProcess = async () => {
     if (isBlocked) return;
 
@@ -133,7 +169,7 @@ export function CompletionModal({
     setErrorMessage(null);
     let evidenceUrl = null;
 
-    // BLOK 1 — Upload Foto (opsional, fail-safe, timeout 15 detik)
+    // BLOK 1 — Upload Foto (Hanya jika ada file)
     if (evidenceFile) {
       setUploadPhase(PHASE.UPLOADING);
       try {
@@ -141,16 +177,14 @@ export function CompletionModal({
           .toString(36)
           .slice(2)}.jpg`;
 
-        await withTimeout(
-          supabase.storage
-            .from("marketing-evidence")
-            .upload(fileName, evidenceFile, {
-              cacheControl: "3600",
-              upsert: false,
-            }),
-          15000,
-          "Upload foto",
-        );
+        const uploadPromise = supabase.storage
+          .from("marketing-evidence")
+          .upload(fileName, evidenceFile, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        await withTimeout(uploadPromise, 15000, "Upload foto");
 
         const { data: publicData } = supabase.storage
           .from("marketing-evidence")
@@ -159,17 +193,15 @@ export function CompletionModal({
         evidenceUrl = publicData?.publicUrl || null;
         setUploadedUrl(evidenceUrl);
         setUploadPhase("DONE");
-        logger.debug("✅ Evidence Uploaded:", evidenceUrl);
       } catch (err) {
-        // Fail-safe: foto gagal/timeout → lanjut tanpa foto
+        // Fail-safe: foto gagal/timeout → lanjut tanpa foto (User tetap bisa info WA)
         logger.error("⚠️ Upload Failed (Fail-Safe):", err.message);
         setUploadPhase("FAILED");
         setErrorMessage("Foto gagal diupload. Melanjutkan tanpa bukti...");
-        // Jangan return — lanjut ke Blok 2
       }
     }
 
-    // BLOK 2 — Update Status Order via RPC (kritis, timeout 15 detik)
+    // BLOK 2 — Update Status Order
     try {
       await withTimeout(
         onSubmit({
@@ -449,20 +481,32 @@ export function CompletionModal({
                   Coba Lagi
                 </button>
               ) : (
-                <button
-                  onClick={handleProcess}
-                  disabled={isBlocked}
-                  className={`
-                    flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white text-sm transition-all
-                    ${
-                      isBlocked
-                        ? "bg-gray-600 cursor-not-allowed"
-                        : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20 active:scale-95"
-                    }
-                  `}
-                >
-                  {getButtonLabel(uploadPhase, submitPhase, !!evidenceFile)}
-                </button>
+                <>
+                  {/* [NEW] Tombol Lewati eksplisit jika user sudah pilih foto tapi ingin skip */}
+                  {evidenceFile && (
+                    <button
+                      onClick={handleSkip}
+                      disabled={isBlocked}
+                      className="px-4 py-2 text-sm font-medium text-amber-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Lewati Foto
+                    </button>
+                  )}
+                  <button
+                    onClick={handleProcess}
+                    disabled={isBlocked}
+                    className={`
+                      flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white text-sm transition-all
+                      ${
+                        isBlocked
+                          ? "bg-gray-600 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20 active:scale-95"
+                      }
+                    `}
+                  >
+                    {getButtonLabel(uploadPhase, submitPhase, !!evidenceFile)}
+                  </button>
+                </>
               )}
             </>
           ) : (

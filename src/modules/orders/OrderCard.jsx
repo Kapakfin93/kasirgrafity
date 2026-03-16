@@ -10,58 +10,21 @@
  */
 
 import React, { useState, useEffect } from "react";
-import PropTypes from "prop-types";
 import { useOrderStore } from "../../stores/useOrderStore";
+import PropTypes from "prop-types";
 import { usePermissions } from "../../hooks/usePermissions";
-import { useAuthStore } from "../../stores/useAuthStore";
 import { ORDER_STATUS } from "../../core/constants";
 import { formatRupiah } from "../../core/formatters";
 import { formatDateTime } from "../../utils/dateHelpers";
-import { NotaPreview } from "../pos/NotaPreview";
-import { ConfirmModal } from "../../components/ConfirmModal";
-import { PromptModal } from "../../components/PromptModal";
-import { WANotificationModal } from "../../components/WANotificationModal";
-import { AuditLogModal } from "../../components/AuditLogModal";
-import { CompletionModal } from "./CompletionModal";
+// Modals have been elevated to OrderBoard.jsx
 
-export function OrderCard({ order }) {
-  const { updateProductionStatus, addPayment, cancelOrder, archiveOrder } =
-    useOrderStore();
-  const { user } = useAuthStore();
+export function OrderCard({ order, onOpenModal }) {
+  const { archiveOrder } = useOrderStore();
   const permissions = usePermissions();
   const canUpdateOrderStatus = permissions.canUpdateOrderStatus();
-  const [updating, setUpdating] = useState(false);
-
-  // Print Config State
-  const [printConfig, setPrintConfig] = useState({
-    show: false,
-    type: "NOTA",
-    autoPrint: false,
-  });
 
   // === MODAL STATES ===
-  // 1. Settlement (Uang)
-  const [settlementModal, setSettlementModal] = useState({ show: false });
-  const [settlementReceiver, setSettlementReceiver] = useState("");
-
-  // 2. SPK (Operator Produksi)
-  const [spkModal, setSpkModal] = useState({ show: false });
-  const [spkOperator, setSpkOperator] = useState("");
-
-  // 3. Cancel & Audit
-  const [cancelReasonModal, setCancelReasonModal] = useState({ show: false });
-  const [financialAuditModal, setFinancialAuditModal] = useState({
-    show: false,
-    reason: "",
-  });
-  const [finalConfirmModal, setFinalConfirmModal] = useState({
-    show: false,
-    reason: "",
-    financialAction: "NONE",
-  });
-  const [waModal, setWaModal] = useState({ show: false, actionType: null });
-  const [showAuditLog, setShowAuditLog] = useState(false);
-  const [completionModal, setCompletionModal] = useState({ show: false });
+  // All Modals Elevated to OrderBoard.jsx
 
   // [NEW] Context Menu State
   const [contextMenu, setContextMenu] = useState(null);
@@ -116,183 +79,43 @@ export function OrderCard({ order }) {
 
     // A. SETTLEMENT
     if (action.type === "PAYMENT_FIRST" || action.type === "repayment") {
-      setSettlementReceiver("");
-      setSettlementModal({ show: true });
+      onOpenModal("PAYMENT", order);
       return;
     }
 
     // B. PRODUCTION: SPK
     if (action.type === "PROCESS_SPK") {
-      setSpkOperator("");
-      setSpkModal({ show: true });
+      onOpenModal("SPK", order);
       return;
     }
 
     // C. PRODUCTION: READY / DELIVERED
     if (action.type === "COMPLETE_ORDER") {
-      setCompletionModal({ show: true });
+      onOpenModal("COMPLETION", order);
       return;
     }
     if (
       action.type === "HANDOVER_STANDARD" ||
       action.type === "HANDOVER_VIP"
     ) {
-      setWaModal({ show: true, actionType: "DELIVER" });
+      onOpenModal("WA", order, { waAction: "DELIVER" });
       return;
     }
   };
 
   const handlePaymentClick = () => {
-    setSettlementReceiver("");
-    setSettlementModal({ show: true });
+    onOpenModal("PAYMENT", order);
   };
 
-  // === EXECUTION HANDLERS ===
-  const executeProcessSPK = async () => {
-    const operatorName = spkOperator.trim() || "Operator";
-    setSpkModal({ show: false });
-    setUpdating(true);
-    try {
-      await updateProductionStatus(order.id, "IN_PROGRESS", operatorName);
-      setTimeout(() => {
-        setPrintConfig({ show: true, type: "SPK", autoPrint: true });
-      }, 100);
-    } catch (err) {
-      alert("❌ Gagal: " + err.message);
-    }
-    setUpdating(false);
-  };
-
-  const executeSettlement = async () => {
-    const sisa = order.remainingAmount || order.totalAmount - order.paidAmount;
-
-    // 1. Siapkan Nama (Logika Anda sudah benar)
-    const finalReceiver = settlementReceiver.trim() || "Admin Pelunasan";
-
-    setSettlementModal({ show: false });
-    setUpdating(true);
-    try {
-      // 2. KIRIM 'finalReceiver', BUKAN 'settlementReceiver'
-      await addPayment(order.id, sisa, finalReceiver);
-
-      setPrintConfig({ show: true, type: "NOTA", autoPrint: true });
-
-      // [PHASE 4] LOGIKA WA GATEWAY: Hanya jika DELIVERED (Hutang Tempo)
-      if (order.productionStatus === "DELIVERED") {
-        setWaModal({ show: true, actionType: "REPAYMENT" });
-      }
-    } catch (err) {
-      alert("❌ Gagal: " + err.message);
-    }
-    setUpdating(false);
-  };
-
-  const handleCompletionSubmit = async ({ orderId, status, evidence }) => {
-    // Note: Modal will handle success step, we just process data here
-    setUpdating(true);
-    try {
-      // 🔥 FIX: Pastikan nama user terkirim, jangan fallback ke "Operator" jika memungkinkan
-      const actorName = user?.name || "Admin/Operator";
-      await updateProductionStatus(orderId, status, actorName, {
-        marketing_evidence_url: evidence?.url,
-        is_public_content: evidence?.isPublic,
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleWAConfirmWithNotification = async () => {
-    setWaModal({ show: false, actionType: null });
-    setUpdating(true);
-    try {
-      const operator = user?.name || "Operator";
-      if (waModal.actionType === "COMPLETE") {
-        await updateProductionStatus(order.id, "READY", operator);
-        alert("✅ Order SIAP + WA Terkirim");
-      } else if (waModal.actionType === "DELIVER") {
-        await updateProductionStatus(order.id, "DELIVERED", operator);
-        alert("✅ Order SELESAI + WA Terkirim");
-      } else if (waModal.actionType === "REPAYMENT") {
-        alert("✅ Pelunasan Hutang + WA Terkirim");
-      }
-    } catch (err) {
-      alert("❌ Gagal: " + err.message);
-    }
-    setUpdating(false);
-  };
-
-  const handleWASilentUpdate = async () => {
-    setWaModal({ show: false, actionType: null });
-    setUpdating(true);
-    try {
-      const operator = user?.name || "Operator";
-      if (waModal.actionType === "COMPLETE") {
-        await updateProductionStatus(order.id, "READY", operator);
-        alert("✅ Order SIAP (Tanpa WA)");
-      } else if (waModal.actionType === "DELIVER") {
-        await updateProductionStatus(order.id, "DELIVERED", operator);
-        alert("✅ Order SELESAI (Tanpa WA)");
-      }
-    } catch (err) {
-      alert("❌ Gagal: " + err.message);
-    }
-    setUpdating(false);
-  };
-
-  const handleWACancel = () => setWaModal({ show: false, actionType: null });
 
   const handleCancelOrder = () => {
-    if (!order || !order.id) {
-      alert("❌ ERROR SISTEM ID");
-      return;
-    }
-    setCancelReasonModal({ show: true });
-  };
-  const handleReasonSubmitted = (reason) => {
-    setCancelReasonModal({ show: false });
-    const amountPaid = order.paidAmount || 0;
-    if (amountPaid > 0) setFinancialAuditModal({ show: true, reason });
-    else setFinalConfirmModal({ show: true, reason, financialAction: "NONE" });
-  };
-  const handleFinancialRefund = () => {
-    const savedReason = financialAuditModal.reason;
-    setFinancialAuditModal({ show: false, reason: "" });
-    setFinalConfirmModal({
-      show: true,
-      reason: savedReason,
-      financialAction: "REFUND",
-    });
-  };
-  const handleFinancialForfeit = () => {
-    const savedReason = financialAuditModal.reason;
-    setFinancialAuditModal({ show: false, reason: "" });
-    setFinalConfirmModal({
-      show: true,
-      reason: savedReason,
-      financialAction: "FORFEIT",
-    });
-  };
-  const executeCancelOrder = async () => {
-    const { reason, financialAction } = finalConfirmModal;
-    setFinalConfirmModal({ show: false, reason: "", financialAction: "NONE" });
-    setUpdating(true);
-    try {
-      await cancelOrder(
-        order.id,
-        reason.trim(),
-        financialAction,
-        user?.name || "Operator",
-      );
-    } catch (error) {
-      alert("❌ Gagal batal: " + error.message);
-    } finally {
-      setUpdating(false);
-    }
+    onOpenModal("CANCEL_REASON", order);
   };
 
+  // handleReasonSubmitted, handleFinancialRefund, handleFinancialForfeit, executeCancelOrder [ELEVATED TO OrderBoard.jsx]
+
   const handleReprint = () =>
-    setPrintConfig({ show: true, type: "NOTA", autoPrint: false });
+    onOpenModal("NOTA", order, { printType: "NOTA", autoPrint: false });
 
   // === SMART ORTHOGONAL ACTIONS ===
   const getProductionAction = () => {
@@ -434,7 +257,7 @@ export function OrderCard({ order }) {
               </span>{" "}
               {order.orderNumber || `#${String(order.id).slice(0, 8)}`}
               <button
-                onClick={() => setShowAuditLog(true)}
+                onClick={() => onOpenModal("AUDIT", order)}
                 style={{
                   background: "none",
                   border: "none",
@@ -826,7 +649,7 @@ export function OrderCard({ order }) {
             {productionAction && canUpdateOrderStatus && (
               <button
                 onClick={() => handleMainAction(productionAction)}
-                disabled={updating || productionAction.disabled}
+                disabled={productionAction.disabled}
                 style={{
                   width: "100%",
                   padding: "12px",
@@ -835,12 +658,9 @@ export function OrderCard({ order }) {
                   border: "none",
                   borderRadius: "8px",
                   fontWeight: "900",
-                  cursor:
-                    updating || productionAction.disabled
-                      ? "not-allowed"
-                      : "pointer",
+                  cursor: productionAction.disabled ? "not-allowed" : "pointer",
                   fontSize: "14px",
-                  opacity: updating || productionAction.disabled ? 0.5 : 1,
+                  opacity: productionAction.disabled ? 0.5 : 1,
                   textTransform: "uppercase",
                   boxShadow: !productionAction.disabled
                     ? "0 4px 12px rgba(0,0,0,0.3)"
@@ -848,7 +668,7 @@ export function OrderCard({ order }) {
                   transition: "all 0.2s",
                 }}
               >
-                {updating ? "⏳..." : productionAction.label}{" "}
+                {productionAction.label}{" "}
                 {productionAction.disabled && " 🔒"}
               </button>
             )}
@@ -858,7 +678,6 @@ export function OrderCard({ order }) {
               {paymentAction && canUpdateOrderStatus && (
                 <button
                   onClick={handlePaymentClick}
-                  disabled={updating}
                   style={{
                     flex: 1,
                     padding: "12px",
@@ -867,9 +686,9 @@ export function OrderCard({ order }) {
                     border: "none",
                     borderRadius: "8px",
                     fontWeight: "900",
-                    cursor: updating ? "not-allowed" : "pointer",
+                    cursor: "pointer",
                     fontSize: "13px",
-                    opacity: updating ? 0.7 : 1,
+                    opacity: 1,
                     transition: "all 0.2s",
                     textTransform: "uppercase",
                     boxShadow: "0 4px 6px rgba(0,0,0,0.2)",
@@ -882,7 +701,6 @@ export function OrderCard({ order }) {
               {canCancel && canUpdateOrderStatus && (
                 <button
                   onClick={handleCancelOrder}
-                  disabled={updating}
                   style={{
                     flex: 1,
                     padding: "12px",
@@ -891,9 +709,9 @@ export function OrderCard({ order }) {
                     border: "2px solid #ef4444",
                     borderRadius: "8px",
                     fontWeight: "800",
-                    cursor: updating ? "not-allowed" : "pointer",
+                    cursor: "pointer",
                     fontSize: "12px",
-                    opacity: updating ? 0.7 : 1,
+                    opacity: 1,
                     transition: "all 0.2s",
                     textTransform: "uppercase",
                   }}
@@ -906,242 +724,10 @@ export function OrderCard({ order }) {
           </div>
         )}
 
-        {/* === MODALS === */}
-        {printConfig.show && (
-          <NotaPreview
-            items={order.items}
-            totalAmount={order.totalAmount}
-            paymentState={{
-              amountPaid: order.paidAmount,
-              mode: order.paymentStatus === "PAID" ? "LUNAS" : "PARTIAL",
-            }}
-            order={order}
-            type={printConfig.type}
-            autoPrint={printConfig.autoPrint}
-            onClose={() =>
-              setPrintConfig({ ...printConfig, show: false, autoPrint: false })
-            }
-            onPrint={() => window.print()}
-          />
-        )}
-        <ConfirmModal
-          isOpen={settlementModal.show}
-          title="💸 Konfirmasi Pelunasan"
-          message={
-            <div>
-              <p style={{ marginBottom: "8px" }}>Terima pelunasan sebesar:</p>
-              <p
-                style={{
-                  fontSize: "24px",
-                  fontWeight: "bold",
-                  color: "#22c55e",
-                  margin: "12px 0",
-                }}
-              >
-                {formatRupiah(
-                  order.remainingAmount || order.totalAmount - order.paidAmount,
-                )}
-              </p>
-              <p style={{ fontSize: "12px", color: "#94a3b8" }}>
-                Order: {order.orderNumber}
-              </p>
-              <div style={{ marginTop: "16px", textAlign: "left" }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    marginBottom: "4px",
-                    color: "#475569",
-                  }}
-                >
-                  Diterima Oleh:
-                </label>
-                <input
-                  type="text"
-                  placeholder="Nama Kasir / Penerima..."
-                  value={settlementReceiver}
-                  onChange={(e) => setSettlementReceiver(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                  }}
-                />
-              </div>
-            </div>
-          }
-          confirmText="Ya, Terima"
-          cancelText="Batal"
-          confirmColor="#22c55e"
-          onConfirm={executeSettlement}
-          onCancel={() => setSettlementModal({ show: false })}
-        />
-        <ConfirmModal
-          isOpen={spkModal.show}
-          title="🖨️ Proses Produksi (SPK)"
-          message={
-            <div>
-              <p style={{ marginBottom: "12px", color: "#4b5563" }}>
-                Order akan ditandai <strong>IN PROGRESS</strong> dan SPK akan
-                dicetak.
-              </p>
-              <div style={{ marginTop: "16px", textAlign: "left" }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    marginBottom: "4px",
-                    color: "#374151",
-                  }}
-                >
-                  Operator / Penanggung Jawab:
-                </label>
-                <input
-                  type="text"
-                  placeholder="Cth: Budi, Asep, dll..."
-                  value={spkOperator}
-                  onChange={(e) => setSpkOperator(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    border: "1px solid #93c5fd",
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    outlineColor: "#3b82f6",
-                  }}
-                  autoFocus
-                />
-              </div>
-            </div>
-          }
-          confirmText="🚀 Proses Sekarang"
-          cancelText="Batal"
-          confirmColor="#3b82f6"
-          onConfirm={executeProcessSPK}
-          onCancel={() => setSpkModal({ show: false })}
-        />
-        <PromptModal
-          isOpen={cancelReasonModal.show}
-          title="🛑 Pembatalan Order"
-          message={`Anda akan membatalkan order: ${order.orderNumber}`}
-          placeholder="Masukkan alasan pembatalan..."
-          submitText="Lanjutkan"
-          submitColor="#ef4444"
-          onSubmit={handleReasonSubmitted}
-          onCancel={() => setCancelReasonModal({ show: false })}
-          required={true}
-        />
-        <ConfirmModal
-          isOpen={financialAuditModal.show}
-          title="⚠️ Uangnya Mau Diapakan?"
-          message={
-            <div>
-              <p style={{ marginBottom: "12px" }}>
-                Order ini sudah ada uang masuk:
-              </p>
-              <p
-                style={{
-                  fontSize: "20px",
-                  fontWeight: "bold",
-                  color: "#f59e0b",
-                  margin: "8px 0",
-                }}
-              >
-                {formatRupiah(order.paidAmount || 0)}
-              </p>
-              <p
-                style={{
-                  marginTop: "16px",
-                  padding: "12px",
-                  background: "#f8fafc",
-                  borderRadius: "8px",
-                  fontSize: "13px",
-                  color: "#475569",
-                }}
-              >
-                Karena batal, uang ini mau:
-              </p>
-            </div>
-          }
-          confirmText="💸 Kembalikan ke Pelanggan"
-          cancelText="🔒 Masuk Kas Toko (Hangus)"
-          confirmColor="#f59e0b"
-          onConfirm={handleFinancialRefund}
-          onCancel={handleFinancialForfeit}
-        />
-        <ConfirmModal
-          isOpen={finalConfirmModal.show}
-          title="⚠️ Konfirmasi Akhir"
-          message={
-            <div style={{ textAlign: "left" }}>
-              <p style={{ marginBottom: "12px", fontWeight: "bold" }}>
-                Ringkasan Pembatalan:
-              </p>
-              <div
-                style={{
-                  padding: "12px",
-                  background: "#fef2f2",
-                  borderRadius: "8px",
-                  border: "1px solid #fecaca",
-                  fontSize: "13px",
-                }}
-              >
-                <p>
-                  <strong>Order:</strong> {order.orderNumber}
-                </p>
-                <p>
-                  <strong>Alasan:</strong> "{finalConfirmModal.reason}"
-                </p>
-                <p>
-                  <strong>Status Dana:</strong>{" "}
-                  {finalConfirmModal.financialAction === "REFUND"
-                    ? "💸 Dikembalikan"
-                    : finalConfirmModal.financialAction === "FORFEIT"
-                      ? "🔥 Hangus"
-                      : "- Tidak ada"}
-                </p>
-              </div>
-            </div>
-          }
-          confirmText="Ya, Batalkan Order"
-          cancelText="Tidak Jadi"
-          confirmColor="#dc2626"
-          onConfirm={executeCancelOrder}
-          onCancel={() =>
-            setFinalConfirmModal({
-              show: false,
-              reason: "",
-              financialAction: "NONE",
-            })
-          }
-        />
-        <CompletionModal
-          key={completionModal.show ? order.id : "closed"}
-          isOpen={completionModal.show}
-          order={order}
-          onClose={() => setCompletionModal({ show: false })}
-          onSubmit={handleCompletionSubmit}
-          isOffline={!navigator.onLine}
-        />
-        <WANotificationModal
-          isOpen={waModal.show}
-          order={order}
-          actionType={waModal.actionType}
-          onConfirmWithWA={handleWAConfirmWithNotification}
-          onConfirmSilent={handleWASilentUpdate}
-          onCancel={handleWACancel}
-        />
-        <AuditLogModal
-          isOpen={showAuditLog}
-          onClose={() => setShowAuditLog(false)}
-          orderId={order.id}
-          localId={order.ref_local_id}
-          orderNumber={order.orderNumber || String(order.id)}
-        />
+        {/* [PHASE 4] AuditLog, NotaPreview, and WANotification Modals moved to OrderBoard.jsx */}
+        {/* [PHASE 3] SPK and Cancellation Modals moved to OrderBoard.jsx */}
+        {/* [PHASE 2] SettlementModal moved to OrderBoard.jsx */}
+        {/* [PHASE 1] CompletionModal moved to OrderBoard.jsx */}
       </div>
       {/* CONTEXT MENU */}
       {contextMenu && (

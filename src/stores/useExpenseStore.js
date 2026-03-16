@@ -75,59 +75,77 @@ export const useExpenseStore = create((set, get) => ({
   // ADD EXPENSE (Offline-First + Sync)
   // ====================================
   addExpense: async (expenseData) => {
+    // 1. DATA PREPARATION
+    const newExpense = {
+      id: crypto.randomUUID(),
+      date: expenseData.date || new Date().toISOString(),
+      amount: Number(expenseData.amount),
+      category: expenseData.category,
+      description: expenseData.description || "",
+      employeeId: expenseData.employeeId || null,
+      employeeName: expenseData.employeeName || null,
+      createdBy: expenseData.createdBy || "System",
+      createdAt: new Date().toISOString(),
+      isSynced: 0, // Always start as 0 (Local First)
+    };
+
+    // Basic Validation
+    if (newExpense.amount <= 0) throw new Error("Jumlah harus lebih dari 0");
+    if (!Object.keys(EXPENSE_CATEGORIES).includes(newExpense.category))
+      throw new Error("Kategori tidak valid");
+    if (
+      (newExpense.category === "SALARY" || newExpense.category === "BON") &&
+      !newExpense.employeeId
+    ) {
+      throw new Error("Pilih karyawan untuk kategori Gaji/Kasbon");
+    }
+
     try {
-      const newExpense = {
-        id: crypto.randomUUID(),
-        date: expenseData.date || new Date().toISOString(),
-        amount: Number(expenseData.amount),
-        category: expenseData.category,
-        description: expenseData.description || "",
-        employeeId: expenseData.employeeId || null,
-        employeeName: expenseData.employeeName || null,
-        createdBy: expenseData.createdBy || "System",
-        createdAt: new Date().toISOString(),
-        isSynced: 0, // Default: Not synced
-      };
-
-      if (newExpense.amount <= 0) throw new Error("Jumlah harus lebih dari 0");
-      if (!Object.keys(EXPENSE_CATEGORIES).includes(newExpense.category))
-        throw new Error("Kategori tidak valid");
-      if (
-        (newExpense.category === "SALARY" || newExpense.category === "BON") &&
-        !newExpense.employeeId
-      ) {
-        throw new Error("Pilih karyawan untuk kategori Gaji/Kasbon");
-      }
-
-      // 🛡️ PESSIMISTIC SYNC VALIDATOR (Bila Online)
-      if (navigator.onLine) {
-        console.log("📡 Online: Menunggu validasi dari Supabase...");
-        // Await the sync directly, this will throw if it fails
-        const syncedData = await syncExpenseToSupabase(newExpense);
-        if (syncedData) {
-          newExpense.isSynced = 1;
-        }
-      }
-
-      // Step 1: Save to Dexie (Offline-First / Confirmed)
+      // 🚨 STEP 1: COMMIT TO LOCAL (DEXIE) - FASTEST
+      // This is the source of truth for POS operational continuity
       await db.expenses.add(newExpense);
-      console.log("💾 Expense saved to Dexie:", newExpense.category);
+      console.log("💾 [LOCAL FIRST] Saved to Dexie:", newExpense.id);
 
-      // Update Zustand Data
+      // 🚀 STEP 2: UPDATE UI IMMEDIATELY (OPTIMISTIC)
+      // This happens in ~0ms, UI overlay in components will close immediately
       set((state) => {
-        // Prevent double insertion if Realtime already broadcasted it first
         const exists = state.expenses.some((e) => e.id === newExpense.id);
         if (exists) return state;
-
-        return {
-          expenses: [newExpense, ...state.expenses],
-        };
+        return { expenses: [newExpense, ...state.expenses] };
       });
+
+      // 📡 STEP 3: BACKGROUND SYNC (FIRE & FORGET)
+      // No await here -> UI stays responsive!
+      if (navigator.onLine) {
+        syncExpenseToSupabase(newExpense)
+          .then((syncedData) => {
+            if (syncedData) {
+              console.log("📡 [SYNC SUCCESS] Cloud updated for:", newExpense.id);
+              // Update status in Dexie for reconciliation
+              db.expenses.update(newExpense.id, { isSynced: 1 });
+              // Update memory state so UI can show "synced" status if needed
+              set((state) => ({
+                expenses: state.expenses.map((e) =>
+                  e.id === newExpense.id ? { ...e, isSynced: 1 } : e,
+                ),
+              }));
+            }
+          })
+          .catch((err) => {
+            console.warn(
+              "⚠️ [SYNC ZOMBIE/OFFLINE] Koneksi zombie/offline. Data aman di lokal menunggu auto-sync. Alasan:",
+              err.message,
+            );
+            // We do NOT throw error here because data is already safe in Dexie
+          });
+      } else {
+        console.log("📴 [OFFLINE] Expense queued for future sync.");
+      }
 
       return newExpense;
     } catch (error) {
-      console.error("❌ Add expense failed:", error);
-      throw error; // UI akan menangkap error ini dan menghentikan loading
+      console.error("❌ [CRITICAL LOCAL FAIL] Add expense failed:", error);
+      throw error; // This only happens if Dexie/IndexedDB crashes
     }
   },
 

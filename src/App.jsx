@@ -30,6 +30,7 @@ import "./index.css";
 
 // Services
 import { OrderSyncService } from "./services/OrderSyncService";
+import { useOrderStore } from "./stores/useOrderStore";
 import { SyncToast } from "./components/SyncToast";
 import { useSyncFeedbackStore } from "./stores/useSyncFeedbackStore";
 import { Toaster } from "react-hot-toast";
@@ -42,6 +43,10 @@ function App() {
       onFailed: useSyncFeedbackStore.getState().addFailedOrder,
       onSuccess: useSyncFeedbackStore.getState().markSuccess,
     });
+
+    // [NEW] Start Realtime for Ghost Sync Healing
+    const { setupRealtimeSubscription } = useOrderStore.getState();
+    setupRealtimeSubscription();
   }, []);
 
   return (

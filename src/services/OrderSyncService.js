@@ -30,6 +30,7 @@ export const OrderSyncService = {
   _onlineHandler: null,
   _onSyncFailed: null,
   _onSyncSuccess: null,
+  _globalBackoffUntil: 0, // [NEW] Prevent spamming during network issues
 
   /**
    * Register sync result callbacks (called from App.jsx)
@@ -44,11 +45,16 @@ export const OrderSyncService = {
    * Call this on interval (e.g., 60s) or window.online event
    */
   async syncOfflineOrders() {
-    if (this._isSyncing) {
-      logger.debug("⏳ Sync sudah berjalan — skip");
+    if (this._isSyncing) return;
+    this._isSyncing = true;
+ 
+    const now = Date.now();
+ 
+    // [NEW] Global Backoff Guard: Skip if we are in cooldown
+    if (now < this._globalBackoffUntil) {
+      this._isSyncing = false;
       return;
     }
-    this._isSyncing = true;
 
     if (!navigator.onLine) {
       this._isSyncing = false;
@@ -99,9 +105,11 @@ export const OrderSyncService = {
         else failCount++;
       }
 
-      logger.debug(
-        `📊 [RESULT] Success: ${successCount}, Fail: ${failCount}, Pending: ${readyOrders.length - successCount - failCount}`,
-      );
+      if (successCount > 0 || failCount > 0) {
+        logger.debug(
+          `📊 [SYNC RESULT] Success: ${successCount}, Fail: ${failCount}, Total Batch: ${readyOrders.length}`,
+        );
+      }
     } catch (err) {
       logger.error("❌ Sync Service Error:", err);
     } finally {
@@ -260,8 +268,7 @@ export const OrderSyncService = {
       }
 
       logger.error(
-        `❌ [INSERT FAIL] ID: ${order.ref_local_id || order.id}`,
-        err.message,
+        `❌ [INSERT FAIL] ID: ${order.ref_local_id || order.id} - ${err.message}`,
       );
 
       const attempts = (order.sync_attempts || 0) + 1;
@@ -388,8 +395,10 @@ export const OrderSyncService = {
 
       if (isNetworkIssue) {
         logger.warn(
-          `⚠️ [NETWORK ISSUE] Update ID: ${order.id} - ${err.message}`,
+          `⚠️ [NETWORK ISSUE] Update ID: ${order.id} - ${err.message} (Applying 15s Cooldown)`,
         );
+        // [NEW] Apply Global Backoff to avoid Phantom Retry Loop
+        this._globalBackoffUntil = Date.now() + 15000;
       } else {
         logger.error(
           `❌ [UPDATE FAIL] ID: ${order.id} / Server: ${order.server_id}`,
