@@ -11,10 +11,10 @@ _Last Updated: 17 March 2026, 02:37 AM WIB_
 
 ## 2. Kasir (Workspace): Fitur "Topping" Tambahan (Jasa Desain)
 
-- [ ] **UI Shortcut Buttons:** Buat deretan tombol kecil (_Pills_) tepat di atas Subtotal (misal: `[+ Jasa Desain Ringan]`, `[+ Jasa Desain Berat]`, `[+ Ongkir]`).
-- [ ] **Logic Makro (`addToCart`):** Tombol TIDAK BOLEH membuat state _ongkos_ terpisah. Tombol berfungsi sebagai _shortcut_ yang langsung memicu fungsi `addToCart(ID_Produk_Desain)` agar masuk ke keranjang sebagai _item_ normal.
-- [ ] **Prompt Harga Custom:** Jika harga desain fleksibel/belum tetap, munculkan _pop-up input_ harga kecil (`"Masukkan tarif desain: Rp [ ____ ]"`) sebelum _item_ dimasukkan ke keranjang.
-- [ ] **Keamanan Arsitektur:** Pastikan nota dan Supabase tidak perlu diubah. Jasa desain tetap dibaca sebagai _item_ produk standar oleh _database_.
+- [x] **UI Shortcut Buttons:** Buat deretan tombol kecil (_Pills_) tepat di atas Subtotal (`[+ DESAIN PREMIUM]`, `[+ DESAIN STANDAR]`, `[+ SETTING RINGAN]`).
+- [x] **Logic Makro (`addToCart`):** Menggunakan `addItemToCart` dengan payload dinamis dari `useProductStore` (Single Source of Truth).
+- [x] **Dynamic Pricing (Refactor):** Harga ditarik otomatis dari database varian produk, menjamin nol Technical Debt.
+- [x] **Keamanan Arsitektur:** Jasa desain terbaca sebagai produk standar di Supabase. Guard `isInitialized` ditambahkan pada `Workspace.jsx` untuk keamanan *race condition* pesanan web.
 
 ## 3. Macro-Architecture (Skala Lanjutan)
 

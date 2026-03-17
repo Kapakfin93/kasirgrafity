@@ -90,8 +90,31 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
               console.log(`   - Metadata Check:`, item.metadata);
 
               const meta = item.meta || item.metadata || {};
-              // 🔥 FIX 1: Robust Product Name Fallback
+
+              // 🧪 PARSE SPECS (Source of Truth for Descriptive Name)
+              const specs =
+                typeof item.specs_snapshot === "string"
+                  ? (() => {
+                      try {
+                        return JSON.parse(item.specs_snapshot);
+                      } catch {
+                        return {};
+                      }
+                    })()
+                  : item.specs_snapshot ||
+                    (typeof item.specs === "string"
+                      ? (() => {
+                          try {
+                            return JSON.parse(item.specs);
+                          } catch {
+                            return {};
+                          }
+                        })()
+                      : item.specs || {});
+
+              // 🔥 FIX 1: Robust Product Name Fallback (Descriptive Baris 1)
               const productName =
+                specs.summary ||
                 item.productName ||
                 item.product_name ||
                 item.product?.name ||
@@ -105,13 +128,17 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
                     {item.qty || item.quantity || 1}x {productName}
                   </div>
 
-                  {/* Ukuran */}
-                  {meta.custom_dimensions && (
-                    <div style={styles.small}>
-                      Ukuran: {meta.custom_dimensions.w} ×{" "}
-                      {meta.custom_dimensions.h} cm
-                    </div>
-                  )}
+                  {/* Ukuran (Hide if already in productName/summary) */}
+                  {meta.custom_dimensions &&
+                    !(
+                      productName.includes(`${meta.custom_dimensions.w}`) &&
+                      productName.includes(`${meta.custom_dimensions.h}`)
+                    ) && (
+                      <div style={styles.small}>
+                        Ukuran: {meta.custom_dimensions.w} ×{" "}
+                        {meta.custom_dimensions.h} cm
+                      </div>
+                    )}
 
                   {/* Finishing */}
                   {(() => {
@@ -168,6 +195,16 @@ export const ReceiptTemplate = React.forwardRef(({ order }, ref) => {
                     const finishingText = Array.isArray(finishing)
                       ? finishing.join(", ")
                       : finishing;
+
+                    // 🛡️ ANTI-DUPLICATE CHECK (CTO Rule)
+                    // Jika Finishing sudah tercantum di Baris 1 (productName/summary), JANGAN render lagi.
+                    if (
+                      productName
+                        .toLowerCase()
+                        .includes(finishingText.toLowerCase())
+                    ) {
+                      return null;
+                    }
 
                     return (
                       <div style={styles.small}>Finishing: {finishingText}</div>

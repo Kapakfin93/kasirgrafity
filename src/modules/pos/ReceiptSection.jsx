@@ -5,6 +5,7 @@ import useDraftStore from "../../stores/useDraftStore";
 import DraftListModal from "./DraftListModal";
 import { WAEstimasiModal } from "../../components/WAEstimasiModal";
 
+
 /**
  * ReceiptSection - Wall Street Theme (Bloomberg Terminal Aesthetic)
  * Clean dark sidebar with emerald accents
@@ -20,6 +21,8 @@ export function ReceiptSection({
   onOpenPaymentModal,
   paymentState,
   onLoadDraft, // New Prop: Hydrate POS from Draft
+  onAddItem, // New Prop: For Shortcut Toppings
+  designProduct, // ✅ NEW: Dynamic Source of Truth
 }) {
   const isLocked = isLockedProp || paymentState?.isLocked;
   const { mode, amountPaid } = paymentState || {};
@@ -32,6 +35,62 @@ export function ReceiptSection({
 
   // Active Draft Tracking (Local ID for release)
   const [activeDraftId, setActiveDraftId] = useState(null);
+
+  // --- TOPPING SHORTCUT LOGIC (1-CLICK DYNAMIC - HOTFIX) ---
+  const handleAddFixedTopping = (keyword) => {
+    if (!designProduct || !designProduct.variants) {
+      console.warn("⚠️ designProduct not loaded yet");
+      return;
+    }
+
+    // 🔍 SEARCH VARIANT (Case-Insensitive)
+    const variant = designProduct.variants.find((v) =>
+      v.label.toLowerCase().includes(keyword.toLowerCase()),
+    );
+
+    // 🛡️ CRITICAL VALIDATION (CTO Directive)
+    if (!variant) {
+      console.error(`❌ HOTFIX: Variant for keyword "${keyword}" not found!`);
+      alert(`ERROR: Varian "${keyword}" tidak ditemukan di database produk.`);
+      return;
+    }
+
+    // 💰 EXTRACT PRICE (Correct Property: 'price', not 'price_per_unit')
+    const price = Number(variant.price) || 0;
+
+    if (price <= 0) {
+      console.error(`❌ HOTFIX: Price for "${variant.label}" is zero or invalid!`);
+      alert(`ERROR: Harga untuk varian "${variant.label}" tidak valid di database.`);
+      return;
+    }
+
+    // 📦 ASSEMBLE PAYLOAD (Explicit Price Mapping)
+    const payload = {
+      product: designProduct,
+      qty: 1,
+      finalTotal: price,  // Primary source for buildCartItem
+      unitPrice: price,
+      price: price,
+      pricingType: "UNIT",
+      specs: {
+        type: "UNIT",
+        inputs: { variant: variant.label },
+        summary: variant.label,
+      },
+      dimensions: { variantLabel: variant.label },
+      selected_details: { variant: variant.label, notes: "" },
+      pricingSnapshot: {
+        basePrice: designProduct.base_price || 0,
+        finalUnitPrice: price,
+        finishingTotal: 0,
+        grandTotal: price,
+        qty: 1,
+      },
+    };
+
+    console.log("🚀 HOTFIX: Sending Payload to Cart:", payload);
+    onAddItem(payload);
+  };
 
   // 🛡️ Initial Fetch for Badge Count
   useEffect(() => {
@@ -257,6 +316,8 @@ export function ReceiptSection({
             onOpenPaymentModal={onOpenPaymentModal}
             onShareWA={handleShareWA}
             onSaveDraft={handleSaveDraft}
+            onToppingClick={handleAddFixedTopping}
+            isDesignReady={!!(designProduct && designProduct.variants)}
           />
         )}
       </div>
@@ -304,6 +365,7 @@ ReceiptSection.propTypes = {
     amountPaid: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   }),
   onLoadDraft: PropTypes.func,
+  designProduct: PropTypes.object, // ✅ Props from Store
 };
 
 // --- SUB COMPONENTS ---
@@ -791,8 +853,58 @@ const CheckoutView = ({
   onOpenPaymentModal,
   onShareWA,
   onSaveDraft,
+  onToppingClick,
+  isDesignReady,
 }) => (
   <>
+    {/* SHORTCUT PILLS - Target Operasi 2 */}
+    <div
+      style={{
+        display: "flex",
+        gap: "6px",
+        marginBottom: "12px",
+        flexWrap: "wrap",
+      }}
+    >
+      {[
+        { id: "PREMIUM", label: "+ DESAIN PREMIUM", color: "#10b981" },
+        { id: "STANDAR", label: "+ DESAIN STANDAR", color: "#3b82f6" },
+        { id: "RINGAN", label: "+ SETTING RINGAN", color: "#8b5cf6" },
+      ].map((btn) => (
+        <button
+          key={btn.id}
+          onClick={() => onToppingClick(btn.id)}
+          disabled={!isDesignReady}
+          style={{
+            flex: 1,
+            padding: "8px 4px",
+            borderRadius: "8px",
+            border: `1px solid ${btn.color}44`,
+            background: `${btn.color}11`,
+            color: btn.color,
+            fontSize: "9px",
+            fontWeight: "900",
+            transition: "all 0.2s",
+            cursor: isDesignReady ? "pointer" : "not-allowed",
+            whiteSpace: "nowrap",
+            opacity: isDesignReady ? 1 : 0.4,
+          }}
+          onMouseEnter={(e) => {
+            if (!isDesignReady) return;
+            e.target.style.background = `${btn.color}22`;
+            e.target.style.borderColor = btn.color;
+          }}
+          onMouseLeave={(e) => {
+            if (!isDesignReady) return;
+            e.target.style.background = `${btn.color}11`;
+            e.target.style.borderColor = `${btn.color}44`;
+          }}
+        >
+          {btn.label}
+        </button>
+      ))}
+    </div>
+
     {/* Summary */}
     <div style={{ marginBottom: "12px" }}>
       <div
@@ -935,4 +1047,5 @@ CheckoutView.propTypes = {
   onOpenPaymentModal: PropTypes.func,
   onShareWA: PropTypes.func,
   onSaveDraft: PropTypes.func,
+  onToppingClick: PropTypes.func,
 };

@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom"; // Added useLocation, useNavigate
+import { useLocation, useNavigate } from "react-router-dom";
 import { useReactToPrint } from "react-to-print"; // <--- 1. IMPORT PENTING
 import { useTransaction, TRANSACTION_STAGES } from "../../hooks/useTransaction";
 import { useOrderStore } from "../../stores/useOrderStore";
+import { useProductStore } from "../../stores/useProductStore"; // ✅ NEW
 import { useAuth } from "../../context/AuthContext";
 import { useCS } from "../../context/CSContext";
 import { CustomerSelector } from "./CustomerSelector";
@@ -47,6 +48,7 @@ export function Workspace() {
     // Discount
     discount,
     setDiscount,
+    isInitialized, // ✅ Guard for Race Condition
   } = useTransaction();
 
   const { createOrder } = useOrderStore();
@@ -56,80 +58,49 @@ export function Workspace() {
   // CS Name Error State
   const [csNameError, setCsNameError] = useState("");
 
-  // Web Order Prefill State
-  const [webOrderPrefill, setWebOrderPrefill] = useState(null);
+  // ✅ DYNAMIC SHORTCUT: Tarik produk Jasa Desain secara spesifik
+  const designProduct = useProductStore((state) => {
+    const customCat = state.categories.find((c) => c.id === "CUSTOM_SERVICES");
+    return customCat?.products?.find((p) => p.id === "master_jasa_desain");
+  });
 
-  const location = useLocation();
-  const navigate = useNavigate();
 
-  // Handle Incoming Web Order (from Navigation State)
+
+  // Handle Incoming Web Order (Safe-Mount Pattern)
   useEffect(() => {
-    if (location.state?.webOrderPayload) {
-      const { cartItem, customer } = location.state.webOrderPayload;
+    // ATURAN 1 (SAFE-MOUNT): Tunggu sampai master data produk siap
+    if (!isInitialized) return;
 
-      console.log("📥 Receiving Web Order Payload:", cartItem);
+    // 1. Periksa Loker (sessionStorage)
+    const rawData = sessionStorage.getItem("pendingWebOrder");
+    if (rawData) {
+      try {
+        const { cartItem, customer } = JSON.parse(rawData);
+        console.log("📥 Receiving Burned Web Order Payload:", cartItem);
 
-      // 1. Add Item to Cart
-      if (cartItem) {
-        addItemToCart(cartItem);
-      }
-
-      // 2. Set Customer
-      if (customer) {
-        updateCustomerSnapshot({
-          name: customer.name || "",
-          whatsapp: customer.phone || "",
-          phone: customer.phone || "",
-        });
-      }
-
-      // 3. Clear State to prevent double-add on refresh
-      navigate(location.pathname, { replace: true, state: {} });
-
-      // Optional: Auto-select category of the item if possible, or just stay on default
-    }
-  }, [
-    location.state,
-    addItemToCart,
-    updateCustomerSnapshot,
-    navigate,
-    location.pathname,
-  ]);
-
-  // Read prefill from sessionStorage on mount (Legacy/Backup)
-  useEffect(() => {
-    try {
-      const prefillData = sessionStorage.getItem("webOrderPrefill");
-      if (prefillData) {
-        const parsed = JSON.parse(prefillData);
-
-        // Check if stale (older than 5 minutes)
-        const age = Date.now() - (parsed.timestamp || 0);
-        if (age > 5 * 60 * 1000) {
-          sessionStorage.removeItem("webOrderPrefill");
-          return;
+        // A. Add Item to Cart
+        if (cartItem) {
+          addItemToCart(cartItem);
         }
 
-        // Set prefill state (Visual only)
-        setWebOrderPrefill(parsed);
-
-        // Auto-fill customer data
-        if (parsed.customerName || parsed.customerPhone) {
+        // B. Set Customer
+        if (customer) {
           updateCustomerSnapshot({
-            name: parsed.customerName || "",
-            whatsapp: parsed.customerPhone || "",
-            email: parsed.customerSnapshot?.email || "",
+            name: customer.name || "",
+            whatsapp: customer.phone || "",
+            phone: customer.phone || "",
           });
         }
 
-        // Clear sessionStorage after reading
-        sessionStorage.removeItem("webOrderPrefill");
+        // C. Bakar Kunci Loker (Self-Cleaning)
+        sessionStorage.removeItem("pendingWebOrder");
+      } catch (err) {
+        console.error("❌ Failed to parse web order:", err);
+        sessionStorage.removeItem("pendingWebOrder");
       }
-    } catch (error) {
-      console.error("Failed to read prefill:", error);
-      sessionStorage.removeItem("webOrderPrefill");
     }
-  }, []);
+  }, [isInitialized, addItemToCart, updateCustomerSnapshot]); // ✅ Re-run ONLY when initialized
+
 
   // --- SETUP PRINTER THERMAL ---
   const componentRef = useRef(); // Pengait ke kertas struk
@@ -487,70 +458,6 @@ export function Workspace() {
           </div>
         )}
 
-        {/* Web Order Banner */}
-        {webOrderPrefill && !isLocked && (
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.1))",
-              border: "1px solid rgba(59, 130, 246, 0.3)",
-              borderRadius: "8px",
-              padding: "12px 16px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                flex: 1,
-              }}
-            >
-              <span style={{ fontSize: "20px" }}>🌐</span>
-              <div style={{ flex: 1 }}>
-                <div
-                  style={{
-                    color: "#3b82f6",
-                    fontWeight: "700",
-                    fontSize: "13px",
-                  }}
-                >
-                  Order dari Web (Belum Disimpan)
-                </div>
-                <div
-                  style={{
-                    color: "#64748b",
-                    fontSize: "11px",
-                    marginTop: "2px",
-                  }}
-                >
-                  💡 Harga: Rp{" "}
-                  {webOrderPrefill.suggestedAmount?.toLocaleString() || "-"}{" "}
-                  (saran dari web)
-                  {webOrderPrefill.fileRef && " • 📎 File tersedia"}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setWebOrderPrefill(null)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#64748b",
-                cursor: "pointer",
-                fontSize: "18px",
-                padding: "4px 8px",
-              }}
-              title="Tutup banner"
-            >
-              ✕
-            </button>
-          </div>
-        )}
 
         {/* Customer Selector */}
         <CustomerSelector
@@ -707,6 +614,8 @@ export function Workspace() {
 
       {/* Right Panel - Receipt */}
       <ReceiptSection
+        onAddItem={addItemToCart}
+        designProduct={designProduct} // ✅ NEW: Dynamic Source of Truth
         items={items}
         removeItem={removeItem}
         totalAmount={calculateTotal()}
