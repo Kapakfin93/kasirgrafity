@@ -7,7 +7,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 const PIN_SESSION_KEY = "owner_pin_verified";
-const IDLE_LIMIT = 5 * 60 * 1000; // 5 Menit
+const IDLE_LIMIT = 30 * 60 * 1000; // 30 Menit
 
 // 👇 PERHATIKAN: TIDAK ADA KATA 'default' DISINI
 export function useAutoLock() {

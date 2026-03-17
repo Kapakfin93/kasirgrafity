@@ -4,7 +4,7 @@
  * Fixes: Pagination Logic, Dashboard Sync, & Dead Code Removal
  */
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useOrderStore } from "../../stores/useOrderStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import { OrderCard } from "./OrderCard";
@@ -47,6 +47,7 @@ export function OrderBoard() {
   const [paymentFilter, setPaymentFilter] = useState("ALL");
   const [productionFilter, setProductionFilter] = useState("PENDING"); // [NEW] Default PENDING for operational focus
   const [localSearchQuery, setLocalSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(""); // [NEW] Debounced state for filtering
 
   // [NEW] AGGREGATOR STATE
   // Default ke WEEKLY agar Admin/Owner langsung dapat fitur baru
@@ -76,7 +77,7 @@ export function OrderBoard() {
   const gridContainerRef = useRef(null);
   const observerRef = useRef(null);
 
-  const openModal = (type, order, config = {}) => {
+  const openModal = useCallback((type, order, config = {}) => {
     setActiveModal({ type, order });
     setModalConfig(config);
     if (type === "PAYMENT") {
@@ -86,7 +87,7 @@ export function OrderBoard() {
     } else if (type === "CANCEL_REASON") {
       setCancelData({ reason: "", financialAction: "NONE" });
     }
-  };
+  }, []); // Stable: only depends on setters from useState which are stable
 
   const closeModal = () => {
     setActiveModal({ type: null, order: null });
@@ -223,8 +224,17 @@ export function OrderBoard() {
   }, [currentPage, paymentFilter, productionFilter]);
 
   useEffect(() => {
-    searchRef.current = { storeSearchQuery, localSearchQuery };
-  }, [storeSearchQuery, localSearchQuery]);
+    searchRef.current = { storeSearchQuery, localSearchQuery: debouncedSearchQuery };
+  }, [storeSearchQuery, debouncedSearchQuery]);
+
+  // [NEW] SEARCH DEBOUNCE LOGIC
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(localSearchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [localSearchQuery]);
 
   // Persist View Mode
   useEffect(() => {
@@ -361,7 +371,7 @@ export function OrderBoard() {
       productionFilter === "ALL" || order.productionStatus === productionFilter;
 
     // C. Filter Pencarian Teks (Case-Insensitive & Safety Check)
-    const searchLower = localSearchQuery.toLowerCase().trim();
+    const searchLower = debouncedSearchQuery.toLowerCase().trim();
     const matchSearch =
       !searchLower ||
       order.customerName?.toLowerCase().includes(searchLower) ||
@@ -383,7 +393,7 @@ export function OrderBoard() {
     if (gridContainerRef.current) {
       gridContainerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [paymentFilter, productionFilter, localSearchQuery]);
+  }, [paymentFilter, productionFilter, debouncedSearchQuery]);
 
   // [VIRTUALIZATION] Intersection Observer Logic
   useEffect(() => {

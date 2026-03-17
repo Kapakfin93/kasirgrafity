@@ -18,7 +18,7 @@ import { formatRupiah } from "../../core/formatters";
 import { formatDateTime } from "../../utils/dateHelpers";
 // Modals have been elevated to OrderBoard.jsx
 
-export function OrderCard({ order, onOpenModal }) {
+export const OrderCard = React.memo(function OrderCard({ order, onOpenModal }) {
   const { archiveOrder } = useOrderStore();
   const permissions = usePermissions();
   const canUpdateOrderStatus = permissions.canUpdateOrderStatus();
@@ -770,7 +770,7 @@ export function OrderCard({ order, onOpenModal }) {
       )}
     </>
   );
-}
+});
 
 OrderCard.propTypes = {
   order: PropTypes.shape({
