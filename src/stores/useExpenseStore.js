@@ -185,15 +185,24 @@ export const useExpenseStore = create((set, get) => ({
   // ====================================
   deleteExpense: async (id) => {
     try {
+      // 🚀 STEP 1: DELETE FROM CLOUD (SUPABASE)
+      // We wait for cloud confirmation before removing local data
+      const { deleteExpenseFromSupabase } = await import(
+        "../services/expenseService"
+      );
+      await deleteExpenseFromSupabase(id);
+      console.log("📡 [SYNC SUCCESS] Cloud deleted for:", id);
+
+      // 💾 STEP 2: DELETE FROM LOCAL (DEXIE)
       await db.expenses.delete(id);
 
       set((state) => ({
         expenses: state.expenses.filter((exp) => exp.id !== id),
       }));
 
-      console.log("✅ Expense deleted:", id);
+      console.log("✅ Expense fully deleted (Cloud + Local):", id);
     } catch (error) {
-      console.error("❌ Delete expense failed:", error);
+      console.error("❌ [CRITICAL DELETE FAIL] Delete expense failed:", error);
       throw error;
     }
   },

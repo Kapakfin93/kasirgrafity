@@ -101,3 +101,28 @@ export const mapCloudToDexie = (cloudExpenses) => {
     createdAt: exp.created_at,
   }));
 };
+
+/**
+ * Delete expense from Supabase
+ * @param {string} id - Expense UUID
+ */
+export const deleteExpenseFromSupabase = async (id) => {
+  if (!navigator.onLine) {
+    throw new Error("Cannot delete from cloud while offline");
+  }
+
+  try {
+    const { error } = await supabase.from("expenses").delete().eq("id", id);
+
+    if (error) {
+      console.error("❌ Supabase delete failed:", error);
+      throw error;
+    }
+
+    console.log("✅ Expense deleted from Supabase:", id);
+    return true;
+  } catch (error) {
+    console.error("❌ Delete expense from Supabase error:", error);
+    throw error;
+  }
+};
