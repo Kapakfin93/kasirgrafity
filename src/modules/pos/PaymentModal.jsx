@@ -198,17 +198,20 @@ export function PaymentModal({
           </div>
           <button
             onClick={onClose}
+            className="bg-red-500 hover:bg-red-600 text-white transition-colors"
             style={{
-              background: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              color: "#ef4444",
-              fontSize: "20px",
+              fontSize: "14px",
+              fontWeight: "600",
               cursor: "pointer",
-              padding: "6px 12px",
+              padding: "8px 16px",
               borderRadius: "8px",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
             }}
           >
-            ✕
+            ✕ TUTUP
           </button>
         </div>
 

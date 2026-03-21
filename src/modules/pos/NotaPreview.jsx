@@ -136,7 +136,6 @@ export const NotaPreview = React.forwardRef(
       order,
       onClose,
       onReset,
-      autoPrint = false,
       type = "NOTA",
       paymentState, // Fallback for draft mode
     },
@@ -256,7 +255,7 @@ export const NotaPreview = React.forwardRef(
     const [showWatermark, setShowWatermark] = useState(false);
     const [waStatus, setWaStatus] = useState(null);
     // null | "sending" | "sent" | "failed"
-    const [printMode, setPrintMode] = useState(type); // Use type prop as initial
+    const [printMode] = useState(type); // Use type prop as initial
 
     // REF Element for overlay (outside click)
     // Unused sisaBayar removed
@@ -273,17 +272,7 @@ export const NotaPreview = React.forwardRef(
         document.removeEventListener("keydown", handleKeyDown);
       };
     }, [onClose]);
-
-    // === AUTO PRINT LOGIC ===
-    useEffect(() => {
-      if (autoPrint) {
-        setPrintMode(type);
-        const timer = setTimeout(() => {
-          globalThis.print();
-        }, 500);
-        return () => clearTimeout(timer);
-      }
-    }, [autoPrint, type]);
+    // Removed AUTO PRINT LOGIC 
 
     // 1. Print Nota (Thermal Style - Via Iframe)
     const handlePrintNota = useCallback(() => {
@@ -359,8 +348,13 @@ export const NotaPreview = React.forwardRef(
             </body>
             </html>
         `;
+      
+      iframe.onload = () => {
+        iframe.contentWindow.onafterprint = () => {
+          iframe.remove();
+        };
+      };
       document.body.appendChild(iframe);
-      setTimeout(() => iframe.remove(), 2000);
     }, []);
 
     // 3. Share Image (WA) dengan Watermark
@@ -981,10 +975,19 @@ export const NotaPreview = React.forwardRef(
                       smartSummary || `${variantInfo} ${sizeInfo}`.trim();
 
                     // STEP 4: Extract Finishing (Dynamic Vacuum Cleaner)
-                    const finishingDetails = extractFinishingDetails(
+                    let finishingDetails = extractFinishingDetails(
                       dims,
                       item,
                     );
+
+                    // Prevent duplicate if finishing is already in mainSpec
+                    if (finishingDetails && finishingDetails !== "-") {
+                        const finishingParts = finishingDetails.split(",").map((p) => p.trim());
+                        const uniqueParts = finishingParts.filter((p) => !mainSpec.includes(p));
+                        finishingDetails = uniqueParts.length > 0 ? uniqueParts.join(", ") : "-";
+                    } else {
+                        finishingDetails = "-";
+                    }
 
                     // STEP 5: Build Final Display String
                     const fullDetailString = [mainSpec, finishingDetails]
@@ -1167,21 +1170,20 @@ export const NotaPreview = React.forwardRef(
                   {/* 7. BANK INFO (PERMANENT) */}
                   <div
                     style={{
-                      marginTop: "10px",
+                      marginTop: "12px",
                       textAlign: "center",
-                      fontSize: "10px",
+                      fontSize: "12px",
                     }}
                   >
-                    <div style={{ marginBottom: "5px" }}>
+                    <div style={{ marginBottom: "6px" }}>
                       ------------------------------------------
                     </div>
-                    <p style={{ margin: "2px 0", fontWeight: "bold" }}>
-                      Transfer Pembayaran ke:
+                    <p style={{ margin: "3px 0" }}>Transfer Pembayaran ke:</p>
+                    <p style={{ margin: "4px 0", fontWeight: "bold", fontSize: "14px" }}>
+                      BCA: 0097085203 / BRI: 008301090560509
                     </p>
-                    <p style={{ margin: "2px 0" }}>BCA: 0097085203</p>
-                    <p style={{ margin: "2px 0" }}>BRI: 008301090560509</p>
-                    <p style={{ margin: "2px 0", fontStyle: "italic" }}>
-                      a.n Muhtarudin Nurul Habibi
+                    <p style={{ margin: "3px 0", fontStyle: "italic", fontSize: "12px" }}>
+                      a.n. Muhtarudin Nurul Habibi
                     </p>
                   </div>
                 </div>
@@ -1191,15 +1193,12 @@ export const NotaPreview = React.forwardRef(
                 </div>
 
                 {/* 5. FOOTER */}
-                <div style={{ textAlign: "center", fontSize: "11px" }}>
+                <div style={{ textAlign: "center", fontSize: "10px" }}>
                   <p style={{ margin: "5px 0", fontWeight: "bold" }}>
                     TERIMA KASIH
                   </p>
-                  <p style={{ margin: "2px 0", fontSize: "10px" }}>
-                    Barang yang sudah dibeli
-                  </p>
-                  <p style={{ margin: "0", fontSize: "10px" }}>
-                    tidak dapat ditukar/dikembalikan
+                  <p style={{ margin: "0" }}>
+                    Barang yang sudah dibeli tidak dapat ditukar/dikembalikan
                   </p>
                 </div>
               </div>
@@ -1300,10 +1299,10 @@ export const NotaPreview = React.forwardRef(
               style={{
                 padding: "12px 20px",
                 borderRadius: "10px",
-                border: "2px solid #64748b",
-                background: "transparent",
+                border: "none",
+                background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
                 color: "white",
-                fontWeight: "600",
+                fontWeight: "800",
                 cursor: "pointer",
               }}
             >

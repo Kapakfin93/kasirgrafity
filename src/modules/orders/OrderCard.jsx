@@ -18,6 +18,15 @@ import { formatRupiah } from "../../core/formatters";
 import { formatDateTime } from "../../utils/dateHelpers";
 // Modals have been elevated to OrderBoard.jsx
 
+const formatPhoneForWA = (phone) => {
+  if (!phone) return "";
+  let cleanPhone = phone.replace(/\D/g, "");
+  if (cleanPhone.startsWith("0")) {
+    cleanPhone = "62" + cleanPhone.substring(1);
+  }
+  return cleanPhone;
+};
+
 export const OrderCard = React.memo(function OrderCard({ order, onOpenModal }) {
   const { archiveOrder } = useOrderStore();
   const permissions = usePermissions();
@@ -278,7 +287,15 @@ export const OrderCard = React.memo(function OrderCard({ order, onOpenModal }) {
               👤 {order.customerName}{" "}
               {order.customerPhone && (
                 <span style={{ marginLeft: "10px", fontSize: "12px" }}>
-                  📞 {order.customerPhone}
+                  📞{" "}
+                  <a
+                    href={`https://wa.me/${formatPhoneForWA(order.customerPhone)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-green-500 hover:underline cursor-pointer transition-colors"
+                  >
+                    {order.customerPhone}
+                  </a>
                 </span>
               )}
             </div>

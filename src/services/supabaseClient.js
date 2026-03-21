@@ -13,3 +13,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      logger.info("🔄 Document visible: triggering token refresh/check...");
+      supabase.auth.getSession();
+    }
+  });
+}
